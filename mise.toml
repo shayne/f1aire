@@ -1,0 +1,20 @@
+[tools]
+node = "24.13.0"
+
+[tasks.dev]
+run = "npm run dev"
+
+[tasks.build]
+run = "npm run build"
+
+[tasks.typecheck]
+run = "npm run typecheck"
+
+[tasks.lint]
+run = "npm run lint"
+
+[tasks.format]
+run = "npm run format"
+
+[tasks.test]
+run = "npm run test"
