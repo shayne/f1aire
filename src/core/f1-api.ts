@@ -21,12 +21,21 @@ export async function getMeetings(year: number): Promise<MeetingsIndex> {
   const url = `https://livetiming.formula1.com/static/${year}/Index.json`;
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
-  let res: Response;
   try {
-    res = await fetch(url, {
+    const res = await fetch(url, {
       headers: { 'User-Agent': USER_AGENT },
       signal: controller.signal,
     });
+    if (!res.ok) {
+      throw new Error(`Failed to fetch meetings for ${year}: ${res.status}`);
+    }
+    const payload: unknown = await res.json();
+    if (!isMeetingsIndex(payload)) {
+      throw new Error(
+        `Invalid meetings index payload for ${year}: expected { Year: number; Meetings: array }`,
+      );
+    }
+    return payload;
   } catch (error) {
     if (isAbortError(error)) {
       throw new Error(
@@ -37,14 +46,4 @@ export async function getMeetings(year: number): Promise<MeetingsIndex> {
   } finally {
     clearTimeout(timeoutId);
   }
-  if (!res.ok) {
-    throw new Error(`Failed to fetch meetings for ${year}: ${res.status}`);
-  }
-  const payload: unknown = await res.json();
-  if (!isMeetingsIndex(payload)) {
-    throw new Error(
-      `Invalid meetings index payload for ${year}: expected { Year: number; Meetings: array }`,
-    );
-  }
-  return payload;
 }

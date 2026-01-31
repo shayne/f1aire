@@ -43,4 +43,15 @@ describe('getMeetings', () => {
       'Invalid meetings index payload for 2024: expected { Year: number; Meetings: array }',
     );
   });
+
+  it('throws a timeout error when the request is aborted', async () => {
+    const fetchMock = vi.fn(async () => {
+      throw new DOMException('Request aborted', 'AbortError');
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(getMeetings(2024)).rejects.toThrow(
+      'Timed out fetching meetings for 2024 after 10000ms',
+    );
+  });
 });
