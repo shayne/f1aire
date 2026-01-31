@@ -1,2 +1,5 @@
-// placeholder entry so build works before TUI is implemented
-console.log('f1aire: scaffold');
+import React from 'react';
+import { render } from 'ink';
+import { App } from './app.js';
+
+render(<App />);
