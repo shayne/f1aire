@@ -4,7 +4,7 @@
 
 **Goal:** Build a TypeScript Ink TUI that downloads F1 live timing data for a selected season/meeting/session, stores it in an XDG data directory, and shows a light race summary.
 
-**Architecture:** Keep a UI-agnostic `core/` layer for data access, download, parsing, and summaries, and a `tui/` layer for Ink screens and navigation. Route screens in `src/app.tsx` and render via `src/index.ts`.
+**Architecture:** Keep a UI-agnostic `core/` layer for data access, download, parsing, and summaries, and a `tui/` layer for Ink screens and navigation. Route screens in `src/app.tsx` and render via `src/index.tsx`.
 
 **Tech Stack:** Node 24.13.0 (mise), TypeScript (ESM, `nodenext`), Ink + ink-select-input, Vitest, ESLint flat config, Prettier.
 
@@ -21,7 +21,7 @@
 - Create: `mise.toml`
 - Create: `src/core/xdg.ts`
 - Create: `src/core/xdg.test.ts`
-- Create: `src/index.ts` (minimal placeholder for build)
+- Create: `src/index.tsx` (minimal placeholder for build)
 
 **Step 1: Write the failing test**
 
@@ -70,7 +70,7 @@ Expected: FAIL (missing vitest config / missing getDataDir export).
     "f1aire": "dist/index.js"
   },
   "scripts": {
-    "dev": "tsx src/index.ts",
+    "dev": "tsx src/index.tsx",
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "eslint .",
@@ -194,7 +194,7 @@ export function getDataDir(appName: string): string {
 }
 ```
 
-`src/index.ts`
+`src/index.tsx`
 ```ts
 // placeholder entry so build works before TUI is implemented
 console.log('f1aire: scaffold');
@@ -208,7 +208,7 @@ Expected: PASS (2 tests).
 **Step 5: Commit**
 
 ```bash
-git add package.json tsconfig.json tsconfig.build.json eslint.config.js prettier.config.mjs mise.toml src/core/xdg.ts src/core/xdg.test.ts src/index.ts
+git add package.json tsconfig.json tsconfig.build.json eslint.config.js prettier.config.mjs mise.toml src/core/xdg.ts src/core/xdg.test.ts src/index.tsx
 git commit -m "feat: scaffold tooling and xdg paths"
 ```
 
@@ -899,7 +899,7 @@ git commit -m "feat: summarize session results"
 - Create: `src/tui/components/Panel.tsx`
 - Create: `src/tui/ui-utils.ts`
 - Create: `src/tui/ui-utils.test.ts`
-- Modify: `src/index.ts`
+- Modify: `src/index.tsx`
 
 **Step 1: Write the failing test**
 
@@ -931,7 +931,7 @@ export function formatBreadcrumb(parts: string[]): string {
 }
 ```
 
-`src/index.ts`
+`src/index.tsx`
 ```ts
 import React from 'react';
 import { render } from 'ink';
@@ -1305,7 +1305,7 @@ Expected: PASS.
 **Step 5: Commit**
 
 ```bash
-git add src/index.ts src/app.tsx src/tui
+git add src/index.tsx src/app.tsx src/tui
  git commit -m "feat: ink screens and navigation"
 ```
 
