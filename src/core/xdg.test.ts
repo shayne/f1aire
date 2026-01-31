@@ -1,4 +1,4 @@
-import { describe, expect, it, vi, afterEach } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import { getDataDir } from './xdg.js';
 
 const originalEnv = { ...process.env };
