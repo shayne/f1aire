@@ -394,14 +394,15 @@ describe('parseJsonStreamLines', () => {
 
   it('skips malformed lines', () => {
     const start = new Date('2024-01-01T00:00:00.000Z');
-    const bad = [
-      'BADLINE',
-      '00:00:01.000{\"foo\":1}',
-      '00:00:02.000{badjson}',
+    const mixed = [
+      '00:00:01.000{\"ok\":true}',
+      'bad-offset{\"nope\":true}',
+      '00:00:03.000{\"ok\":false}',
+      '00:00:04.000{\"broken\":',
     ].join('\\n');
     const onInvalidLine = vi.fn();
-    const points = parseJsonStreamLines('TimingData', bad, start, { onInvalidLine });
-    expect(points).toHaveLength(1);
+    const points = parseJsonStreamLines('TimingData', mixed, start, { onInvalidLine });
+    expect(points).toHaveLength(2);
     expect(onInvalidLine).toHaveBeenCalledTimes(2);
   });
 });
