@@ -896,6 +896,7 @@ git commit -m "feat: summarize session results"
 - Create: `src/tui/components/Header.tsx`
 - Create: `src/tui/components/FooterHints.tsx`
 - Create: `src/tui/components/SelectList.tsx`
+- Create: `src/tui/components/Panel.tsx`
 - Create: `src/tui/ui-utils.ts`
 - Create: `src/tui/ui-utils.test.ts`
 - Modify: `src/index.ts`
@@ -1088,9 +1089,46 @@ import SelectInput from 'ink-select-input';
 
 export type SelectItem<T> = { label: string; value: T };
 
-export function SelectList<T>({ items, onSelect }: { items: SelectItem<T>[]; onSelect: (item: T) => void }) {
+export function SelectList<T>({
+  items,
+  onSelect,
+  onHighlight,
+}: {
+  items: SelectItem<T>[];
+  onSelect: (item: T) => void;
+  onHighlight?: (item: T) => void;
+}) {
   return (
-    <SelectInput items={items} onSelect={(item) => onSelect(item.value)} />
+    <SelectInput
+      items={items}
+      onSelect={(item) => onSelect(item.value)}
+      onHighlight={onHighlight ? (item) => onHighlight(item.value) : undefined}
+    />
+  );
+}
+```
+
+Add a simple `Panel` component for right-hand detail views:
+
+`src/tui/components/Panel.tsx`
+```tsx
+import React from 'react';
+import { Box, Text } from 'ink';
+
+export function Panel({
+  title,
+  children,
+}: {
+  title: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <Box flexDirection="column" borderStyle="round" paddingX={1}>
+      <Text color="gray">{title}</Text>
+      <Box flexDirection="column" marginTop={1}>
+        {children}
+      </Box>
+    </Box>
   );
 }
 ```
@@ -1098,17 +1136,28 @@ export function SelectList<T>({ items, onSelect }: { items: SelectItem<T>[]; onS
 `src/tui/screens/SeasonPicker.tsx`
 ```tsx
 import React from 'react';
-import { Text } from 'ink';
+import { Box, Text } from 'ink';
 import { SelectList } from '../components/SelectList.js';
+import { Panel } from '../components/Panel.js';
 
 export function SeasonPicker({ onSelect }: { onSelect: (year: number) => void }) {
   const currentYear = new Date().getFullYear();
   const years = Array.from({ length: 10 }, (_, i) => currentYear - i);
   return (
-    <>
-      <Text>Select a season</Text>
-      <SelectList items={years.map((y) => ({ label: String(y), value: y }))} onSelect={onSelect} />
-    </>
+    <Box flexDirection="row" gap={2}>
+      <Box flexDirection="column" flexGrow={1}>
+        <Text>Select a season</Text>
+        <SelectList
+          items={years.map((y) => ({ label: String(y), value: y }))}
+          onSelect={onSelect}
+        />
+      </Box>
+      <Box width={38}>
+        <Panel title="Season">
+          <Text color="gray">Pick a year to load meetings.</Text>
+        </Panel>
+      </Box>
+    </Box>
   );
 }
 ```
@@ -1116,9 +1165,10 @@ export function SeasonPicker({ onSelect }: { onSelect: (year: number) => void })
 `src/tui/screens/MeetingPicker.tsx`
 ```tsx
 import React from 'react';
-import { Text } from 'ink';
+import { Box, Text } from 'ink';
 import type { Meeting } from '../../core/types.js';
 import { SelectList } from '../components/SelectList.js';
+import { Panel } from '../components/Panel.js';
 
 export function MeetingPicker({
   year,
@@ -1130,13 +1180,20 @@ export function MeetingPicker({
   onSelect: (meeting: Meeting) => void;
 }) {
   return (
-    <>
-      <Text>Select a meeting for {year}</Text>
-      <SelectList
-        items={meetings.map((m) => ({ label: `${m.Name} (${m.Location})`, value: m }))}
-        onSelect={onSelect}
-      />
-    </>
+    <Box flexDirection="row" gap={2}>
+      <Box flexDirection="column" flexGrow={1}>
+        <Text>Select a meeting for {year}</Text>
+        <SelectList
+          items={meetings.map((m) => ({ label: `${m.Name} (${m.Location})`, value: m }))}
+          onSelect={onSelect}
+        />
+      </Box>
+      <Box width={38}>
+        <Panel title="Meeting">
+          <Text color="gray">Highlight a meeting for details.</Text>
+        </Panel>
+      </Box>
+    </Box>
   );
 }
 ```
@@ -1144,9 +1201,10 @@ export function MeetingPicker({
 `src/tui/screens/SessionPicker.tsx`
 ```tsx
 import React from 'react';
-import { Text } from 'ink';
+import { Box, Text } from 'ink';
 import type { Meeting, Session } from '../../core/types.js';
 import { SelectList } from '../components/SelectList.js';
+import { Panel } from '../components/Panel.js';
 
 export function SessionPicker({
   meeting,
@@ -1156,13 +1214,20 @@ export function SessionPicker({
   onSelect: (session: Session) => void;
 }) {
   return (
-    <>
-      <Text>Select a session for {meeting.Name}</Text>
-      <SelectList
-        items={meeting.Sessions.map((s) => ({ label: `${s.Name} (${s.Type})`, value: s }))}
-        onSelect={onSelect}
-      />
-    </>
+    <Box flexDirection="row" gap={2}>
+      <Box flexDirection="column" flexGrow={1}>
+        <Text>Select a session for {meeting.Name}</Text>
+        <SelectList
+          items={meeting.Sessions.map((s) => ({ label: `${s.Name} (${s.Type})`, value: s }))}
+          onSelect={onSelect}
+        />
+      </Box>
+      <Box width={38}>
+        <Panel title="Session">
+          <Text color="gray">Highlight a session for details.</Text>
+        </Panel>
+      </Box>
+    </Box>
   );
 }
 ```
