@@ -361,6 +361,17 @@ export type RawTimingDataPoint = {
   dateTime: Date;
 };
 
+export function parseOffsetMs(offset: string): number {
+  const [hh, mm, rest] = offset.split(':');
+  const [ss, ms] = rest.split('.');
+  return (
+    Number(hh) * 3600000 +
+    Number(mm) * 60000 +
+    Number(ss) * 1000 +
+    Number(ms)
+  );
+}
+
 export function parseJsonStreamLines(
   type: string,
   raw: string,
@@ -372,13 +383,7 @@ export function parseJsonStreamLines(
     .map((line) => {
       const offset = line.slice(0, 12); // HH:MM:SS.mmm
       const payload = line.slice(12);
-      const [hh, mm, rest] = offset.split(':');
-      const [ss, ms] = rest.split('.');
-      const offsetMs =
-        Number(hh) * 3600000 +
-        Number(mm) * 60000 +
-        Number(ss) * 1000 +
-        Number(ms);
+      const offsetMs = parseOffsetMs(offset);
       return {
         type,
         json: JSON.parse(payload),
@@ -437,7 +442,7 @@ describe('downloadSession', () => {
         return new Response('00:00:00.000{"SessionInfo":1}\n');
       }
       if (url.endsWith('Heartbeat.jsonStream')) {
-        return new Response('00:00:01.000{"Utc":"2024-01-01T00:00:01.000Z"}\n');
+        return new Response('00:00:05.000{"Utc":"2024-01-01T00:00:10.000Z"}\n');
       }
       return new Response('00:00:02.000{"Lines":{}}\n');
     });
@@ -470,7 +475,7 @@ Expected: FAIL (missing downloadSession).
 import path from 'node:path';
 import { promises as fs } from 'node:fs';
 import type { Meeting } from './types.js';
-import { parseJsonStreamLines } from './parse.js';
+import { parseJsonStreamLines, parseOffsetMs } from './parse.js';
 
 const RACE_TOPICS = [
   'Heartbeat',
@@ -538,9 +543,11 @@ export async function downloadSession(opts: {
   }
 
   const prefix = `https://livetiming.formula1.com/static/${session.Path}`;
-  const sessionInfo = await fetchStream(prefix, 'SessionInfo');
-  const heartbeat = await fetchStream(prefix, 'Heartbeat');
+  const sessionInfoRaw = await fetchStream(prefix, 'SessionInfo');
+  const heartbeatRaw = await fetchStream(prefix, 'Heartbeat');
 
+  const sessionInfo = parseFirstLine(sessionInfoRaw);
+  const heartbeat = parseFirstLine(heartbeatRaw);
   const startUtc = extractStartUtc(heartbeat);
   const topics = session.Type === 'Race' ? RACE_TOPICS : NON_RACE_TOPICS;
 
@@ -575,13 +582,19 @@ async function fetchStream(prefix: string, topic: string): Promise<string> {
   return await res.text();
 }
 
-function extractStartUtc(raw: string): Date {
+function parseFirstLine(raw: string): { json: any; offsetMs: number } {
   const line = raw.split('\n').find((x) => x.trim().length > 0);
-  if (!line) throw new Error('Heartbeat missing');
+  if (!line) throw new Error('Stream missing data');
+  const offsetMs = parseOffsetMs(line.slice(0, 12));
   const json = JSON.parse(line.slice(12));
-  const utc = json.Utc ?? json.UtcTime ?? json.utc;
+  return { json, offsetMs };
+}
+
+function extractStartUtc(heartbeat: { json: any; offsetMs: number }): Date {
+  const utc = heartbeat.json.Utc ?? heartbeat.json.UtcTime ?? heartbeat.json.utc;
   if (!utc) throw new Error('Heartbeat missing UTC');
-  return new Date(utc);
+  const utcMs = Date.parse(utc);
+  return new Date(utcMs - heartbeat.offsetMs);
 }
 
 async function fileExists(file: string): Promise<boolean> {
@@ -809,7 +822,7 @@ import { Summary } from './tui/screens/Summary.js';
 type Screen =
   | { name: 'season' }
   | { name: 'meeting'; year: number; meetings: Meeting[] }
-  | { name: 'session'; year: number; meeting: Meeting }
+  | { name: 'session'; year: number; meetings: Meeting[]; meeting: Meeting }
   | { name: 'downloading'; year: number; meeting: Meeting; session: Session }
   | { name: 'summary'; summary: ReturnType<typeof summarizeFromLines>; dir: string };
 
@@ -830,7 +843,7 @@ export function App() {
     if (input === 'b' || key.backspace || key.escape) {
       if (screen.name === 'meeting') setScreen({ name: 'season' });
       if (screen.name === 'session')
-        setScreen({ name: 'meeting', year: screen.year, meetings: [screen.meeting] });
+        setScreen({ name: 'meeting', year: screen.year, meetings: screen.meetings });
       if (screen.name === 'summary') setScreen({ name: 'season' });
     }
   });
@@ -851,7 +864,14 @@ export function App() {
           <MeetingPicker
             year={screen.year}
             meetings={screen.meetings}
-            onSelect={(meeting) => setScreen({ name: 'session', year: screen.year, meeting })}
+            onSelect={(meeting) =>
+              setScreen({
+                name: 'session',
+                year: screen.year,
+                meetings: screen.meetings,
+                meeting,
+              })
+            }
           />
         )}
         {screen.name === 'session' && (
