@@ -367,7 +367,7 @@ git commit -m "feat: fetch meetings index"
 
 `src/core/parse.test.ts`
 ```ts
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { parseJsonStreamLines } from './parse.js';
 
 const sample = [
@@ -399,8 +399,10 @@ describe('parseJsonStreamLines', () => {
       '00:00:01.000{\"foo\":1}',
       '00:00:02.000{badjson}',
     ].join('\\n');
-    const points = parseJsonStreamLines('TimingData', bad, start);
+    const onInvalidLine = vi.fn();
+    const points = parseJsonStreamLines('TimingData', bad, start, { onInvalidLine });
     expect(points).toHaveLength(1);
+    expect(onInvalidLine).toHaveBeenCalledTimes(2);
   });
 });
 ```
@@ -435,6 +437,7 @@ export function parseJsonStreamLines(
   type: string,
   raw: string,
   start: Date,
+  options?: { onInvalidLine?: (line: string) => void },
 ): RawTimingDataPoint[] {
   const offsetPattern = /^\d{2}:\d{2}:\d{2}\.\d{3}/;
   return raw
@@ -443,6 +446,7 @@ export function parseJsonStreamLines(
     .filter((line) => line.trim().length > 0)
     .flatMap((line) => {
       if (!offsetPattern.test(line)) {
+        options?.onInvalidLine?.(line);
         return [];
       }
       const offset = line.slice(0, 12); // HH:MM:SS.mmm
@@ -457,6 +461,7 @@ export function parseJsonStreamLines(
           },
         ];
       } catch {
+        options?.onInvalidLine?.(line);
         return [];
       }
     });
