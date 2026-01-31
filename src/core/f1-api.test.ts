@@ -44,14 +44,44 @@ describe('getMeetings', () => {
     );
   });
 
-  it('throws a timeout error when the request is aborted', async () => {
-    const fetchMock = vi.fn(async () => {
-      throw new DOMException('Request aborted', 'AbortError');
+  it('throws a timeout error when the request is aborted during json parsing', async () => {
+    vi.useFakeTimers();
+    let providedSignal: AbortSignal | undefined;
+    const fetchMock = vi.fn(async (_url, options) => {
+      const signal = (options as RequestInit | undefined)?.signal;
+      providedSignal = signal as AbortSignal | undefined;
+      return {
+        ok: true,
+        json: () =>
+          new Promise((_, reject) => {
+            if (!signal) {
+              reject(new Error('Missing abort signal'));
+              return;
+            }
+            if (signal.aborted) {
+              reject(new DOMException('Request aborted', 'AbortError'));
+              return;
+            }
+            signal.addEventListener(
+              'abort',
+              () => reject(new DOMException('Request aborted', 'AbortError')),
+              { once: true },
+            );
+          }),
+      } as Response;
     });
     vi.stubGlobal('fetch', fetchMock);
 
-    await expect(getMeetings(2024)).rejects.toThrow(
-      'Timed out fetching meetings for 2024 after 10000ms',
-    );
+    try {
+      const request = getMeetings(2024);
+      const expectation = expect(request).rejects.toThrow(
+        'Timed out fetching meetings for 2024 after 10000ms',
+      );
+      await vi.advanceTimersByTimeAsync(10_000);
+      await expectation;
+      expect(providedSignal).toBeDefined();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
