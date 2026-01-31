@@ -249,6 +249,21 @@ describe('getMeetings', () => {
     );
     expect(result.Year).toBe(2024);
   });
+
+  it('throws on non-OK responses', async () => {
+    const fetchMock = vi.fn(async () => new Response('nope', { status: 500 }));
+    vi.stubGlobal('fetch', fetchMock);
+    await expect(getMeetings(2024)).rejects.toThrow(/Failed to fetch/);
+  });
+
+  it('throws when payload shape is invalid', async () => {
+    const payload = { Year: '2024', Meetings: {} };
+    const fetchMock = vi.fn(async () =>
+      new Response(JSON.stringify(payload), { status: 200 }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    await expect(getMeetings(2024)).rejects.toThrow(/Invalid meetings index/);
+  });
 });
 ```
 
@@ -289,18 +304,44 @@ export type Session = {
 import type { MeetingsIndex } from './types.js';
 
 const USER_AGENT = `f1aire/0.1.0`;
+const FETCH_TIMEOUT_MS = 10000;
 
 export async function getMeetings(year: number): Promise<MeetingsIndex> {
   const url = `https://livetiming.formula1.com/static/${year}/Index.json`;
-  const res = await fetch(url, {
-    headers: { 'User-Agent': USER_AGENT },
-  });
-  if (!res.ok) {
-    throw new Error(`Failed to fetch meetings for ${year}: ${res.status}`);
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+  try {
+    const res = await fetch(url, {
+      headers: { 'User-Agent': USER_AGENT },
+      signal: controller.signal,
+    });
+    if (!res.ok) {
+      throw new Error(`Failed to fetch meetings for ${year}: ${res.status}`);
+    }
+    const data = (await res.json()) as MeetingsIndex;
+    if (!isMeetingsIndex(data)) {
+      throw new Error('Invalid meetings index response');
+    }
+    return data;
+  } catch (err) {
+    if (err instanceof Error && err.name === 'AbortError') {
+      throw new Error(`Timed out fetching meetings for ${year}`);
+    }
+    throw err;
+  } finally {
+    clearTimeout(timeout);
   }
-  return (await res.json()) as MeetingsIndex;
+}
+
+function isMeetingsIndex(value: MeetingsIndex): boolean {
+  return (
+    typeof value?.Year === 'number' &&
+    Array.isArray(value?.Meetings)
+  );
 }
 ```
+
+Add `engines.node` in `package.json` to enforce Node >= 24.13.0 for global fetch.
 
 **Step 4: Run test to verify it passes**
 
