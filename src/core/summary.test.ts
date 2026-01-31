@@ -47,6 +47,31 @@ describe('summarizeFromLines', () => {
 
     expect(summary.winner?.number).toBe('1');
   });
+
+  it('treats DNS/abc positions as last place', () => {
+    const raw = [
+      JSON.stringify({
+        type: 'DriverList',
+        json: { '1': { FullName: 'Max TEST' }, '2': { FullName: 'DNS Driver' }, '3': { FullName: 'ABC Driver' } },
+        dateTime: '2024-01-01T00:00:00.000Z',
+      }),
+      JSON.stringify({
+        type: 'TimingData',
+        json: {
+          Lines: {
+            '1': { Position: '1', BestLapTime: { Value: '1:30.000', Lap: 12 } },
+            '2': { Position: 'DNS', BestLapTime: { Value: '1:31.000', Lap: 5 } },
+            '3': { Position: 'abc', BestLapTime: { Value: '1:32.000', Lap: 7 } },
+          },
+        },
+        dateTime: '2024-01-01T00:01:00.000Z',
+      }),
+    ].join('\n');
+
+    const summary = summarizeFromLines(raw);
+
+    expect(summary.winner?.number).toBe('1');
+  });
 });
 
 describe('parseLapTimeMs', () => {
