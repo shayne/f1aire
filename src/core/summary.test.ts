@@ -28,7 +28,7 @@ describe('summarizeFromLines', () => {
     expect(summary.fastestLap?.time).toBe('1:30.000');
   });
 
-  it('treats non-numeric positions as last place', () => {
+  it('non-numeric positions do not beat numeric leader', () => {
     const raw = [
       JSON.stringify({ type: 'DriverList', json: { '1': { FullName: 'Max TEST' }, '2': { FullName: 'No Position' } }, dateTime: '2024-01-01T00:00:00.000Z' }),
       JSON.stringify({
