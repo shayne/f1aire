@@ -384,6 +384,24 @@ describe('parseJsonStreamLines', () => {
     expect(points[0].dateTime.toISOString()).toBe('2024-01-01T00:00:01.000Z');
     expect(points[1].json.bar).toBe(2);
   });
+
+  it('handles CRLF input', () => {
+    const start = new Date('2024-01-01T00:00:00.000Z');
+    const crlf = '00:00:01.000{\"foo\":1}\\r\\n00:00:02.000{\"bar\":2}';
+    const points = parseJsonStreamLines('TimingData', crlf, start);
+    expect(points).toHaveLength(2);
+  });
+
+  it('skips malformed lines', () => {
+    const start = new Date('2024-01-01T00:00:00.000Z');
+    const bad = [
+      'BADLINE',
+      '00:00:01.000{\"foo\":1}',
+      '00:00:02.000{badjson}',
+    ].join('\\n');
+    const points = parseJsonStreamLines('TimingData', bad, start);
+    expect(points).toHaveLength(1);
+  });
 });
 ```
 
@@ -418,18 +436,29 @@ export function parseJsonStreamLines(
   raw: string,
   start: Date,
 ): RawTimingDataPoint[] {
+  const offsetPattern = /^\d{2}:\d{2}:\d{2}\.\d{3}/;
   return raw
-    .split('\n')
+    .split(/\r?\n/)
+    .map((line) => line.trimEnd())
     .filter((line) => line.trim().length > 0)
-    .map((line) => {
+    .flatMap((line) => {
+      if (!offsetPattern.test(line)) {
+        return [];
+      }
       const offset = line.slice(0, 12); // HH:MM:SS.mmm
       const payload = line.slice(12);
-      const offsetMs = parseOffsetMs(offset);
-      return {
-        type,
-        json: JSON.parse(payload),
-        dateTime: new Date(start.getTime() + offsetMs),
-      };
+      try {
+        const offsetMs = parseOffsetMs(offset);
+        return [
+          {
+            type,
+            json: JSON.parse(payload),
+            dateTime: new Date(start.getTime() + offsetMs),
+          },
+        ];
+      } catch {
+        return [];
+      }
     });
 }
 ```
