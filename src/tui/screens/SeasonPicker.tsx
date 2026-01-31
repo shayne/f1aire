@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Box, Text } from 'ink';
 import { SelectList } from '../components/SelectList.js';
 import { Panel } from '../components/Panel.js';
+import { getSeasonOptions } from '../season-utils.js';
 
 export function SeasonPicker({
   onSelect,
@@ -10,7 +11,7 @@ export function SeasonPicker({
 }): React.JSX.Element {
   const currentYear = new Date().getFullYear();
   const seasons = useMemo(
-    () => Array.from({ length: 10 }, (_, i) => currentYear - i),
+    () => getSeasonOptions(currentYear),
     [currentYear],
   );
   const [highlighted, setHighlighted] = useState<number | null>(
