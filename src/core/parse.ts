@@ -19,14 +19,17 @@ export function parseJsonStreamLines(
   type: string,
   raw: string,
   start: Date,
+  options: { onInvalidLine?: (line: string) => void } = {},
 ): RawTimingDataPoint[] {
   const offsetRegex = /^\d{2}:\d{2}:\d{2}\.\d{3}/;
+  const { onInvalidLine } = options;
   return raw.split(/\r?\n/).reduce<RawTimingDataPoint[]>((points, line) => {
     const trimmedLine = line.trimEnd();
     if (trimmedLine.trim().length === 0) {
       return points;
     }
     if (!offsetRegex.test(trimmedLine)) {
+      onInvalidLine?.(line);
       return points;
     }
     const offset = trimmedLine.slice(0, 12); // HH:MM:SS.mmm
@@ -39,6 +42,7 @@ export function parseJsonStreamLines(
         dateTime: new Date(start.getTime() + offsetMs),
       });
     } catch {
+      onInvalidLine?.(line);
       // Skip malformed lines leniently.
     }
     return points;

@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { parseJsonStreamLines } from './parse.js';
 
 const sample = [
@@ -32,10 +32,18 @@ describe('parseJsonStreamLines', () => {
     const mixedSample = [
       '00:00:01.000{"ok":true}',
       'bad-offset{"nope":true}',
-      '00:00:03.000{"broken":',
+      '00:00:03.000{"ok":false}',
+      '00:00:04.000{"broken":',
     ].join('\n');
-    const points = parseJsonStreamLines('TimingData', mixedSample, start);
-    expect(points).toHaveLength(1);
+    const onInvalidLine = vi.fn();
+    const points = parseJsonStreamLines('TimingData', mixedSample, start, {
+      onInvalidLine,
+    });
+    expect(onInvalidLine).toHaveBeenCalledTimes(2);
+    expect(onInvalidLine).toHaveBeenCalledWith('bad-offset{"nope":true}');
+    expect(onInvalidLine).toHaveBeenCalledWith('00:00:04.000{"broken":');
+    expect(points).toHaveLength(2);
     expect(points[0].json.ok).toBe(true);
+    expect(points[1].json.ok).toBe(false);
   });
 });
