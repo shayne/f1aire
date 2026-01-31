@@ -4,7 +4,7 @@ import path from 'node:path';
 export function getDataDir(appName: string): string {
   if (process.platform === 'win32') {
     const local = process.env.LOCALAPPDATA ?? process.env.APPDATA ?? '';
-    const base = local.trim().length > 0 ? local : getFallbackHome();
+    const base = local.trim().length > 0 ? local : getWindowsFallbackBase();
     return path.join(base, appName, 'data');
   }
 
@@ -24,4 +24,12 @@ function getFallbackHome(): string {
     return home;
   }
   throw new Error('Unable to determine a home directory for data storage.');
+}
+
+function getWindowsFallbackBase(): string {
+  const home = os.homedir().trim();
+  if (home.length === 0) {
+    throw new Error('Unable to determine a home directory for data storage.');
+  }
+  return path.join(home, 'AppData', 'Local');
 }
