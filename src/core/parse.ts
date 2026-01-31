@@ -20,17 +20,27 @@ export function parseJsonStreamLines(
   raw: string,
   start: Date,
 ): RawTimingDataPoint[] {
-  return raw
-    .split('\n')
-    .filter((line) => line.trim().length > 0)
-    .map((line) => {
-      const offset = line.slice(0, 12); // HH:MM:SS.mmm
-      const payload = line.slice(12);
+  const offsetRegex = /^\d{2}:\d{2}:\d{2}\.\d{3}/;
+  return raw.split(/\r?\n/).reduce<RawTimingDataPoint[]>((points, line) => {
+    const trimmedLine = line.trimEnd();
+    if (trimmedLine.trim().length === 0) {
+      return points;
+    }
+    if (!offsetRegex.test(trimmedLine)) {
+      return points;
+    }
+    const offset = trimmedLine.slice(0, 12); // HH:MM:SS.mmm
+    const payload = trimmedLine.slice(12);
+    try {
       const offsetMs = parseOffsetMs(offset);
-      return {
+      points.push({
         type,
         json: JSON.parse(payload),
         dateTime: new Date(start.getTime() + offsetMs),
-      };
-    });
+      });
+    } catch {
+      // Skip malformed lines leniently.
+    }
+    return points;
+  }, []);
 }
