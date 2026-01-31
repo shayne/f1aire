@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { downloadSession } from './download.js';
 import { mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -14,6 +14,10 @@ const meeting = {
 };
 
 describe('downloadSession', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
   it('writes live.jsonl and subscribe.json', async () => {
     const dir = mkdtempSync(path.join(tmpdir(), 'f1aire-'));
     const fetchMock = vi.fn(async (url: string) => {

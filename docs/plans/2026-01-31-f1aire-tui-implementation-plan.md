@@ -495,7 +495,7 @@ git commit -m "feat: parse jsonStream lines"
 
 `src/core/download.test.ts`
 ```ts
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { downloadSession } from './download.js';
 import { mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -511,6 +511,10 @@ const meeting = {
 };
 
 describe('downloadSession', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
   it('writes live.jsonl and subscribe.json', async () => {
     const dir = mkdtempSync(path.join(tmpdir(), 'f1aire-'));
     const fetchMock = vi.fn(async (url: string) => {
@@ -595,6 +599,9 @@ const NON_RACE_TOPICS = [
   'PitStop',
 ];
 
+const USER_AGENT = `f1aire/0.1.0`;
+const FETCH_TIMEOUT_MS = 10_000;
+
 export async function downloadSession(opts: {
   year: number;
   meeting: Meeting;
@@ -618,7 +625,13 @@ export async function downloadSession(opts: {
     throw new Error('Data files already exist');
   }
 
-  const prefix = `https://livetiming.formula1.com/static/${session.Path}`;
+  const normalizedPath = session.Path.startsWith('/')
+    ? session.Path.slice(1)
+    : session.Path;
+  const pathWithSlash = normalizedPath.endsWith('/')
+    ? normalizedPath
+    : `${normalizedPath}/`;
+  const prefix = `https://livetiming.formula1.com/static/${pathWithSlash}`;
   const sessionInfoRaw = await fetchStream(prefix, 'SessionInfo');
   const heartbeatRaw = await fetchStream(prefix, 'Heartbeat');
 
@@ -653,9 +666,25 @@ export async function downloadSession(opts: {
 
 async function fetchStream(prefix: string, topic: string): Promise<string> {
   const url = `${prefix}${topic}.jsonStream`;
-  const res = await fetch(url, { headers: { 'User-Agent': 'f1aire/0.1.0' } });
-  if (!res.ok) throw new Error(`Failed to download ${topic}`);
-  return await res.text();
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+  try {
+    const res = await fetch(url, {
+      headers: { 'User-Agent': USER_AGENT },
+      signal: controller.signal,
+    });
+    if (!res.ok) throw new Error(`Failed to download ${topic}: ${res.status}`);
+    return await res.text();
+  } catch (error) {
+    if (isAbortError(error)) {
+      throw new Error(
+        `Timed out downloading ${topic} after ${FETCH_TIMEOUT_MS}ms`,
+      );
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeoutId);
+  }
 }
 
 function parseFirstLine(raw: string): { json: any; offsetMs: number } {
@@ -670,7 +699,16 @@ function extractStartUtc(heartbeat: { json: any; offsetMs: number }): Date {
   const utc = heartbeat.json.Utc ?? heartbeat.json.UtcTime ?? heartbeat.json.utc;
   if (!utc) throw new Error('Heartbeat missing UTC');
   const utcMs = Date.parse(utc);
+  if (Number.isNaN(utcMs)) {
+    throw new Error(`Heartbeat UTC timestamp is invalid: ${utc}`);
+  }
   return new Date(utcMs - heartbeat.offsetMs);
+}
+
+function isAbortError(error: unknown): boolean {
+  return error instanceof DOMException
+    ? error.name === 'AbortError'
+    : error instanceof Error && error.name === 'AbortError';
 }
 
 async function fileExists(file: string): Promise<boolean> {
