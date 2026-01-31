@@ -764,6 +764,8 @@ describe('summarizeFromLines', () => {
 });
 ```
 
+Add follow-up tests to ensure invalid JSON lines are ignored, non-numeric/empty `Position` values are treated as last place, and `parseLapTimeMs` returns `null` when numeric parts are invalid.
+
 **Step 2: Run test to verify it fails**
 
 Run: `mise run test -- src/core/summary.test.ts`

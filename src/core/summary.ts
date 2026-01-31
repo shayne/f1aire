@@ -20,7 +20,13 @@ export function summarizeFromLines(raw: string): Summary {
   let bestLap: BestLap | null = null;
 
   for (const line of raw.split('\n').filter((value) => value.trim().length > 0)) {
-    const entry = JSON.parse(line) as { type: string; json: any };
+    let entry: { type: string; json: any } | null = null;
+    try {
+      entry = JSON.parse(line) as { type: string; json: any };
+    } catch {
+      continue;
+    }
+    if (!entry || typeof entry !== 'object') continue;
     if (entry.type === 'DriverList') {
       for (const [num, data] of Object.entries(entry.json ?? {})) {
         const name = (data as { FullName?: string; BroadcastName?: string }).FullName
@@ -47,7 +53,7 @@ export function summarizeFromLines(raw: string): Summary {
 
   const winnerNum = Object.entries(latestTiming)
     .sort(
-      (a, b) => Number(a[1].Position ?? 999) - Number(b[1].Position ?? 999),
+      (a, b) => parsePositionValue(a[1].Position) - parsePositionValue(b[1].Position),
     )
     .map(([num]) => num)[0];
 
@@ -66,18 +72,35 @@ export function summarizeFromLines(raw: string): Summary {
   };
 }
 
+function parsePositionValue(position?: string): number {
+  if (!position) return 999;
+  const trimmed = position.trim();
+  if (!trimmed) return 999;
+  const value = Number(trimmed);
+  return Number.isFinite(value) ? value : 999;
+}
+
 export function parseLapTimeMs(value: string): number | null {
   const parts = value.split(':');
   if (parts.length === 1) {
     const [sec, ms] = parts[0].split('.');
     if (!sec || !ms) return null;
-    return Number(sec) * 1000 + Number(ms);
+    const secValue = Number(sec);
+    const msValue = Number(ms);
+    if (!Number.isFinite(secValue) || !Number.isFinite(msValue)) return null;
+    return secValue * 1000 + msValue;
   }
   if (parts.length === 2) {
     const [min, rest] = parts;
     const [sec, ms] = rest.split('.');
     if (!min || !sec || !ms) return null;
-    return Number(min) * 60000 + Number(sec) * 1000 + Number(ms);
+    const minValue = Number(min);
+    const secValue = Number(sec);
+    const msValue = Number(ms);
+    if (!Number.isFinite(minValue) || !Number.isFinite(secValue) || !Number.isFinite(msValue)) {
+      return null;
+    }
+    return minValue * 60000 + secValue * 1000 + msValue;
   }
   return null;
 }
