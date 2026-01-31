@@ -22,4 +22,25 @@ describe('getMeetings', () => {
     );
     expect(result.Year).toBe(2024);
   });
+
+  it('throws when the response is not ok', async () => {
+    const fetchMock = vi.fn(async () => new Response('', { status: 503 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(getMeetings(2024)).rejects.toThrow(
+      'Failed to fetch meetings for 2024: 503',
+    );
+  });
+
+  it('throws when the payload shape is invalid', async () => {
+    const invalidPayload = { Year: '2024', Meetings: {} };
+    const fetchMock = vi.fn(async () =>
+      new Response(JSON.stringify(invalidPayload), { status: 200 }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(getMeetings(2024)).rejects.toThrow(
+      'Invalid meetings index payload for 2024: expected { Year: number; Meetings: array }',
+    );
+  });
 });
