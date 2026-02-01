@@ -19,6 +19,14 @@ export type Screen =
       meeting: Meeting;
       summary: Summary;
       dir: string;
+    }
+  | {
+      name: 'engineer';
+      year: number;
+      meetings: Meeting[];
+      meeting: Meeting;
+      session: Session;
+      dir: string;
     };
 
 export function getBackScreen(screen: Screen): Screen | null {
@@ -26,7 +34,11 @@ export function getBackScreen(screen: Screen): Screen | null {
   if (screen.name === 'session') {
     return { name: 'meeting', year: screen.year, meetings: screen.meetings };
   }
-  if (screen.name === 'downloading' || screen.name === 'summary') {
+  if (
+    screen.name === 'downloading' ||
+    screen.name === 'summary' ||
+    screen.name === 'engineer'
+  ) {
     return {
       name: 'session',
       year: screen.year,

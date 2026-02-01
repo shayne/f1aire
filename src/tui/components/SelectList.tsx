@@ -1,8 +1,13 @@
 import React from 'react';
 import { Box } from 'ink';
-import SelectInput, { type Item } from 'ink-select-input';
+import SelectInput from 'ink-select-input';
+import { theme } from '../theme.js';
 
-export type SelectListItem<V> = Item<V>;
+export type SelectListItem<V> = {
+  key?: string;
+  label: string;
+  value: V;
+};
 
 type SelectListProps<V> = {
   items: Array<SelectListItem<V>>;
@@ -16,11 +21,11 @@ export function SelectList<V>({
   onHighlight,
 }: SelectListProps<V>): React.JSX.Element {
   return (
-    <Box borderStyle="single" paddingX={1} flexGrow={1}>
+    <Box borderStyle="round" borderColor={theme.border} paddingX={1} flexGrow={1}>
       <SelectInput
         items={items}
-        onSelect={(item) => onSelect(item.value)}
-        onHighlight={onHighlight ? (item) => onHighlight(item.value) : undefined}
+        onSelect={(item) => onSelect(item.value as V)}
+        onHighlight={onHighlight ? (item) => onHighlight(item.value as V) : undefined}
       />
     </Box>
   );

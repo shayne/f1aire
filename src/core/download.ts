@@ -53,6 +53,7 @@ export async function downloadSession(opts: {
   meeting: Meeting;
   sessionKey: number;
   dataRoot: string;
+  allowExisting?: boolean;
 }): Promise<{ dir: string; lineCount: number }> {
   const session = opts.meeting.Sessions.find((s) => s.Key === opts.sessionKey);
   if (!session) throw new Error('Session not found');
@@ -67,8 +68,14 @@ export async function downloadSession(opts: {
   const subscribePath = path.join(dir, 'subscribe.json');
 
   await fs.mkdir(dir, { recursive: true });
-  if (await fileExists(livePath) || (await fileExists(subscribePath))) {
+  const liveExists = await fileExists(livePath);
+  const subscribeExists = await fileExists(subscribePath);
+  if (liveExists && subscribeExists) {
+    if (opts.allowExisting) return { dir, lineCount: 0 };
     throw new Error('Data files already exist');
+  }
+  if (liveExists || subscribeExists) {
+    throw new Error('Partial data already exists; delete the folder to re-download');
   }
 
   const normalizedPath = session.Path.startsWith('/')
