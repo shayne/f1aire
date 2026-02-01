@@ -29,6 +29,7 @@ export function MeetingPicker({
         <Text>Select a meeting for {year}</Text>
         <SelectList
           items={meetings.map((meeting) => ({
+            key: String(meeting.Key),
             label: `${meeting.Name} (${meeting.Location})`,
             value: meeting,
           }))}

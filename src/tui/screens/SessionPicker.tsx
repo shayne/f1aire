@@ -28,6 +28,7 @@ export function SessionPicker({
         <Text>Select a session for {meeting.Name}</Text>
         <SelectList
           items={sessions.map((session) => ({
+            key: String(session.Key),
             label: `${session.Name} (${session.Type})`,
             value: session,
           }))}
