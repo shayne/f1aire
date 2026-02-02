@@ -259,9 +259,16 @@ describe('buildAnalysisIndex', () => {
     const index = buildAnalysisIndex({ processors: timing.processors });
 
     const window = index.getUndercutWindow({ driverA: '1', driverB: '2', pitLossMs: 20_000 });
-    expect(window.lapsToCover).toBeGreaterThan(0);
+    expect(window.lapsToCover).toBe(20);
 
     const rejoin = index.simulateRejoin({ driver: '2', pitLossMs: 20_000, asOfLap: 2 });
     expect(rejoin.lossMs).toBe(20_000);
+    expect(rejoin.projectedGapToLeaderSec).toBe(21.2);
+
+    const noGain = index.getUndercutWindow({ driverA: '2', driverB: '1', pitLossMs: 20_000 });
+    expect(noGain.lapsToCover).toBeNull();
+
+    const zeroLoss = index.getUndercutWindow({ driverA: '1', driverB: '2', pitLossMs: 0 });
+    expect(zeroLoss.lapsToCover).toBe(0);
   });
 });

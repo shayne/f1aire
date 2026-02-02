@@ -308,13 +308,13 @@ export function buildAnalysisIndex({
   }): UndercutWindow => {
     const comparison = compareDrivers({ driverA, driverB });
     const avgDelta = comparison.summary?.avgDeltaMs ?? null;
-    if (!avgDelta || !pitLossMs) {
+    if (avgDelta == null || pitLossMs == null) {
       return { avgDeltaMs: avgDelta, lapsToCover: null, pitLossMs: pitLossMs ?? null };
     }
-    const lapsToCover =
-      avgDelta < 0
-        ? Math.ceil(pitLossMs / Math.abs(avgDelta))
-        : Math.ceil(pitLossMs / Math.max(1, avgDelta));
+    if (avgDelta >= 0) {
+      return { avgDeltaMs: avgDelta, lapsToCover: null, pitLossMs };
+    }
+    const lapsToCover = Math.ceil(pitLossMs / Math.abs(avgDelta));
     return { avgDeltaMs: avgDelta, lapsToCover, pitLossMs };
   };
 
