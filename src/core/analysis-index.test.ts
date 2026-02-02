@@ -101,4 +101,36 @@ describe('buildAnalysisIndex', () => {
 
     expect(record?.traffic).toBe('traffic');
   });
+
+  it('derives pit events and position changes', () => {
+    const live = [
+      {
+        type: 'TimingData',
+        json: {
+          Lines: {
+            '1': { NumberOfLaps: 1, Position: '1', LapTime: { Value: '1:30.000' } },
+            '2': { NumberOfLaps: 1, Position: '2', LapTime: { Value: '1:31.000' } },
+          },
+        },
+        dateTime: new Date('2024-01-01T00:01:00Z'),
+      },
+      {
+        type: 'TimingData',
+        json: {
+          Lines: {
+            '1': { NumberOfLaps: 2, Position: '2', LapTime: { Value: '1:32.000' }, PitIn: true },
+            '2': { NumberOfLaps: 2, Position: '1', LapTime: { Value: '1:30.500' } },
+          },
+        },
+        dateTime: new Date('2024-01-01T00:02:00Z'),
+      },
+    ];
+    const timing = new TimingService();
+    for (const point of live) timing.enqueue(point);
+
+    const index = buildAnalysisIndex({ processors: timing.processors });
+
+    expect(index.getPitEvents().length).toBe(1);
+    expect(index.getPositionChanges().length).toBe(2);
+  });
 });

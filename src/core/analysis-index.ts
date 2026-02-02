@@ -22,12 +22,22 @@ export type LapRecord = {
   stint: { compound: string | null; age: number | null; stint: number | null } | null;
 };
 
+export type PitEvent = { driverNumber: string; lap: number; type: 'pit' | 'pit-in' | 'pit-out' };
+export type PositionChange = {
+  driverNumber: string;
+  lap: number;
+  from: number | null;
+  to: number | null;
+};
+
 export type AnalysisIndex = {
   lapNumbers: number[];
   drivers: string[];
   byDriver: Map<string, LapRecord[]>;
   byLap: Map<number, Map<string, LapRecord>>;
   resolveAsOf: (cursor?: TimeCursor | null) => ResolvedCursor;
+  getPitEvents: () => PitEvent[];
+  getPositionChanges: () => PositionChange[];
 };
 
 const getStintForLap = (timingAppData: any, driverNumber: string, lap: number) => {
@@ -144,6 +154,38 @@ export function buildAnalysisIndex({
 
   for (const list of byDriver.values()) list.sort((a, b) => a.lap - b.lap);
 
+  const pitEvents: PitEvent[] = [];
+  const positionChanges: PositionChange[] = [];
+
+  for (const [driverNumber, records] of byDriver.entries()) {
+    for (const record of records) {
+      if (record.flags.pitIn) pitEvents.push({ driverNumber, lap: record.lap, type: 'pit-in' });
+      else if (record.flags.pitOut)
+        pitEvents.push({ driverNumber, lap: record.lap, type: 'pit-out' });
+      else if (record.flags.pit) pitEvents.push({ driverNumber, lap: record.lap, type: 'pit' });
+    }
+  }
+
+  const sortedLaps = [...lapNumbers].sort((a, b) => a - b);
+  for (let i = 1; i < sortedLaps.length; i += 1) {
+    const prevLap = sortedLaps[i - 1];
+    const lap = sortedLaps[i];
+    const prevSnap = byLap.get(prevLap) ?? new Map();
+    const currSnap = byLap.get(lap) ?? new Map();
+    for (const [driverNumber, current] of currSnap.entries()) {
+      const prev = prevSnap.get(driverNumber);
+      if (!prev) continue;
+      if (prev.position !== current.position) {
+        positionChanges.push({
+          driverNumber,
+          lap,
+          from: prev.position ?? null,
+          to: current.position ?? null,
+        });
+      }
+    }
+  }
+
   return {
     lapNumbers: [...lapNumbers],
     drivers: Array.from(drivers.values()),
@@ -151,5 +193,7 @@ export function buildAnalysisIndex({
     byLap,
     resolveAsOf: (cursor?: TimeCursor | null) =>
       resolveTimeCursor({ lapTimes, lapNumbers, cursor }),
+    getPitEvents: () => pitEvents,
+    getPositionChanges: () => positionChanges,
   };
 }
