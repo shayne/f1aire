@@ -9,7 +9,7 @@ type CreateEngineerSessionArgs = {
   tools: ToolSet;
   system: string;
   streamTextFn?: typeof streamText;
-  logger?: (event: Record<string, unknown>) => void;
+  logger?: (event: Record<string, unknown>) => void | Promise<void>;
   onEvent?: (event: { type: string; [key: string]: unknown }) => void;
 };
 

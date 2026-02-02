@@ -1,8 +1,10 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { performance } from 'node:perf_hooks';
 import { openai } from '@ai-sdk/openai';
-import React, { useMemo, useRef, useState } from 'react';
-import { Box, useInput } from 'ink';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { Box, useInput, useStdout } from 'ink';
+import { createEngineerLogger } from './agent/engineer-logger.js';
 import { createEngineerSession } from './agent/engineer.js';
 import { formatUnknownError } from './agent/error-utils.js';
 import { systemPrompt } from './agent/prompt.js';
@@ -17,6 +19,7 @@ import { appendUserMessage, type ChatMessage } from './tui/chat-state.js';
 import { FooterHints } from './tui/components/FooterHints.js';
 import { Header } from './tui/components/Header.js';
 import { getBackScreen, type Screen } from './tui/navigation.js';
+import { startEventLoopLagMonitor } from './tui/perf.js';
 import { Downloading } from './tui/screens/Downloading.js';
 import { EngineerChat } from './tui/screens/EngineerChat.js';
 import { MeetingPicker } from './tui/screens/MeetingPicker.js';
@@ -32,49 +35,34 @@ export function App(): React.JSX.Element {
   const [streamStatus, setStreamStatus] = useState<string | null>(null);
   const [activity, setActivity] = useState<string[]>([]);
   const [summary, setSummary] = useState<SummaryData | null>(null);
-  const [modelId, setModelId] = useState<string | null>(null);
-  const [dataStatus, setDataStatus] = useState<{
-    drivers: number | null;
-    laps: number | null;
-    hasLastLap: boolean | null;
-    hasSectors: boolean | null;
-    hasStints: boolean | null;
-    hasCarData: boolean | null;
-    hasPosition: boolean | null;
-    hasRaceControl: boolean | null;
-    hasTeamRadio: boolean | null;
-    hasWeather: boolean | null;
-    hasPitStops: boolean | null;
-  } | null>(null);
   const engineerRef = useRef<ReturnType<typeof createEngineerSession> | null>(null);
-  const debugLoggerRef = useRef<((event: Record<string, unknown>) => void) | null>(
+  const engineerLoggerRef = useRef<ReturnType<typeof createEngineerLogger> | null>(
     null,
   );
-  const debugFlag = (process.env.F1AIRE_DEBUG ?? '').toLowerCase();
-  const debugEnabled = debugFlag === '1' || debugFlag === 'true' || debugFlag === 'yes';
-  if (!debugLoggerRef.current && debugEnabled) {
-    const logDir = path.join(getDataDir('f1aire'), 'logs');
-    const logPath = path.join(logDir, 'ai-engineer.log');
-    debugLoggerRef.current = (event: Record<string, unknown>) => {
-      const payload = {
-        time: new Date().toISOString(),
-        ...event,
-      };
-      const line = `${JSON.stringify(payload)}\n`;
-      void fs.promises
-        .mkdir(logDir, { recursive: true })
-        .then(() => fs.promises.appendFile(logPath, line, 'utf-8'));
-      try {
-        process.stderr.write(line);
-      } catch {
-        // ignore stderr write errors
-      }
-    };
-    debugLoggerRef.current({
-      type: 'debug-enabled',
-      logPath,
+  const perfStopRef = useRef<(() => void) | null>(null);
+  const { stdout } = useStdout();
+  const terminalRows = stdout?.rows ?? 40;
+  const isShort = terminalRows < 32;
+  if (!engineerLoggerRef.current) {
+    engineerLoggerRef.current = createEngineerLogger({
+      dataDir: getDataDir('f1aire'),
     });
   }
+
+  useEffect(() => {
+    perfStopRef.current?.();
+    perfStopRef.current = null;
+    if (screen.name !== 'engineer') return;
+    perfStopRef.current = startEventLoopLagMonitor({
+      logger: engineerLoggerRef.current?.logger ?? undefined,
+      intervalMs: 100,
+      warnMs: 150,
+    });
+    return () => {
+      perfStopRef.current?.();
+      perfStopRef.current = null;
+    };
+  }, [screen.name]);
   const pushActivity = (entry: string) => {
     setActivity((prev) => {
       if (prev[prev.length - 1] === entry) return prev;
@@ -153,10 +141,14 @@ export function App(): React.JSX.Element {
     }
   });
 
+  const headerRows = breadcrumb.length ? (isShort ? 4 : 6) : isShort ? 3 : 4;
+  const footerRows = 1;
+  const contentHeight = Math.max(terminalRows - headerRows - footerRows, 10);
+
   return (
-    <Box flexDirection="column">
-      <Header breadcrumb={breadcrumb} />
-      <Box flexGrow={1} flexDirection="column" marginLeft={1}>
+    <Box flexDirection="column" height={terminalRows}>
+      <Header breadcrumb={breadcrumb} compact={isShort} />
+      <Box flexGrow={1} flexDirection="column" marginLeft={1} height={contentHeight}>
         {screen.name === 'season' && (
           <SeasonPicker
             onSelect={async (year) => {
@@ -215,9 +207,17 @@ export function App(): React.JSX.Element {
                     : 'Total laps: unavailable',
                 ].join('\n');
                 setSummary(summary);
+                const loadStart = performance.now();
                 const store = await loadSessionStore(dir);
+                const loadDurationMs = performance.now() - loadStart;
+                void engineerLoggerRef.current?.logger({
+                  type: 'load-session-store',
+                  durationMs: Math.round(loadDurationMs),
+                  livePoints: store.raw.live.length,
+                });
                 const timingService = new TimingService();
                 const subscribe = store.raw.subscribe ?? {};
+                const processStart = performance.now();
                 for (const [type, json] of Object.entries(subscribe)) {
                   timingService.enqueue({
                     type,
@@ -226,69 +226,11 @@ export function App(): React.JSX.Element {
                   });
                 }
                 for (const point of store.raw.live) timingService.enqueue(point);
-                const timingData = timingService.processors.timingData;
-                const timingLines = timingData.state?.Lines ?? {};
-                const driverListState = timingService.processors.driverList.state ?? {};
-                const driverCount =
-                  Object.keys(timingLines).length || Object.keys(driverListState).length;
-                const lapsSeen = timingData.driversByLap.size;
-                const sample = Object.values(timingLines)[0] as any;
-                const hasLastLap = sample
-                  ? Boolean(sample?.LastLapTime?.Value ?? sample?.LastLapTime)
-                  : null;
-                const hasSectors = sample
-                  ? Boolean(
-                      sample?.Sectors ??
-                        sample?.Sector1Time ??
-                        sample?.Sector2Time ??
-                        sample?.Sector3Time,
-                    )
-                  : null;
-                const timingApp = timingService.processors.timingAppData?.state as any;
-                const stintSample = timingApp?.Lines
-                  ? (Object.values(timingApp.Lines)[0] as any)
-                  : null;
-                const hasStints = stintSample
-                  ? Boolean(stintSample?.Stints && Object.keys(stintSample.Stints).length > 0)
-                  : null;
-                const carData = timingService.processors.carData?.state as any;
-                const hasCarData = carData
-                  ? Array.isArray(carData.Entries) && carData.Entries.length > 0
-                  : null;
-                const position = timingService.processors.position?.state as any;
-                const hasPosition = position
-                  ? Array.isArray(position.Position) && position.Position.length > 0
-                  : null;
-                const raceControl = timingService.processors.raceControlMessages?.state as any;
-                const hasRaceControl = raceControl
-                  ? Boolean(raceControl?.Messages && Object.keys(raceControl.Messages).length > 0)
-                  : null;
-                const teamRadio = timingService.processors.teamRadio?.state as any;
-                const hasTeamRadio = teamRadio
-                  ? Boolean(teamRadio?.Captures && Object.keys(teamRadio.Captures).length > 0)
-                  : null;
-                const weather = timingService.processors.weatherData?.state as any;
-                const hasWeather = weather ? true : null;
-                const pitStopSeries = timingService.processors.pitStopSeries?.state as any;
-                const pitLane = timingService.processors.pitLaneTimeCollection?.state as any;
-                const hasPitStops =
-                  pitStopSeries?.PitTimes && Object.keys(pitStopSeries.PitTimes).length > 0
-                    ? true
-                    : pitLane?.PitTimes && Object.keys(pitLane.PitTimes).length > 0
-                      ? true
-                      : null;
-                setDataStatus({
-                  drivers: driverCount > 0 ? driverCount : null,
-                  laps: lapsSeen > 0 ? lapsSeen : null,
-                  hasLastLap,
-                  hasSectors,
-                  hasStints,
-                  hasCarData,
-                  hasPosition,
-                  hasRaceControl,
-                  hasTeamRadio,
-                  hasWeather,
-                  hasPitStops,
+                const processDurationMs = performance.now() - processStart;
+                void engineerLoggerRef.current?.logger({
+                  type: 'timing-process',
+                  durationMs: Math.round(processDurationMs),
+                  livePoints: store.raw.live.length,
                 });
                 const tools = makeTools({
                   store,
@@ -296,9 +238,8 @@ export function App(): React.JSX.Element {
                 });
                 const modelId =
                   process.env.OPENAI_API_MODEL ?? 'gpt-5.2-codex';
-                setModelId(modelId);
                 const model = openai(modelId);
-                debugLoggerRef.current?.({
+                void engineerLoggerRef.current?.logger({
                   type: 'engineer-init',
                   modelId,
                   apiKeyPresent: Boolean(process.env.OPENAI_API_KEY),
@@ -309,7 +250,7 @@ export function App(): React.JSX.Element {
                   model,
                   tools,
                   system: systemPrompt,
-                  logger: debugLoggerRef.current ?? undefined,
+                  logger: engineerLoggerRef.current?.logger ?? undefined,
                   onEvent: (event) => {
                     if (event.type === 'send-start') {
                       setStreamStatus('Thinking...');
@@ -405,8 +346,7 @@ export function App(): React.JSX.Element {
             session={screen.session}
             summary={summary}
             activity={activity}
-            modelId={modelId}
-            dataStatus={dataStatus}
+            maxHeight={contentHeight}
           />
         )}
         {screen.name === 'summary' && (

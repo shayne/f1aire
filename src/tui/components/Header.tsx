@@ -5,26 +5,30 @@ import { theme } from '../theme.js';
 type HeaderProps = {
   breadcrumb?: string[];
   title?: string;
+  compact?: boolean;
 };
 
 export function Header({
   breadcrumb = [],
   title = 'F1aire - Virtual Race Engineer',
+  compact = false,
 }: HeaderProps): React.JSX.Element {
   const [brand, tagline] = title.split(' - ');
 
   return (
-    <Box flexDirection="column" marginBottom={1}>
+    <Box flexDirection="column" marginBottom={compact ? 0 : 1}>
       <Box borderStyle="round" borderColor={theme.border} paddingX={1}>
         <Box flexGrow={1} gap={1}>
           <Text color={theme.brand} bold>
             {brand}
           </Text>
-          {tagline ? <Text color={theme.muted}>{tagline}</Text> : null}
+          {!compact && tagline ? (
+            <Text color={theme.muted}>{tagline}</Text>
+          ) : null}
         </Box>
       </Box>
       {breadcrumb.length > 0 && (
-        <Box marginTop={1} flexWrap="wrap">
+        <Box marginTop={compact ? 0 : 1} flexWrap="wrap">
           {breadcrumb.map((part, index) => (
             <Text
               key={`${part}-${index}`}

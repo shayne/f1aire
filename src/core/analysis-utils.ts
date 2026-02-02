@@ -20,19 +20,89 @@ export function decodeCarChannels(channels: unknown) {
   };
 }
 
-export function extractSectorTimesMs(snapshot: unknown) {
+export function decodeSegmentStatus(status: unknown) {
+  const raw = typeof status === 'number' ? status : Number(status);
+  if (!Number.isFinite(raw)) {
+    return {
+      raw: null,
+      personalBest: false,
+      overallBest: false,
+      pitLane: false,
+      segmentComplete: false,
+      chequeredFlag: false,
+    };
+  }
+  return {
+    raw,
+    personalBest: (raw & 1) === 1,
+    overallBest: (raw & 2) === 2,
+    pitLane: (raw & 16) === 16,
+    chequeredFlag: (raw & 1024) === 1024,
+    segmentComplete: (raw & 2048) === 2048,
+  };
+}
+
+export function extractSegmentStatuses(snapshot: unknown) {
   const sectorsRaw = (snapshot as any)?.Sectors;
-  const values: string[] = [];
+  const sectorValues: Array<number[] | null> = [];
+  const readSegments = (segmentsRaw: unknown) => {
+    const segmentValues: number[] = [];
+    if (Array.isArray(segmentsRaw)) {
+      for (const segment of segmentsRaw) {
+        const value = (segment as any)?.Status;
+        if (typeof value === 'number') segmentValues.push(value);
+      }
+    } else if (isPlainObject(segmentsRaw)) {
+      const keys = Object.keys(segmentsRaw).sort((a, b) => Number(a) - Number(b));
+      for (const key of keys) {
+        const value = (segmentsRaw as any)[key]?.Status;
+        if (typeof value === 'number') segmentValues.push(value);
+      }
+    }
+    return segmentValues.length > 0 ? segmentValues : null;
+  };
   if (Array.isArray(sectorsRaw)) {
     for (const sector of sectorsRaw) {
-      const value = (sector as any)?.Value;
-      if (typeof value === 'string' && value.length > 0) values.push(value);
+      sectorValues.push(readSegments((sector as any)?.Segments));
     }
   } else if (isPlainObject(sectorsRaw)) {
     const keys = Object.keys(sectorsRaw).sort((a, b) => Number(a) - Number(b));
     for (const key of keys) {
-      const value = (sectorsRaw as any)[key]?.Value;
-      if (typeof value === 'string' && value.length > 0) values.push(value);
+      sectorValues.push(readSegments((sectorsRaw as any)[key]?.Segments));
+    }
+  }
+  if (sectorValues.length === 0) return null;
+  return sectorValues;
+}
+
+export function extractSectorTimesMs(
+  snapshot: unknown,
+  options: { preferPrevious?: boolean } = {},
+) {
+  const sectorsRaw = (snapshot as any)?.Sectors;
+  const values: string[] = [];
+  const pick = (sector: any) => {
+    const value = sector?.Value;
+    const prev = sector?.PreviousValue;
+    if (options.preferPrevious) {
+      if (typeof prev === 'string' && prev.length > 0) return prev;
+      if (typeof value === 'string' && value.length > 0) return value;
+      return null;
+    }
+    if (typeof value === 'string' && value.length > 0) return value;
+    if (typeof prev === 'string' && prev.length > 0) return prev;
+    return null;
+  };
+  if (Array.isArray(sectorsRaw)) {
+    for (const sector of sectorsRaw) {
+      const value = pick(sector);
+      if (value) values.push(value);
+    }
+  } else if (isPlainObject(sectorsRaw)) {
+    const keys = Object.keys(sectorsRaw).sort((a, b) => Number(a) - Number(b));
+    for (const key of keys) {
+      const value = pick((sectorsRaw as any)[key]);
+      if (value) values.push(value);
     }
   }
   if (values.length < 3) return null;
@@ -41,7 +111,10 @@ export function extractSectorTimesMs(snapshot: unknown) {
   return times as number[];
 }
 
-export function extractLapTimeMs(snapshot: unknown) {
+export function extractLapTimeMs(
+  snapshot: unknown,
+  options: { preferPrevious?: boolean } = {},
+) {
   const lastLap = (snapshot as any)?.LastLapTime?.Value;
   if (typeof lastLap === 'string' && lastLap.length > 0) {
     const parsed = parseLapTimeMs(lastLap);
@@ -52,7 +125,7 @@ export function extractLapTimeMs(snapshot: unknown) {
     const parsed = parseLapTimeMs(lapTime);
     if (parsed !== null) return parsed;
   }
-  const sectors = extractSectorTimesMs(snapshot);
+  const sectors = extractSectorTimesMs(snapshot, options);
   if (!sectors) return null;
   return sectors.reduce((acc, value) => acc + value, 0);
 }

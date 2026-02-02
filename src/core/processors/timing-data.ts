@@ -11,6 +11,7 @@ export class TimingDataProcessor implements Processor<TimingState> {
   state: TimingState | null = null;
   bestLaps = new Map<string, BestLap>();
   driversByLap = new Map<number, Map<string, TimingLine>>();
+  currentLapByDriver = new Map<string, number>();
 
   getLapHistory(driverNumber: string) {
     const history: { lap: number; snapshot: TimingLine }[] = [];
@@ -55,10 +56,19 @@ export class TimingDataProcessor implements Processor<TimingState> {
       } else if (driver.IsPitLap && !driver.PitOut && !driver.InPit) {
         driver.IsPitLap = false;
       }
-      const lapNumber = (partial as any).NumberOfLaps;
+      const lapNumber = (driver as any)?.NumberOfLaps;
       if (typeof lapNumber === 'number') {
-        const lapDrivers = this.driversByLap.get(lapNumber) ?? new Map();
-        if (!this.driversByLap.has(lapNumber)) this.driversByLap.set(lapNumber, lapDrivers);
+        this.currentLapByDriver.set(num, lapNumber);
+      }
+      const snapshotLap =
+        typeof lapNumber === 'number'
+          ? lapNumber
+          : this.currentLapByDriver.get(num);
+      if (typeof snapshotLap === 'number') {
+        const lapDrivers = this.driversByLap.get(snapshotLap) ?? new Map();
+        if (!this.driversByLap.has(snapshotLap)) {
+          this.driversByLap.set(snapshotLap, lapDrivers);
+        }
         const snap = structuredClone(merged) as TimingLine;
         (snap as any).__dateTime = point.dateTime;
         lapDrivers.set(num, snap);

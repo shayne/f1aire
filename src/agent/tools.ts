@@ -8,7 +8,9 @@ import { runJs } from './run-js.js';
 import { isPlainObject } from '../core/processors/merge.js';
 import {
   decodeCarChannels,
+  decodeSegmentStatus,
   extractLapTimeMs,
+  extractSegmentStatuses,
   extractSectorTimesMs,
   isCleanLap,
   isPitLap,
@@ -18,6 +20,7 @@ import {
   trackStatusIsGreen,
 } from '../core/analysis-utils.js';
 import { createAnalysisContext } from '../core/analysis.js';
+import { shapeOf, shapeOfMany } from '../core/inspect.js';
 
 export function makeTools({
   store,
@@ -231,7 +234,7 @@ export function makeTools({
     }),
     get_lap_table: tool({
       description:
-        'Get per-lap table derived from TimingData (lap time, sectors, gaps, stints). Useful for any lap-based analysis.',
+        'Get per-lap table derived from TimingData (lap time, sectors, gaps, stints, optional segments). Useful for any lap-based analysis.',
       inputSchema: z.object({
         driverNumbers: z.array(z.union([z.string(), z.number()])).optional(),
         startLap: z.number().optional(),
@@ -241,6 +244,7 @@ export function makeTools({
         includeStints: z.boolean().optional(),
         includeGaps: z.boolean().optional(),
         includeSectors: z.boolean().optional(),
+        includeSegments: z.boolean().optional(),
         includeSpeeds: z.boolean().optional(),
         includePitFlags: z.boolean().optional(),
         requireGreen: z.boolean().optional(),
@@ -252,6 +256,70 @@ export function makeTools({
         'Get a catalog of available topics with counts and time ranges.',
       inputSchema: z.object({}),
       execute: async () => analysis.getTopicStats(),
+    }),
+    inspect_topic: tool({
+      description:
+        'Summarize the JSON shape for a topic across recent samples. Useful for discovering data structure without dumping full payloads.',
+      inputSchema: z.object({
+        topic: z.string(),
+        samples: z.number().optional(),
+        fromIso: z.string().optional(),
+        toIso: z.string().optional(),
+        maxDepth: z.number().optional(),
+        maxKeys: z.number().optional(),
+        maxArray: z.number().optional(),
+      }),
+      execute: async ({
+        topic,
+        samples,
+        fromIso,
+        toIso,
+        maxDepth,
+        maxKeys,
+        maxArray,
+      }) => {
+        const from = fromIso ? new Date(fromIso) : undefined;
+        const to = toIso ? new Date(toIso) : undefined;
+        let resolved = topic;
+        let timeline = analysis.getTopicTimeline(resolved, { from, to });
+        if (!timeline.length && !resolved.endsWith('.z')) {
+          resolved = `${resolved}.z`;
+          timeline = analysis.getTopicTimeline(resolved, { from, to });
+        }
+        if (!timeline.length) {
+          return {
+            topic: resolved,
+            requested: topic,
+            count: 0,
+            sampled: 0,
+            first: null,
+            last: null,
+            shape: null,
+            latestShape: null,
+          };
+        }
+        const sampleCount = Math.min(
+          typeof samples === 'number' && samples > 0 ? samples : 5,
+          timeline.length,
+        );
+        const sampled = timeline.slice(-sampleCount);
+        const options = { maxDepth, maxKeys, maxArray };
+        const shape = shapeOfMany(sampled.map((point) => point.json), options);
+        const latestShape = shapeOf(
+          sampled[sampled.length - 1]?.json,
+          options,
+        );
+        return {
+          topic: resolved,
+          requested: topic,
+          count: timeline.length,
+          sampled: sampleCount,
+          first: timeline[0]?.dateTime ?? null,
+          last: timeline[timeline.length - 1]?.dateTime ?? null,
+          shape,
+          latestShape,
+        };
+      },
     }),
     get_topic_timeline: tool({
       description:
@@ -294,7 +362,9 @@ export function makeTools({
               normalizePoint,
               getDriverName,
               decodeCarChannels,
+              decodeSegmentStatus,
               extractLapTimeMs,
+              extractSegmentStatuses,
               extractSectorTimesMs,
               isCleanLap,
               trackStatusIsGreen,
@@ -304,6 +374,8 @@ export function makeTools({
               parseGapSeconds,
               parseIntervalSeconds,
               smartGapToLeaderSeconds,
+              shapeOf,
+              shapeOfMany,
             },
             analysis,
           },
@@ -365,8 +437,8 @@ export function makeTools({
             excluded.missingSnapshot.push(lap);
             continue;
           }
-          const aMs = extractLapTimeMs(aSnap);
-          const bMs = extractLapTimeMs(bSnap);
+          const aMs = extractLapTimeMs(aSnap, { preferPrevious: true });
+          const bMs = extractLapTimeMs(bSnap, { preferPrevious: true });
           if (aMs === null || bMs === null) {
             excluded.missingLapTime.push(lap);
             continue;

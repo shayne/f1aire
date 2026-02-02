@@ -3,6 +3,7 @@ import type { RawPoint } from './processors/types.js';
 import {
   decodeCarChannels,
   extractLapTimeMs,
+  extractSegmentStatuses,
   extractSectorTimesMs,
   isCleanLap,
   parseGapSeconds,
@@ -51,6 +52,7 @@ type LapTableOptions = {
   includeStints?: boolean;
   includeGaps?: boolean;
   includeSectors?: boolean;
+  includeSegments?: boolean;
   includeSpeeds?: boolean;
   includePitFlags?: boolean;
   requireGreen?: boolean;
@@ -205,6 +207,7 @@ export function createAnalysisContext(opts: {
     const includeStints = options.includeStints ?? true;
     const includeGaps = options.includeGaps ?? true;
     const includeSectors = options.includeSectors ?? true;
+    const includeSegments = options.includeSegments ?? false;
     const includeSpeeds = options.includeSpeeds ?? false;
     const includePitFlags = options.includePitFlags ?? true;
     const requireGreen = options.requireGreen ?? false;
@@ -224,8 +227,13 @@ export function createAnalysisContext(opts: {
           if (!trackStatusIsGreen((track as any)?.Status, (track as any)?.Message)) continue;
         }
 
-        const sectorsMs = includeSectors ? extractSectorTimesMs(snapshot) : null;
-        const lapTimeMs = extractLapTimeMs(snapshot);
+        const sectorsMs = includeSectors
+          ? extractSectorTimesMs(snapshot, { preferPrevious: true })
+          : null;
+        const segmentStatuses = includeSegments
+          ? extractSegmentStatuses(snapshot)
+          : null;
+        const lapTimeMs = extractLapTimeMs(snapshot, { preferPrevious: true });
         const speeds = includeSpeeds ? extractSpeeds(snapshot) : null;
         const stint = includeStints ? getStintForLap(processors, driverNumber, lap) : null;
 
@@ -242,6 +250,7 @@ export function createAnalysisContext(opts: {
           position: (snapshot as any)?.Line ?? (snapshot as any)?.Position ?? null,
           lapTimeMs,
           sectorsMs,
+          segmentStatuses,
           gapToLeader,
           gapToLeaderSeconds: gapSeconds,
           intervalToAhead,
@@ -268,7 +277,10 @@ export function createAnalysisContext(opts: {
 
   const getTopicTimeline = (topic: string, options?: { limit?: number; from?: Date; to?: Date }) => {
     const view = store.topic(topic);
-    const timeline = view.timeline(options?.from, options?.to);
+    let timeline = view.timeline(options?.from, options?.to);
+    if (!timeline.length && !topic.endsWith('.z')) {
+      timeline = store.topic(`${topic}.z`).timeline(options?.from, options?.to);
+    }
     const normalized = timeline.map((point) => normalizePoint(point));
     if (typeof options?.limit === 'number' && options.limit > 0) {
       return normalized.slice(-options.limit);

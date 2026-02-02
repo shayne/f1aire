@@ -1,27 +1,15 @@
-import React, { useEffect, useState } from 'react';
-import { Box, Text, useInput, useStdout } from 'ink';
+import React, { useEffect, useMemo, useState } from 'react';
+import { Box, Text, useStdout } from 'ink';
+import Markdown from '@inkkit/ink-markdown';
 import TextInput from 'ink-text-input';
 import type { ChatMessage } from '../chat-state.js';
 import type { Summary as SummaryData } from '../../core/summary.js';
 import type { Meeting, Session } from '../../core/types.js';
+import { fitRightPane, getRightPaneMode, getSessionItems } from '../layout.js';
 import { Panel } from '../components/Panel.js';
 import { theme } from '../theme.js';
 
 const SPINNER_FRAMES = ['|', '/', '-', '\\'];
-
-type DataStatus = {
-  drivers: number | null;
-  laps: number | null;
-  hasLastLap: boolean | null;
-  hasSectors: boolean | null;
-  hasStints: boolean | null;
-  hasCarData: boolean | null;
-  hasPosition: boolean | null;
-  hasRaceControl: boolean | null;
-  hasTeamRadio: boolean | null;
-  hasWeather: boolean | null;
-  hasPitStops: boolean | null;
-};
 
 function Spinner({ active }: { active: boolean }) {
   const [index, setIndex] = useState(0);
@@ -37,29 +25,37 @@ function Spinner({ active }: { active: boolean }) {
   return <Text color={theme.muted}>{SPINNER_FRAMES[index]}</Text>;
 }
 
-function MessageBlock({ role, content }: ChatMessage) {
+const MessageBlock = React.memo(function MessageBlock({
+  role,
+  content,
+}: ChatMessage) {
   const label = role === 'assistant' ? 'Engineer' : 'You';
   const color = role === 'assistant' ? theme.assistant : theme.user;
+  const isAssistant = role === 'assistant';
   return (
     <Box flexDirection="column" marginBottom={1}>
       <Text color={color}>{label}</Text>
       <Box paddingLeft={2}>
-        <Box flexDirection="column">
-          {content.split('\n').map((line, index) => (
-            <Text key={`${line}-${index}`}>{line}</Text>
-          ))}
-        </Box>
+        {isAssistant ? (
+          <Markdown>{content}</Markdown>
+        ) : (
+          <Box flexDirection="column">
+            {content.split('\n').map((line, index) => (
+              <Text key={`${line}-${index}`}>{line}</Text>
+            ))}
+          </Box>
+        )}
       </Box>
     </Box>
   );
-}
+});
 
-function StatBlock({ label, value }: { label: string; value: string }) {
+function StatRow({ label, value }: { label: string; value: string }) {
   return (
-    <Box flexDirection="column" marginBottom={1}>
+    <Text>
       <Text color={theme.muted}>{label}</Text>
-      <Text>{value}</Text>
-    </Box>
+      {`: ${value}`}
+    </Text>
   );
 }
 
@@ -73,6 +69,93 @@ function activityColor(entry: string) {
   return theme.muted;
 }
 
+type ConversationPanelProps = {
+  visibleMessages: ChatMessage[];
+  isStreaming: boolean;
+  status: string | null;
+  streamingText: string;
+  height?: number;
+  onRender?: () => void;
+};
+
+const ConversationPanel = React.memo(function ConversationPanel({
+  visibleMessages,
+  isStreaming,
+  status,
+  streamingText,
+  height,
+  onRender,
+}: ConversationPanelProps) {
+  useEffect(() => {
+    onRender?.();
+  });
+
+  return (
+    <Panel
+      title="Conversation"
+      tone="accent"
+      boxProps={
+        height
+          ? { height, overflow: 'hidden' }
+          : { flexGrow: 1 }
+      }
+    >
+      <Box flexDirection="column" gap={1}>
+        {visibleMessages.map((m, i) => (
+          <MessageBlock key={i} role={m.role} content={m.content} />
+        ))}
+        {isStreaming && status && !streamingText ? (
+          <Box flexDirection="column" marginBottom={1}>
+            <Text color={theme.assistant}>Engineer</Text>
+            <Box gap={1} paddingLeft={2}>
+              <Spinner active={true} />
+              <Text color={theme.muted}>{status}</Text>
+            </Box>
+          </Box>
+        ) : null}
+        {streamingText ? (
+          <Box flexDirection="column" marginBottom={1}>
+            <Text color={theme.assistant}>Engineer</Text>
+            <Box paddingLeft={2}>
+              <Markdown>{streamingText}</Markdown>
+            </Box>
+          </Box>
+        ) : null}
+      </Box>
+    </Panel>
+  );
+});
+
+type AskInputProps = {
+  onSend: (text: string) => void;
+  height?: number;
+};
+
+const AskInput = React.memo(function AskInput({ onSend, height }: AskInputProps) {
+  const [input, setInput] = useState('');
+
+  const handleSubmit = (value: string) => {
+    const trimmed = value.trim();
+    if (!trimmed) return;
+    onSend(trimmed);
+    setInput('');
+  };
+
+  return (
+    <Panel title="Ask the engineer" tone="muted" boxProps={height ? { height } : undefined}>
+      <Box>
+        <Text color={theme.muted}>› </Text>
+        <TextInput
+          value={input}
+          onChange={setInput}
+          onSubmit={handleSubmit}
+          placeholder="Ask about pace, gaps, tyres..."
+        />
+      </Box>
+    </Panel>
+  );
+});
+
 export function EngineerChat({
   messages,
   onSend,
@@ -84,8 +167,9 @@ export function EngineerChat({
   session,
   summary,
   activity,
-  modelId,
-  dataStatus,
+  maxHeight,
+  onConversationRender,
+  onRender,
 }: {
   messages: ChatMessage[];
   onSend: (text: string) => void;
@@ -97,233 +181,149 @@ export function EngineerChat({
   session: Session;
   summary: SummaryData | null;
   activity: string[];
-  modelId: string | null;
-  dataStatus: DataStatus | null;
+  maxHeight?: number;
+  onConversationRender?: () => void;
+  onRender?: () => void;
 }) {
-  const [input, setInput] = useState('');
   const { stdout } = useStdout();
   const columns = stdout?.columns ?? 100;
+  const rows = maxHeight ?? stdout?.rows ?? 40;
+  const compact = rows < 32;
+  const rightPaneMode = getRightPaneMode(rows);
   const isNarrow = columns < 96;
   const rightWidth = isNarrow
     ? undefined
     : Math.min(36, Math.max(28, Math.floor(columns * 0.3)));
+  const gutter = isNarrow ? 0 : 2;
+  const leftPaneWidth = Math.max(20, columns - (rightWidth ?? 0) - gutter);
+  const contentWidth = Math.max(12, leftPaneWidth - 6);
 
-  useInput((_, key) => {
-    if (key.return && input.trim().length > 0) {
-      onSend(input.trim());
-      setInput('');
-    }
+  useEffect(() => {
+    onRender?.();
   });
 
-  const activityEntries = activity.length
-    ? activity
-    : status
-      ? [status]
-      : ['Idle'];
-  const recentActivity = activityEntries.slice(-5);
+  const inputPanelHeight = 5;
+  const panelOverhead = 4;
+  const gapBetweenPanels = compact ? 0 : 1;
+  const availableForConversation = rows - inputPanelHeight - gapBetweenPanels;
+  const conversationPanelHeight = Math.max(availableForConversation, 0);
+
+  const pendingHeight = useMemo(() => {
+    return isStreaming && status && !streamingText ? 3 : 0;
+  }, [isStreaming, status, streamingText]);
+
+  const visibleMessages = useMemo(() => {
+    const estimateLines = (content: string) => {
+      return content
+        .split('\n')
+        .reduce(
+          (total, line) =>
+            total + Math.max(1, Math.ceil(line.length / contentWidth)),
+          0,
+        );
+    };
+
+    const estimateMessageHeight = (message: ChatMessage) => {
+      return 1 + estimateLines(message.content) + 1;
+    };
+
+    const availableMessageLines = Math.max(
+      conversationPanelHeight - panelOverhead,
+      1,
+    );
+
+    let remaining = Math.max(availableMessageLines - pendingHeight, 0);
+    const visible: ChatMessage[] = [];
+    for (let i = messages.length - 1; i >= 0; i -= 1) {
+      const height = estimateMessageHeight(messages[i]);
+      if (height > remaining && visible.length > 0) break;
+      remaining -= height;
+      visible.push(messages[i]);
+    }
+    return visible.reverse();
+  }, [messages, conversationPanelHeight, contentWidth, pendingHeight]);
+
+  const activityEntries = useMemo(() => {
+    return activity.length ? activity : status ? [status] : ['Idle'];
+  }, [activity, status]);
+
+  const sessionItems = useMemo(() => {
+    return getSessionItems({
+      mode: rightPaneMode,
+      year,
+      meetingName: meeting.Name,
+      sessionName: session.Name,
+      sessionType: session.Type,
+      summary,
+    });
+  }, [rightPaneMode, year, meeting.Name, session.Name, session.Type, summary]);
+
+  const rightPane = useMemo(() => {
+    return fitRightPane({
+      rows,
+      mode: rightPaneMode,
+      sessionItems,
+      activityEntries,
+      dataItems: [],
+    });
+  }, [rows, rightPaneMode, sessionItems, activityEntries]);
 
   return (
-    <Box flexDirection={isNarrow ? 'column' : 'row'} gap={2}>
-      <Box flexDirection="column" flexGrow={1} gap={1}>
-        <Panel title="Conversation" tone="accent" boxProps={{ flexGrow: 1 }}>
-          <Box flexDirection="column" gap={1}>
-            {messages.map((m, i) => (
-              <MessageBlock key={i} role={m.role} content={m.content} />
-            ))}
-            {isStreaming && status && !streamingText ? (
-              <Box flexDirection="column" marginBottom={1}>
-                <Text color={theme.assistant}>Engineer</Text>
-                <Box gap={1} paddingLeft={2}>
-                  <Spinner active={true} />
-                  <Text color={theme.muted}>{status}</Text>
-                </Box>
-              </Box>
-            ) : null}
-            {streamingText ? (
-              <Box flexDirection="column" marginBottom={1}>
-                <Text color={theme.assistant}>Engineer</Text>
-                <Box paddingLeft={2}>
-                  <Box flexDirection="column">
-                    {streamingText.split('\n').map((line, index) => (
-                      <Text key={`${line}-${index}`}>{line}</Text>
-                    ))}
-                  </Box>
-                </Box>
-              </Box>
-            ) : null}
-          </Box>
-        </Panel>
-        <Panel title="Ask the engineer" tone="muted">
-          <Box>
-            <Text color={theme.muted}>› </Text>
-            <TextInput
-              value={input}
-              onChange={setInput}
-              placeholder="Ask about pace, gaps, tyres..."
-            />
-          </Box>
-        </Panel>
+    <Box
+      flexDirection={isNarrow ? 'column' : 'row'}
+      gap={compact ? 1 : 2}
+      height={rows}
+    >
+      <Box
+        flexDirection="column"
+        flexGrow={1}
+        gap={gapBetweenPanels}
+        height={rows}
+      >
+        <ConversationPanel
+          visibleMessages={visibleMessages}
+          isStreaming={isStreaming}
+          status={status}
+          streamingText={streamingText}
+          height={conversationPanelHeight}
+          onRender={onConversationRender}
+        />
+        <AskInput onSend={onSend} height={inputPanelHeight} />
       </Box>
       <Box
         flexDirection="column"
         width={rightWidth}
         flexShrink={0}
-        gap={1}
+        gap={compact ? 0 : 1}
         marginTop={isNarrow ? 1 : 0}
+        height={rows}
       >
         <Panel title="Session">
-          <StatBlock label="Year" value={String(year)} />
-          <StatBlock label="Event" value={meeting.Name} />
-          <StatBlock
-            label="Session"
-            value={`${session.Name} (${session.Type})`}
-          />
-          {summary ? (
-            <>
-              <StatBlock
-                label="Winner"
-                value={summary.winner ? `${summary.winner.name} (#${summary.winner.number})` : 'n/a'}
-              />
-              <StatBlock
-                label="Fastest lap"
-                value={summary.fastestLap
-                  ? `${summary.fastestLap.name} (#${summary.fastestLap.number}) ${summary.fastestLap.time}`
-                  : 'n/a'}
-              />
-              <StatBlock
-                label="Total laps"
-                value={summary.totalLaps ? String(summary.totalLaps) : 'n/a'}
-              />
-            </>
-          ) : null}
+          {rightPane.sessionItems.map((item) => (
+            <StatRow key={item.label} label={item.label} value={item.value} />
+          ))}
         </Panel>
-        <Panel title="Activity" tone={isStreaming ? 'accent' : 'neutral'}>
-          <Box gap={1} marginBottom={1}>
-            <Spinner active={isStreaming} />
-            <Text color={isStreaming ? theme.status.thinking : theme.muted}>
-              {status ?? (isStreaming ? 'Working...' : 'Idle')}
-            </Text>
-          </Box>
-          <Box flexDirection="column">
-            {recentActivity.map((entry, index) => {
-              const marker = index === recentActivity.length - 1 ? '>' : '-';
-              return (
-                <Text key={`${entry}-${index}`} color={activityColor(entry)}>
-                  {marker} {entry}
-                </Text>
-              );
-            })}
-          </Box>
-        </Panel>
-        <Panel title="Data">
-          <StatBlock label="Model" value={modelId ?? 'default'} />
-          <StatBlock
-            label="Drivers"
-            value={
-              dataStatus?.drivers === null || dataStatus?.drivers === undefined
-                ? 'n/a'
-                : String(dataStatus.drivers)
-            }
-          />
-          <StatBlock
-            label="Laps seen"
-            value={
-              dataStatus?.laps === null || dataStatus?.laps === undefined
-                ? 'n/a'
-                : String(dataStatus.laps)
-            }
-          />
-          <StatBlock
-            label="Lap times"
-            value={
-              dataStatus?.hasLastLap === null
-                ? 'n/a'
-                : dataStatus?.hasLastLap
-                  ? 'yes'
-                  : 'no'
-            }
-          />
-          <StatBlock
-            label="Sector splits"
-            value={
-              dataStatus?.hasSectors === null
-                ? 'n/a'
-                : dataStatus?.hasSectors
-                  ? 'yes'
-                  : 'no'
-            }
-          />
-          <StatBlock
-            label="Tyre stints"
-            value={
-              dataStatus?.hasStints === null
-                ? 'n/a'
-                : dataStatus?.hasStints
-                  ? 'yes'
-                  : 'no'
-            }
-          />
-          <StatBlock
-            label="Car telemetry"
-            value={
-              dataStatus?.hasCarData === null
-                ? 'n/a'
-                : dataStatus?.hasCarData
-                  ? 'yes'
-                  : 'no'
-            }
-          />
-          <StatBlock
-            label="Position data"
-            value={
-              dataStatus?.hasPosition === null
-                ? 'n/a'
-                : dataStatus?.hasPosition
-                  ? 'yes'
-                  : 'no'
-            }
-          />
-          <StatBlock
-            label="Race control"
-            value={
-              dataStatus?.hasRaceControl === null
-                ? 'n/a'
-                : dataStatus?.hasRaceControl
-                  ? 'yes'
-                  : 'no'
-            }
-          />
-          <StatBlock
-            label="Pit data"
-            value={
-              dataStatus?.hasPitStops === null
-                ? 'n/a'
-                : dataStatus?.hasPitStops
-                  ? 'yes'
-                  : 'no'
-            }
-          />
-          <StatBlock
-            label="Team radio"
-            value={
-              dataStatus?.hasTeamRadio === null
-                ? 'n/a'
-                : dataStatus?.hasTeamRadio
-                  ? 'yes'
-                  : 'no'
-            }
-          />
-          <StatBlock
-            label="Weather"
-            value={
-              dataStatus?.hasWeather === null
-                ? 'n/a'
-                : dataStatus?.hasWeather
-                  ? 'yes'
-                  : 'no'
-            }
-          />
-        </Panel>
+        {rightPane.showActivity ? (
+          <Panel title="Activity" tone={isStreaming ? 'accent' : 'neutral'}>
+            <Box gap={1} marginBottom={1}>
+              <Spinner active={isStreaming} />
+              <Text color={isStreaming ? theme.status.thinking : theme.muted}>
+                {status ?? (isStreaming ? 'Working...' : 'Idle')}
+              </Text>
+            </Box>
+            <Box flexDirection="column">
+              {rightPane.activityEntries.map((entry, index) => {
+                const marker =
+                  index === rightPane.activityEntries.length - 1 ? '>' : '-';
+                return (
+                  <Text key={`${entry}-${index}`} color={activityColor(entry)}>
+                    {marker} {entry}
+                  </Text>
+                );
+              })}
+            </Box>
+          </Panel>
+        ) : null}
       </Box>
     </Box>
   );

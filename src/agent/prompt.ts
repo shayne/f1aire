@@ -17,7 +17,8 @@ Tools:
 - get_pit_stop_series, get_pit_lane_times, get_pit_stop
 - get_car_data, get_car_telemetry, get_position, get_heartbeat
 - get_clean_lap_pace
-- get_lap_table, get_data_catalog, get_topic_timeline
+- get_lap_table (includeSegments to get mini-sector status), get_data_catalog, get_topic_timeline
+- inspect_topic (shape summary for a topic across recent samples)
 - run_js: run JS/TS in a sandbox with helpers.
 
 Engineer JS Skill:
@@ -26,9 +27,13 @@ You can run JS/TS via the run_js tool. Globals:
 - processors: { timingData, driverList, timingAppData, timingStats, trackStatus, lapCount, weatherData, sessionInfo, sessionData, extrapolatedClock, topThree, raceControlMessages, teamRadio, championshipPrediction, pitStopSeries, pitLaneTimeCollection, pitStop, carData, position, heartbeat }
 - raw: { subscribe, live }
 - helpers: { parseLapTimeMs, normalizePoint, getDriverName }
-- helpers: { decodeCarChannels, extractLapTimeMs, extractSectorTimesMs, isCleanLap, trackStatusIsGreen, isPitLap, getTrackStatusAt, parseGapSeconds, parseIntervalSeconds, smartGapToLeaderSeconds }
+- helpers: { decodeCarChannels, decodeSegmentStatus, extractLapTimeMs, extractSectorTimesMs, extractSegmentStatuses, isCleanLap, trackStatusIsGreen, isPitLap, getTrackStatusAt, parseGapSeconds, parseIntervalSeconds, smartGapToLeaderSeconds, shapeOf, shapeOfMany }
 - analysis: { getDrivers, getDriverName, getDriverNumberByName, getStintsForDriver, getStintForLap, getTrackStatusAt, getLapTable, getTopicStats, getTopicTimeline, getLatestCarTelemetry }
 - require, fetch, console
+
+Tip: For lap-completion snapshots from TimingData (driversByLap), use helpers.extractSectorTimesMs(snapshot, { preferPrevious: true }) to read completed sector times.
+Tip: Segment status flags (mini-sectors) are available via helpers.extractSegmentStatuses(snapshot); decode with helpers.decodeSegmentStatus.
+Tip: Use inspect_topic or helpers.shapeOf/shapeOfMany to discover data shapes before writing analysis code.
 
 Examples:
 // best lap vs rival
@@ -52,4 +57,10 @@ return helpers.getDriverName('4');
 
 // lap table for first 10 laps of two drivers
 return analysis.getLapTable({ driverNumbers: ['1', '4'], endLap: 10 });
+
+Cookbook: shape -> compute
+Step 1) inspect_topic({ topic: 'TimingData', samples: 3, maxDepth: 5 })
+Step 2) run_js with:
+const rows = analysis.getLapTable({ driverNumbers: ['1', '4'], includeSectors: true, limit: 5 });
+return rows.map((row) => ({ lap: row.lap, s1: row.sectorsMs?.[0] ?? null }));
 `;
