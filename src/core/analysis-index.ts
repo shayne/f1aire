@@ -1,15 +1,12 @@
-import type { SessionStore } from './session-store.js';
 import {
   extractLapTimeMs,
-  parseGapSeconds,
   parseIntervalSeconds,
   trackStatusIsGreen,
-  isPitLap,
   smartGapToLeaderSeconds,
+  getOrderedLines,
 } from './analysis-utils.js';
 import { classifyTraffic, DEFAULT_TRAFFIC_THRESHOLDS, type TrafficLabel } from './traffic.js';
 import { resolveTimeCursor, type TimeCursor, type ResolvedCursor } from './time-cursor.js';
-import { isPlainObject } from './processors/merge.js';
 
 export type LapRecord = {
   lap: number;
@@ -55,10 +52,8 @@ const getStintForLap = (timingAppData: any, driverNumber: string, lap: number) =
 };
 
 export function buildAnalysisIndex({
-  store,
   processors,
 }: {
-  store: SessionStore;
   processors: any;
 }): AnalysisIndex {
   const timing = processors.timingData;
@@ -74,6 +69,15 @@ export function buildAnalysisIndex({
     const lapDrivers = timing?.driversByLap?.get(lap) ?? new Map();
     const linesObj: Record<string, any> = {};
     for (const [num, snap] of lapDrivers.entries()) linesObj[num] = snap;
+    const orderedLines = getOrderedLines(linesObj);
+    const gapBehindByDriver = new Map<string, number | null>();
+    for (let i = 0; i < orderedLines.length; i += 1) {
+      const driverNumber = orderedLines[i]?.[0];
+      if (!driverNumber) continue;
+      const following = orderedLines[i + 1]?.[1];
+      const gapBehindSec = parseIntervalSeconds(following?.IntervalToPositionAhead?.Value);
+      gapBehindByDriver.set(driverNumber, gapBehindSec);
+    }
     for (const [driverNumber, snapshot] of lapDrivers.entries()) {
       drivers.add(driverNumber);
       const dt = (snapshot as any)?.__dateTime as Date | undefined;
@@ -109,7 +113,7 @@ export function buildAnalysisIndex({
 
       const traffic = classifyTraffic({
         gapAheadSec: intervalToAheadSec,
-        gapBehindSec: gapToLeaderSec === null ? null : gapToLeaderSec,
+        gapBehindSec: gapBehindByDriver.get(driverNumber) ?? null,
         lapTimeMs,
         isGreen,
         thresholds: DEFAULT_TRAFFIC_THRESHOLDS,

@@ -1,23 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { TimingService } from './timing-service.js';
 import { buildAnalysisIndex } from './analysis-index.js';
-import type { SessionStore } from './session-store.js';
-
-const makeStore = (live: any[]): SessionStore => {
-  const byType = new Map<string, any[]>();
-  for (const point of live) {
-    const arr = byType.get(point.type) ?? [];
-    arr.push(point);
-    byType.set(point.type, arr);
-  }
-  return {
-    raw: { subscribe: {}, live },
-    topic: (name: string) => ({
-      latest: (byType.get(name) ?? []).slice(-1)[0] ?? null,
-      timeline: () => byType.get(name) ?? [],
-    }),
-  } as SessionStore;
-};
 
 describe('buildAnalysisIndex', () => {
   it('builds lap records and resolves as-of laps', () => {
@@ -65,11 +48,10 @@ describe('buildAnalysisIndex', () => {
         dateTime: new Date('2024-01-01T00:02:00Z'),
       },
     ];
-    const store = makeStore(live);
     const timing = new TimingService();
     for (const point of live) timing.enqueue(point);
 
-    const index = buildAnalysisIndex({ store, processors: timing.processors });
+    const index = buildAnalysisIndex({ processors: timing.processors });
 
     expect(index.lapNumbers).toEqual([1, 2]);
     expect(index.byDriver.get('1')?.length).toBe(2);
@@ -77,5 +59,46 @@ describe('buildAnalysisIndex', () => {
 
     const resolved = index.resolveAsOf({ lap: 2 });
     expect(resolved.lap).toBe(2);
+  });
+
+  it('classifies traffic from behind using following interval', () => {
+    const live = [
+      {
+        type: 'TimingData',
+        json: {
+          Lines: {
+            '1': {
+              NumberOfLaps: 1,
+              Position: '1',
+              LapTime: { Value: '1:30.000' },
+              GapToLeader: '0',
+            },
+            '2': {
+              NumberOfLaps: 1,
+              Position: '2',
+              LapTime: { Value: '1:30.200' },
+              GapToLeader: '+3.0',
+              IntervalToPositionAhead: { Value: '+3.0' },
+            },
+            '3': {
+              NumberOfLaps: 1,
+              Position: '3',
+              LapTime: { Value: '1:30.400' },
+              GapToLeader: '+3.4',
+              IntervalToPositionAhead: { Value: '+0.4' },
+            },
+          },
+        },
+        dateTime: new Date('2024-01-01T00:01:00Z'),
+      },
+    ];
+
+    const timing = new TimingService();
+    for (const point of live) timing.enqueue(point);
+
+    const index = buildAnalysisIndex({ processors: timing.processors });
+    const record = index.byDriver.get('2')?.[0];
+
+    expect(record?.traffic).toBe('traffic');
   });
 });
