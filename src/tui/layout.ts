@@ -46,6 +46,7 @@ export function getSessionItems({
   sessionName,
   sessionType,
   summary,
+  asOfLabel,
 }: {
   mode: RightPaneMode;
   year: number;
@@ -53,12 +54,15 @@ export function getSessionItems({
   sessionName: string;
   sessionType: string;
   summary: SessionSummary | null;
+  asOfLabel?: string | null;
 }): StatItem[] {
   const items: StatItem[] = [
     { label: 'Year', value: String(year) },
     { label: 'Event', value: meetingName },
     { label: 'Session', value: `${sessionName} (${sessionType})` },
   ];
+
+  if (asOfLabel) items.push({ label: 'As of', value: asOfLabel });
 
   if (mode === 'minimal' || !summary) return items;
 

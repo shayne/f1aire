@@ -167,6 +167,7 @@ export function EngineerChat({
   session,
   summary,
   activity,
+  asOfLabel,
   maxHeight,
   onConversationRender,
   onRender,
@@ -181,6 +182,7 @@ export function EngineerChat({
   session: Session;
   summary: SummaryData | null;
   activity: string[];
+  asOfLabel?: string | null;
   maxHeight?: number;
   onConversationRender?: () => void;
   onRender?: () => void;
@@ -255,8 +257,17 @@ export function EngineerChat({
       sessionName: session.Name,
       sessionType: session.Type,
       summary,
+      asOfLabel,
     });
-  }, [rightPaneMode, year, meeting.Name, session.Name, session.Type, summary]);
+  }, [
+    rightPaneMode,
+    year,
+    meeting.Name,
+    session.Name,
+    session.Type,
+    summary,
+    asOfLabel,
+  ]);
 
   const rightPane = useMemo(() => {
     return fitRightPane({

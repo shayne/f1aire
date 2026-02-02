@@ -14,6 +14,7 @@ import { getMeetings } from './core/f1-api.js';
 import { summarizeFromLines, type Summary as SummaryData } from './core/summary.js';
 import { loadSessionStore } from './core/session-store.js';
 import { TimingService } from './core/timing-service.js';
+import type { TimeCursor } from './core/time-cursor.js';
 import { getDataDir } from './core/xdg.js';
 import { appendUserMessage, type ChatMessage } from './tui/chat-state.js';
 import { FooterHints } from './tui/components/FooterHints.js';
@@ -35,6 +36,7 @@ export function App(): React.JSX.Element {
   const [streamStatus, setStreamStatus] = useState<string | null>(null);
   const [activity, setActivity] = useState<string[]>([]);
   const [summary, setSummary] = useState<SummaryData | null>(null);
+  const [timeCursor, setTimeCursor] = useState<TimeCursor>({ latest: true });
   const engineerRef = useRef<ReturnType<typeof createEngineerSession> | null>(null);
   const engineerLoggerRef = useRef<ReturnType<typeof createEngineerLogger> | null>(
     null,
@@ -144,6 +146,11 @@ export function App(): React.JSX.Element {
   const headerRows = breadcrumb.length ? (isShort ? 4 : 6) : isShort ? 3 : 4;
   const footerRows = 1;
   const contentHeight = Math.max(terminalRows - headerRows - footerRows, 10);
+  const asOfLabel = timeCursor?.lap
+    ? `Lap ${timeCursor.lap}`
+    : timeCursor?.iso
+      ? `Time ${timeCursor.iso}`
+      : 'Latest';
 
   return (
     <Box flexDirection="column" height={terminalRows}>
@@ -235,6 +242,8 @@ export function App(): React.JSX.Element {
                 const tools = makeTools({
                   store,
                   processors: timingService.processors,
+                  timeCursor,
+                  onTimeCursorChange: setTimeCursor,
                 });
                 const modelId =
                   process.env.OPENAI_API_MODEL ?? 'gpt-5.2-codex';
@@ -347,6 +356,7 @@ export function App(): React.JSX.Element {
             summary={summary}
             activity={activity}
             maxHeight={contentHeight}
+            asOfLabel={asOfLabel}
           />
         )}
         {screen.name === 'summary' && (

@@ -55,6 +55,21 @@ describe('layout helpers', () => {
     ).toBe(6);
   });
 
+  it('includes as-of label when provided', () => {
+    const items = getSessionItems({
+      mode: 'full',
+      year: 2024,
+      meetingName: 'Test GP',
+      sessionName: 'Race',
+      sessionType: 'Race',
+      summary: null,
+      asOfLabel: 'Lap 12',
+    });
+    expect(items.some((item) => item.label === 'As of' && item.value === 'Lap 12')).toBe(
+      true,
+    );
+  });
+
   it('limits data items in compact mode', () => {
     const dataStatus: DataStatus = {
       drivers: 20,
