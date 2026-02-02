@@ -29,23 +29,27 @@ export function resolveTimeCursor({
     return nearest;
   };
 
+  const latestLap = sorted[sorted.length - 1];
+  const latest = (): ResolvedCursor => ({
+    lap: latestLap,
+    dateTime: lapTimes.get(latestLap) ?? null,
+    source: 'latest',
+  });
+
   if (!cursor || cursor.latest) {
-    const lap = sorted[sorted.length - 1];
-    return { lap, dateTime: lapTimes.get(lap) ?? null, source: 'latest' };
+    return latest();
   }
 
   if (typeof cursor.lap === 'number') {
+    if (!Number.isFinite(cursor.lap)) return latest();
     const lap = pickLap(cursor.lap);
     return { lap, dateTime: lapTimes.get(lap) ?? null, source: 'lap' };
   }
 
   if (cursor.iso) {
     const target = new Date(cursor.iso);
-    if (!Number.isFinite(target.getTime())) {
-      const lap = sorted[sorted.length - 1];
-      return { lap, dateTime: lapTimes.get(lap) ?? null, source: 'latest' };
-    }
-    let bestLap = sorted[0];
+    if (!Number.isFinite(target.getTime())) return latest();
+    let bestLap: number | null = null;
     let bestDiff = Infinity;
     for (const lap of sorted) {
       const dt = lapTimes.get(lap);
@@ -56,9 +60,9 @@ export function resolveTimeCursor({
         bestLap = lap;
       }
     }
+    if (bestLap === null) return latest();
     return { lap: bestLap, dateTime: lapTimes.get(bestLap) ?? null, source: 'time' };
   }
 
-  const lap = sorted[sorted.length - 1];
-  return { lap, dateTime: lapTimes.get(lap) ?? null, source: 'latest' };
+  return latest();
 }
