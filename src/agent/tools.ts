@@ -263,7 +263,13 @@ export function makeTools({
         includePitFlags: z.boolean().optional(),
         requireGreen: z.boolean().optional(),
       }),
-      execute: async (opts) => analysis.getLapTable(opts),
+      execute: async (opts) => {
+        const defaultEndLap = getDefaultEndLap();
+        return analysis.getLapTable({
+          ...opts,
+          endLap: typeof opts.endLap === 'number' ? opts.endLap : defaultEndLap,
+        });
+      },
     }),
     get_data_catalog: tool({
       description:
@@ -412,7 +418,9 @@ export function makeTools({
         const normalized: TimeCursor =
           resolved.source === 'latest' || typeof resolved.lap !== 'number'
             ? { latest: true }
-            : { lap: resolved.lap };
+            : cursor.iso
+              ? { lap: resolved.lap, iso: cursor.iso, latest: false }
+              : { lap: resolved.lap };
         currentCursor = normalized;
         onTimeCursorChange(normalized);
         return resolved;
@@ -522,11 +530,15 @@ export function makeTools({
         if (!timing) return null;
         const a = String(driverA);
         const b = String(driverB);
+        const defaultEndLap = getDefaultEndLap();
+        const resolvedEndLap = typeof endLap === 'number' ? endLap : defaultEndLap;
         const lapNumbers = timing.getLapNumbers?.() ?? [];
         if (!lapNumbers.length) return { laps: [], excluded: {}, summary: null };
         let laps = lapNumbers;
         if (typeof startLap === 'number') laps = laps.filter((lap) => lap >= startLap);
-        if (typeof endLap === 'number') laps = laps.filter((lap) => lap <= endLap);
+        if (typeof resolvedEndLap === 'number') {
+          laps = laps.filter((lap) => lap <= resolvedEndLap);
+        }
         if (typeof limit === 'number' && limit > 0) laps = laps.slice(-limit);
 
         const excluded: Record<string, number[]> = {
