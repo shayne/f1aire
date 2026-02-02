@@ -168,4 +168,65 @@ describe('buildAnalysisIndex', () => {
     const comparison = index.compareDrivers({ driverA: '1', driverB: '2' });
     expect(comparison.summary?.avgDeltaMs).toBeLessThan(0);
   });
+
+  it('computes pace slope using lap delta when laps are missing', () => {
+    const live = [
+      {
+        type: 'TimingData',
+        json: {
+          Lines: {
+            '1': { NumberOfLaps: 1, Position: '1', LapTime: { Value: '1:30.000' } },
+          },
+        },
+        dateTime: new Date('2024-01-01T00:01:00Z'),
+      },
+      {
+        type: 'TimingData',
+        json: {
+          Lines: {
+            '1': { NumberOfLaps: 3, Position: '1', LapTime: { Value: '1:40.000' } },
+          },
+        },
+        dateTime: new Date('2024-01-01T00:03:00Z'),
+      },
+    ];
+    const timing = new TimingService();
+    for (const point of live) timing.enqueue(point);
+
+    const index = buildAnalysisIndex({ processors: timing.processors });
+    const pace = index.getStintPace({ driverNumber: '1' });
+
+    expect(pace.slopeMsPerLap).toBe(5_000);
+  });
+
+  it('returns null summary when drivers have no overlapping laps', () => {
+    const live = [
+      {
+        type: 'TimingData',
+        json: {
+          Lines: {
+            '1': { NumberOfLaps: 1, Position: '1', LapTime: { Value: '1:30.000' } },
+          },
+        },
+        dateTime: new Date('2024-01-01T00:01:00Z'),
+      },
+      {
+        type: 'TimingData',
+        json: {
+          Lines: {
+            '2': { NumberOfLaps: 2, Position: '2', LapTime: { Value: '1:31.000' } },
+          },
+        },
+        dateTime: new Date('2024-01-01T00:02:00Z'),
+      },
+    ];
+    const timing = new TimingService();
+    for (const point of live) timing.enqueue(point);
+
+    const index = buildAnalysisIndex({ processors: timing.processors });
+    const comparison = index.compareDrivers({ driverA: '1', driverB: '2' });
+
+    expect(comparison.laps).toHaveLength(0);
+    expect(comparison.summary).toBeNull();
+  });
 });

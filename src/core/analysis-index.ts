@@ -236,8 +236,10 @@ export function buildAnalysisIndex({
       return { driverNumber, samples: 0, avgLapMs: null, slopeMsPerLap: null, laps: [] };
     }
     const avg = times.reduce((a, b) => a + b, 0) / times.length;
-    const slope =
-      records.length > 1 ? (times[times.length - 1] - times[0]) / (records.length - 1) : 0;
+    const first = records[0];
+    const last = records[records.length - 1];
+    const lapDelta = last.lap - first.lap;
+    const slope = lapDelta > 0 ? (times[times.length - 1] - times[0]) / lapDelta : 0;
     return {
       driverNumber,
       samples: records.length,
@@ -272,7 +274,7 @@ export function buildAnalysisIndex({
       driverA,
       driverB,
       laps,
-      summary: { avgDeltaMs: avgDelta },
+      summary: laps.length ? { avgDeltaMs: avgDelta } : null,
     };
   };
 
