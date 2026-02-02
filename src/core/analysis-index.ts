@@ -136,7 +136,10 @@ export function buildAnalysisIndex({
     for (const [driverNumber, snapshot] of lapDrivers.entries()) {
       drivers.add(driverNumber);
       const dt = (snapshot as any)?.__dateTime as Date | undefined;
-      if (dt && !lapTimes.has(lap)) lapTimes.set(lap, dt);
+      if (dt) {
+        const current = lapTimes.get(lap);
+        if (!current || dt < current) lapTimes.set(lap, dt);
+      }
       const track = dt ? trackStatus?.getAt?.(dt) : trackStatus?.state;
       const status = track ? String((track as any)?.Status ?? '') : null;
       const message = track ? String((track as any)?.Message ?? '') : null;

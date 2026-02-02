@@ -88,6 +88,13 @@ export function makeTools({
 
   const analysis = createAnalysisContext({ store, processors });
   const analysisIndex = buildAnalysisIndex({ processors });
+  let currentCursor: TimeCursor = { ...timeCursor };
+
+  const resolveCurrentCursor = () => analysisIndex.resolveAsOf(currentCursor);
+  const getDefaultEndLap = () => {
+    const resolved = resolveCurrentCursor();
+    return typeof resolved.lap === 'number' ? resolved.lap : undefined;
+  };
 
   const getLatestCarEntry = () => {
     const state = processors.carData?.state as any;
@@ -401,8 +408,14 @@ export function makeTools({
           iso: cursor.iso,
           latest: cursor.latest ?? false,
         } as TimeCursor;
-        onTimeCursorChange(next);
-        return analysisIndex.resolveAsOf(next);
+        const resolved = analysisIndex.resolveAsOf(next);
+        const normalized: TimeCursor =
+          resolved.source === 'latest' || typeof resolved.lap !== 'number'
+            ? { latest: true }
+            : { lap: resolved.lap };
+        currentCursor = normalized;
+        onTimeCursorChange(normalized);
+        return resolved;
       },
     }),
     get_stint_pace: tool({
@@ -412,8 +425,14 @@ export function makeTools({
         startLap: z.number().optional(),
         endLap: z.number().optional(),
       }),
-      execute: async ({ driverNumber, startLap, endLap }) =>
-        analysisIndex.getStintPace({ driverNumber, startLap, endLap }),
+      execute: async ({ driverNumber, startLap, endLap }) => {
+        const defaultEndLap = getDefaultEndLap();
+        return analysisIndex.getStintPace({
+          driverNumber,
+          startLap,
+          endLap: endLap ?? defaultEndLap,
+        });
+      },
     }),
     compare_drivers: tool({
       description: 'Compare two drivers lap-by-lap with summary.',
@@ -423,8 +442,15 @@ export function makeTools({
         startLap: z.number().optional(),
         endLap: z.number().optional(),
       }),
-      execute: async ({ driverA, driverB, startLap, endLap }) =>
-        analysisIndex.compareDrivers({ driverA, driverB, startLap, endLap }),
+      execute: async ({ driverA, driverB, startLap, endLap }) => {
+        const defaultEndLap = getDefaultEndLap();
+        return analysisIndex.compareDrivers({
+          driverA,
+          driverB,
+          startLap,
+          endLap: endLap ?? defaultEndLap,
+        });
+      },
     }),
     get_undercut_window: tool({
       description: 'Compute undercut window from lap deltas and pit loss.',
@@ -433,8 +459,23 @@ export function makeTools({
         driverB: z.string(),
         pitLossMs: z.number().nullable(),
       }),
-      execute: async ({ driverA, driverB, pitLossMs }) =>
-        analysisIndex.getUndercutWindow({ driverA, driverB, pitLossMs }),
+      execute: async ({ driverA, driverB, pitLossMs }) => {
+        const defaultEndLap = getDefaultEndLap();
+        const comparison = analysisIndex.compareDrivers({
+          driverA,
+          driverB,
+          endLap: defaultEndLap,
+        });
+        const avgDelta = comparison.summary?.avgDeltaMs ?? null;
+        if (avgDelta == null || pitLossMs == null) {
+          return { avgDeltaMs: avgDelta, lapsToCover: null, pitLossMs: pitLossMs ?? null };
+        }
+        if (avgDelta >= 0) {
+          return { avgDeltaMs: avgDelta, lapsToCover: null, pitLossMs };
+        }
+        const lapsToCover = Math.ceil(pitLossMs / Math.abs(avgDelta));
+        return { avgDeltaMs: avgDelta, lapsToCover, pitLossMs };
+      },
     }),
     simulate_rejoin: tool({
       description: 'Project rejoin gap after a pit loss on a given lap.',
@@ -449,7 +490,12 @@ export function makeTools({
     get_position_changes: tool({
       description: 'List position changes by lap.',
       inputSchema: z.object({}),
-      execute: async () => analysisIndex.getPositionChanges(),
+      execute: async () => {
+        const resolved = resolveCurrentCursor();
+        const changes = analysisIndex.getPositionChanges();
+        if (typeof resolved.lap !== 'number') return changes;
+        return changes.filter((change) => change.lap <= resolved.lap);
+      },
     }),
     get_clean_lap_pace: tool({
       description:

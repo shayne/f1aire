@@ -148,7 +148,7 @@ export function App(): React.JSX.Element {
   const contentHeight = Math.max(terminalRows - headerRows - footerRows, 10);
   const asOfLabel = timeCursor?.latest
     ? 'Latest'
-    : timeCursor?.lap
+    : Number.isFinite(timeCursor?.lap)
       ? `Lap ${timeCursor.lap}`
       : timeCursor?.iso
         ? `Time ${timeCursor.iso}`
