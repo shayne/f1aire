@@ -13,8 +13,19 @@ const processors = {
 } as any;
 
 describe('tools', () => {
-  it('exposes run_js tool', () => {
-    const tools = makeTools({ store, processors });
-    expect(tools).toHaveProperty('run_js');
+  it('exposes expected tools', () => {
+    const tools = makeTools({
+      store,
+      processors,
+      timeCursor: { latest: true },
+      onTimeCursorChange: () => {},
+    });
+
+    expect(tools).toHaveProperty('get_stint_pace');
+    expect(tools).toHaveProperty('compare_drivers');
+    expect(tools).toHaveProperty('get_undercut_window');
+    expect(tools).toHaveProperty('simulate_rejoin');
+    expect(tools).toHaveProperty('get_position_changes');
+    expect(tools).toHaveProperty('set_time_cursor');
   });
 });

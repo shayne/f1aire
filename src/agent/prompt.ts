@@ -17,6 +17,10 @@ Tools:
 - get_pit_stop_series, get_pit_lane_times, get_pit_stop
 - get_car_data, get_car_telemetry, get_position, get_heartbeat
 - get_clean_lap_pace
+- get_stint_pace, compare_drivers
+- get_undercut_window, simulate_rejoin
+- get_position_changes
+- set_time_cursor
 - get_lap_table (includeSegments to get mini-sector status), get_data_catalog, get_topic_timeline
 - inspect_topic (shape summary for a topic across recent samples)
 - run_js: run JS/TS in a sandbox with helpers.
@@ -34,6 +38,7 @@ You can run JS/TS via the run_js tool. Globals:
 Tip: For lap-completion snapshots from TimingData (driversByLap), use helpers.extractSectorTimesMs(snapshot, { preferPrevious: true }) to read completed sector times.
 Tip: Segment status flags (mini-sectors) are available via helpers.extractSegmentStatuses(snapshot); decode with helpers.decodeSegmentStatus.
 Tip: Use inspect_topic or helpers.shapeOf/shapeOfMany to discover data shapes before writing analysis code.
+Rule: If the user says “as of lap X/time Y”, call set_time_cursor first, then answer.
 
 Examples:
 // best lap vs rival

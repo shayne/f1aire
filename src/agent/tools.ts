@@ -20,11 +20,15 @@ import {
   trackStatusIsGreen,
 } from '../core/analysis-utils.js';
 import { createAnalysisContext } from '../core/analysis.js';
+import { buildAnalysisIndex } from '../core/analysis-index.js';
 import { shapeOf, shapeOfMany } from '../core/inspect.js';
+import type { TimeCursor } from '../core/time-cursor.js';
 
 export function makeTools({
   store,
   processors,
+  timeCursor,
+  onTimeCursorChange,
 }: {
   store: SessionStore;
   processors: {
@@ -69,6 +73,8 @@ export function makeTools({
     carData?: { state?: unknown | null };
     position?: { state?: unknown | null };
   };
+  timeCursor?: TimeCursor;
+  onTimeCursorChange?: (cursor: TimeCursor) => void;
 }) {
   const getNormalizedLatest = (topic: string) => {
     const direct = store.topic(topic).latest as RawPoint | null;
@@ -81,6 +87,8 @@ export function makeTools({
     processors.driverList?.getName?.(driverNumber) ?? null;
 
   const analysis = createAnalysisContext({ store, processors });
+  const analysisIndex = buildAnalysisIndex({ processors });
+  const handleTimeCursorChange = onTimeCursorChange ?? (() => {});
 
   const getLatestCarEntry = () => {
     const state = processors.carData?.state as any;
@@ -380,6 +388,69 @@ export function makeTools({
             analysis,
           },
         }),
+    }),
+    set_time_cursor: tool({
+      description: 'Set the as-of cursor for analysis (lap or ISO time).',
+      inputSchema: z.object({
+        lap: z.number().optional(),
+        iso: z.string().optional(),
+        latest: z.boolean().optional(),
+      }),
+      execute: async (cursor) => {
+        const next = {
+          lap: typeof cursor.lap === 'number' ? cursor.lap : undefined,
+          iso: cursor.iso,
+          latest: cursor.latest ?? false,
+        } as TimeCursor;
+        handleTimeCursorChange(next);
+        return analysisIndex.resolveAsOf(next);
+      },
+    }),
+    get_stint_pace: tool({
+      description: 'Get stint pace summary for a driver.',
+      inputSchema: z.object({
+        driverNumber: z.string(),
+        startLap: z.number().optional(),
+        endLap: z.number().optional(),
+      }),
+      execute: async ({ driverNumber, startLap, endLap }) =>
+        analysisIndex.getStintPace({ driverNumber, startLap, endLap }),
+    }),
+    compare_drivers: tool({
+      description: 'Compare two drivers lap-by-lap with summary.',
+      inputSchema: z.object({
+        driverA: z.string(),
+        driverB: z.string(),
+        startLap: z.number().optional(),
+        endLap: z.number().optional(),
+      }),
+      execute: async ({ driverA, driverB, startLap, endLap }) =>
+        analysisIndex.compareDrivers({ driverA, driverB, startLap, endLap }),
+    }),
+    get_undercut_window: tool({
+      description: 'Compute undercut window from lap deltas and pit loss.',
+      inputSchema: z.object({
+        driverA: z.string(),
+        driverB: z.string(),
+        pitLossMs: z.number().nullable(),
+      }),
+      execute: async ({ driverA, driverB, pitLossMs }) =>
+        analysisIndex.getUndercutWindow({ driverA, driverB, pitLossMs }),
+    }),
+    simulate_rejoin: tool({
+      description: 'Project rejoin gap after a pit loss on a given lap.',
+      inputSchema: z.object({
+        driver: z.string(),
+        pitLossMs: z.number(),
+        asOfLap: z.number(),
+      }),
+      execute: async ({ driver, pitLossMs, asOfLap }) =>
+        analysisIndex.simulateRejoin({ driver, pitLossMs, asOfLap }),
+    }),
+    get_position_changes: tool({
+      description: 'List position changes by lap.',
+      inputSchema: z.object({}),
+      execute: async () => analysisIndex.getPositionChanges(),
     }),
     get_clean_lap_pace: tool({
       description:
