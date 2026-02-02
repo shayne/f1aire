@@ -229,4 +229,39 @@ describe('buildAnalysisIndex', () => {
     expect(comparison.laps).toHaveLength(0);
     expect(comparison.summary).toBeNull();
   });
+
+  it('computes undercut window and rejoin projection', () => {
+    const live = [
+      {
+        type: 'TimingData',
+        json: {
+          Lines: {
+            '1': { NumberOfLaps: 1, Position: '1', LapTime: { Value: '1:30.000' }, GapToLeader: '0' },
+            '2': { NumberOfLaps: 1, Position: '2', LapTime: { Value: '1:31.000' }, GapToLeader: '+1.0' },
+          },
+        },
+        dateTime: new Date('2024-01-01T00:01:00Z'),
+      },
+      {
+        type: 'TimingData',
+        json: {
+          Lines: {
+            '1': { NumberOfLaps: 2, Position: '1', LapTime: { Value: '1:30.000' }, GapToLeader: '0' },
+            '2': { NumberOfLaps: 2, Position: '2', LapTime: { Value: '1:31.000' }, GapToLeader: '+1.2' },
+          },
+        },
+        dateTime: new Date('2024-01-01T00:02:00Z'),
+      },
+    ];
+    const timing = new TimingService();
+    for (const point of live) timing.enqueue(point);
+
+    const index = buildAnalysisIndex({ processors: timing.processors });
+
+    const window = index.getUndercutWindow({ driverA: '1', driverB: '2', pitLossMs: 20_000 });
+    expect(window.lapsToCover).toBeGreaterThan(0);
+
+    const rejoin = index.simulateRejoin({ driver: '2', pitLossMs: 20_000, asOfLap: 2 });
+    expect(rejoin.lossMs).toBe(20_000);
+  });
 });

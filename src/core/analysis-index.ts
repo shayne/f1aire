@@ -45,6 +45,19 @@ export type CompareDriversResult = {
   summary: { avgDeltaMs: number | null } | null;
 };
 
+export type UndercutWindow = {
+  avgDeltaMs: number | null;
+  lapsToCover: number | null;
+  pitLossMs: number | null;
+};
+
+export type RejoinProjection = {
+  driverNumber: string;
+  asOfLap: number;
+  lossMs: number;
+  projectedGapToLeaderSec: number | null;
+};
+
 export type AnalysisIndex = {
   lapNumbers: number[];
   drivers: string[];
@@ -64,6 +77,12 @@ export type AnalysisIndex = {
     startLap?: number;
     endLap?: number;
   }) => CompareDriversResult;
+  getUndercutWindow: (opts: {
+    driverA: string;
+    driverB: string;
+    pitLossMs: number | null;
+  }) => UndercutWindow;
+  simulateRejoin: (opts: { driver: string; pitLossMs: number; asOfLap: number }) => RejoinProjection;
 };
 
 const getStintForLap = (timingAppData: any, driverNumber: string, lap: number) => {
@@ -278,6 +297,47 @@ export function buildAnalysisIndex({
     };
   };
 
+  const getUndercutWindow = ({
+    driverA,
+    driverB,
+    pitLossMs,
+  }: {
+    driverA: string;
+    driverB: string;
+    pitLossMs: number | null;
+  }): UndercutWindow => {
+    const comparison = compareDrivers({ driverA, driverB });
+    const avgDelta = comparison.summary?.avgDeltaMs ?? null;
+    if (!avgDelta || !pitLossMs) {
+      return { avgDeltaMs: avgDelta, lapsToCover: null, pitLossMs: pitLossMs ?? null };
+    }
+    const lapsToCover =
+      avgDelta < 0
+        ? Math.ceil(pitLossMs / Math.abs(avgDelta))
+        : Math.ceil(pitLossMs / Math.max(1, avgDelta));
+    return { avgDeltaMs: avgDelta, lapsToCover, pitLossMs };
+  };
+
+  const simulateRejoin = ({
+    driver,
+    pitLossMs,
+    asOfLap,
+  }: {
+    driver: string;
+    pitLossMs: number;
+    asOfLap: number;
+  }): RejoinProjection => {
+    const snap = byLap.get(asOfLap)?.get(driver);
+    const gapToLeader = snap?.gapToLeaderSec ?? null;
+    const projectedGap = gapToLeader === null ? null : gapToLeader + pitLossMs / 1000;
+    return {
+      driverNumber: driver,
+      asOfLap,
+      lossMs: pitLossMs,
+      projectedGapToLeaderSec: projectedGap,
+    };
+  };
+
   return {
     lapNumbers: [...lapNumbers],
     drivers: Array.from(drivers.values()),
@@ -289,5 +349,7 @@ export function buildAnalysisIndex({
     getPositionChanges: () => positionChanges,
     getStintPace,
     compareDrivers,
+    getUndercutWindow,
+    simulateRejoin,
   };
 }
