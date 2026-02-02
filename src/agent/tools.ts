@@ -73,8 +73,8 @@ export function makeTools({
     carData?: { state?: unknown | null };
     position?: { state?: unknown | null };
   };
-  timeCursor?: TimeCursor;
-  onTimeCursorChange?: (cursor: TimeCursor) => void;
+  timeCursor: TimeCursor;
+  onTimeCursorChange: (cursor: TimeCursor) => void;
 }) {
   const getNormalizedLatest = (topic: string) => {
     const direct = store.topic(topic).latest as RawPoint | null;
@@ -88,7 +88,6 @@ export function makeTools({
 
   const analysis = createAnalysisContext({ store, processors });
   const analysisIndex = buildAnalysisIndex({ processors });
-  const handleTimeCursorChange = onTimeCursorChange ?? (() => {});
 
   const getLatestCarEntry = () => {
     const state = processors.carData?.state as any;
@@ -402,7 +401,7 @@ export function makeTools({
           iso: cursor.iso,
           latest: cursor.latest ?? false,
         } as TimeCursor;
-        handleTimeCursorChange(next);
+        onTimeCursorChange(next);
         return analysisIndex.resolveAsOf(next);
       },
     }),
