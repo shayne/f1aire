@@ -146,11 +146,13 @@ export function App(): React.JSX.Element {
   const headerRows = breadcrumb.length ? (isShort ? 4 : 6) : isShort ? 3 : 4;
   const footerRows = 1;
   const contentHeight = Math.max(terminalRows - headerRows - footerRows, 10);
-  const asOfLabel = timeCursor?.lap
-    ? `Lap ${timeCursor.lap}`
-    : timeCursor?.iso
-      ? `Time ${timeCursor.iso}`
-      : 'Latest';
+  const asOfLabel = timeCursor?.latest
+    ? 'Latest'
+    : timeCursor?.lap
+      ? `Lap ${timeCursor.lap}`
+      : timeCursor?.iso
+        ? `Time ${timeCursor.iso}`
+        : 'Latest';
 
   return (
     <Box flexDirection="column" height={terminalRows}>
@@ -239,10 +241,12 @@ export function App(): React.JSX.Element {
                   durationMs: Math.round(processDurationMs),
                   livePoints: store.raw.live.length,
                 });
+                const initialTimeCursor: TimeCursor = { latest: true };
+                setTimeCursor(initialTimeCursor);
                 const tools = makeTools({
                   store,
                   processors: timingService.processors,
-                  timeCursor,
+                  timeCursor: initialTimeCursor,
                   onTimeCursorChange: setTimeCursor,
                 });
                 const modelId =
