@@ -133,4 +133,39 @@ describe('buildAnalysisIndex', () => {
     expect(index.getPitEvents().length).toBe(1);
     expect(index.getPositionChanges().length).toBe(2);
   });
+
+  it('computes stint pace and driver comparisons', () => {
+    const live = [
+      {
+        type: 'TimingData',
+        json: {
+          Lines: {
+            '1': { NumberOfLaps: 1, Position: '1', LapTime: { Value: '1:30.000' } },
+            '2': { NumberOfLaps: 1, Position: '2', LapTime: { Value: '1:31.000' } },
+          },
+        },
+        dateTime: new Date('2024-01-01T00:01:00Z'),
+      },
+      {
+        type: 'TimingData',
+        json: {
+          Lines: {
+            '1': { NumberOfLaps: 2, Position: '1', LapTime: { Value: '1:31.000' } },
+            '2': { NumberOfLaps: 2, Position: '2', LapTime: { Value: '1:31.000' } },
+          },
+        },
+        dateTime: new Date('2024-01-01T00:02:00Z'),
+      },
+    ];
+    const timing = new TimingService();
+    for (const point of live) timing.enqueue(point);
+
+    const index = buildAnalysisIndex({ processors: timing.processors });
+
+    const pace = index.getStintPace({ driverNumber: '1' });
+    expect(pace.samples).toBe(2);
+
+    const comparison = index.compareDrivers({ driverA: '1', driverB: '2' });
+    expect(comparison.summary?.avgDeltaMs).toBeLessThan(0);
+  });
 });

@@ -30,6 +30,21 @@ export type PositionChange = {
   to: number | null;
 };
 
+export type StintPaceResult = {
+  driverNumber: string;
+  samples: number;
+  avgLapMs: number | null;
+  slopeMsPerLap: number | null;
+  laps: number[];
+};
+
+export type CompareDriversResult = {
+  driverA: string;
+  driverB: string;
+  laps: Array<{ lap: number; deltaMs: number }>;
+  summary: { avgDeltaMs: number | null } | null;
+};
+
 export type AnalysisIndex = {
   lapNumbers: number[];
   drivers: string[];
@@ -38,6 +53,17 @@ export type AnalysisIndex = {
   resolveAsOf: (cursor?: TimeCursor | null) => ResolvedCursor;
   getPitEvents: () => PitEvent[];
   getPositionChanges: () => PositionChange[];
+  getStintPace: (opts: {
+    driverNumber: string;
+    startLap?: number;
+    endLap?: number;
+  }) => StintPaceResult;
+  compareDrivers: (opts: {
+    driverA: string;
+    driverB: string;
+    startLap?: number;
+    endLap?: number;
+  }) => CompareDriversResult;
 };
 
 const getStintForLap = (timingAppData: any, driverNumber: string, lap: number) => {
@@ -186,6 +212,70 @@ export function buildAnalysisIndex({
     }
   }
 
+  const getDriverLaps = (driverNumber: string, startLap?: number, endLap?: number) => {
+    const records = byDriver.get(driverNumber) ?? [];
+    return records.filter((r) => {
+      if (typeof startLap === 'number' && r.lap < startLap) return false;
+      if (typeof endLap === 'number' && r.lap > endLap) return false;
+      return r.lapTimeMs !== null;
+    });
+  };
+
+  const getStintPace = ({
+    driverNumber,
+    startLap,
+    endLap,
+  }: {
+    driverNumber: string;
+    startLap?: number;
+    endLap?: number;
+  }): StintPaceResult => {
+    const records = getDriverLaps(driverNumber, startLap, endLap);
+    const times = records.map((r) => r.lapTimeMs ?? 0);
+    if (!records.length) {
+      return { driverNumber, samples: 0, avgLapMs: null, slopeMsPerLap: null, laps: [] };
+    }
+    const avg = times.reduce((a, b) => a + b, 0) / times.length;
+    const slope =
+      records.length > 1 ? (times[times.length - 1] - times[0]) / (records.length - 1) : 0;
+    return {
+      driverNumber,
+      samples: records.length,
+      avgLapMs: avg,
+      slopeMsPerLap: slope,
+      laps: records.map((r) => r.lap),
+    };
+  };
+
+  const compareDrivers = ({
+    driverA,
+    driverB,
+    startLap,
+    endLap,
+  }: {
+    driverA: string;
+    driverB: string;
+    startLap?: number;
+    endLap?: number;
+  }): CompareDriversResult => {
+    const a = getDriverLaps(driverA, startLap, endLap);
+    const b = getDriverLaps(driverB, startLap, endLap);
+    const laps = a
+      .map((r) => ({ lap: r.lap, a: r.lapTimeMs }))
+      .filter((r) => b.some((x) => x.lap === r.lap))
+      .map((r) => {
+        const bLap = b.find((x) => x.lap === r.lap);
+        return { lap: r.lap, deltaMs: (r.a ?? 0) - (bLap?.lapTimeMs ?? 0) };
+      });
+    const avgDelta = laps.length ? laps.reduce((sum, row) => sum + row.deltaMs, 0) / laps.length : null;
+    return {
+      driverA,
+      driverB,
+      laps,
+      summary: { avgDeltaMs: avgDelta },
+    };
+  };
+
   return {
     lapNumbers: [...lapNumbers],
     drivers: Array.from(drivers.values()),
@@ -195,5 +285,7 @@ export function buildAnalysisIndex({
       resolveTimeCursor({ lapTimes, lapNumbers, cursor }),
     getPitEvents: () => pitEvents,
     getPositionChanges: () => positionChanges,
+    getStintPace,
+    compareDrivers,
   };
 }
