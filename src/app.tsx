@@ -7,6 +7,7 @@ import { Box, useInput, useStdout } from 'ink';
 import { createEngineerLogger } from './agent/engineer-logger.js';
 import { createEngineerSession } from './agent/engineer.js';
 import { formatUnknownError } from './agent/error-utils.js';
+import { ensurePyodideAssets } from './agent/pyodide/assets.js';
 import { systemPrompt } from './agent/prompt.js';
 import { makeTools } from './agent/tools.js';
 import { downloadSession } from './core/download.js';
@@ -24,12 +25,17 @@ import { startEventLoopLagMonitor } from './tui/perf.js';
 import { Downloading } from './tui/screens/Downloading.js';
 import { EngineerChat } from './tui/screens/EngineerChat.js';
 import { MeetingPicker } from './tui/screens/MeetingPicker.js';
+import { RuntimePreparing } from './tui/screens/RuntimePreparing.js';
 import { SeasonPicker } from './tui/screens/SeasonPicker.js';
 import { SessionPicker } from './tui/screens/SessionPicker.js';
 import { Summary } from './tui/screens/Summary.js';
 
 export function App(): React.JSX.Element {
   const [screen, setScreen] = useState<Screen>({ name: 'season' });
+  const [runtimeReady, setRuntimeReady] = useState(false);
+  const [runtimeMessage, setRuntimeMessage] = useState(
+    'Checking Python runtime...',
+  );
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [streamingText, setStreamingText] = useState('');
   const [isStreaming, setIsStreaming] = useState(false);
@@ -50,6 +56,26 @@ export function App(): React.JSX.Element {
       dataDir: getDataDir('f1aire'),
     });
   }
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        setRuntimeMessage('Preparing Python runtime...');
+        await ensurePyodideAssets({ version: '0.29.3' });
+        if (!cancelled) setRuntimeReady(true);
+      } catch (err) {
+        if (!cancelled) {
+          setRuntimeMessage(
+            `Python runtime failed: ${formatUnknownError(err)}`,
+          );
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     perfStopRef.current?.();
@@ -158,213 +184,223 @@ export function App(): React.JSX.Element {
     <Box flexDirection="column" height={terminalRows}>
       <Header breadcrumb={breadcrumb} compact={isShort} />
       <Box flexGrow={1} flexDirection="column" marginLeft={1} height={contentHeight}>
-        {screen.name === 'season' && (
-          <SeasonPicker
-            onSelect={async (year) => {
-              const data = await getMeetings(year);
-              setScreen({ name: 'meeting', year, meetings: data.Meetings });
-            }}
-          />
-        )}
-        {screen.name === 'meeting' && (
-          <MeetingPicker
-            year={screen.year}
-            meetings={screen.meetings}
-            onSelect={(meeting) =>
-              setScreen({
-                name: 'session',
-                year: screen.year,
-                meetings: screen.meetings,
-                meeting,
-              })
-            }
-          />
-        )}
-        {screen.name === 'session' && (
-          <SessionPicker
-            meeting={screen.meeting}
-            onSelect={(session) =>
-              setScreen({
-                name: 'downloading',
-                year: screen.year,
-                meetings: screen.meetings,
-                meeting: screen.meeting,
-                session,
-              })
-            }
-          />
-        )}
-        {screen.name === 'downloading' && (
-          <Downloading
-            meeting={screen.meeting}
-            session={screen.session}
-            onComplete={(dir) => {
-              void (async () => {
-                const livePath = path.join(dir, 'live.jsonl');
-                const lines = fs.readFileSync(livePath, 'utf-8');
-                const summary = summarizeFromLines(lines);
-                const summaryText = [
-                  'Quick summary:',
-                  summary.winner
-                    ? `Winner: ${summary.winner.name} (#${summary.winner.number})`
-                    : 'Winner: unavailable',
-                  summary.fastestLap
-                    ? `Fastest lap: ${summary.fastestLap.name} (#${summary.fastestLap.number}) ${summary.fastestLap.time}`
-                    : 'Fastest lap: unavailable',
-                  summary.totalLaps
-                    ? `Total laps: ${summary.totalLaps}`
-                    : 'Total laps: unavailable',
-                ].join('\n');
-                setSummary(summary);
-                const loadStart = performance.now();
-                const store = await loadSessionStore(dir);
-                const loadDurationMs = performance.now() - loadStart;
-                void engineerLoggerRef.current?.logger({
-                  type: 'load-session-store',
-                  durationMs: Math.round(loadDurationMs),
-                  livePoints: store.raw.live.length,
-                });
-                const timingService = new TimingService();
-                const subscribe = store.raw.subscribe ?? {};
-                const processStart = performance.now();
-                for (const [type, json] of Object.entries(subscribe)) {
-                  timingService.enqueue({
-                    type,
-                    json,
-                    dateTime: new Date(),
-                  });
+        {!runtimeReady ? (
+          <RuntimePreparing message={runtimeMessage} />
+        ) : (
+          <>
+            {screen.name === 'season' && (
+              <SeasonPicker
+                onSelect={async (year) => {
+                  const data = await getMeetings(year);
+                  setScreen({ name: 'meeting', year, meetings: data.Meetings });
+                }}
+              />
+            )}
+            {screen.name === 'meeting' && (
+              <MeetingPicker
+                year={screen.year}
+                meetings={screen.meetings}
+                onSelect={(meeting) =>
+                  setScreen({
+                    name: 'session',
+                    year: screen.year,
+                    meetings: screen.meetings,
+                    meeting,
+                  })
                 }
-                for (const point of store.raw.live) timingService.enqueue(point);
-                const processDurationMs = performance.now() - processStart;
-                void engineerLoggerRef.current?.logger({
-                  type: 'timing-process',
-                  durationMs: Math.round(processDurationMs),
-                  livePoints: store.raw.live.length,
-                });
-                const initialTimeCursor: TimeCursor = { latest: true };
-                setTimeCursor(initialTimeCursor);
-                const tools = makeTools({
-                  store,
-                  processors: timingService.processors,
-                  timeCursor: initialTimeCursor,
-                  onTimeCursorChange: setTimeCursor,
-                });
-                const modelId =
-                  process.env.OPENAI_API_MODEL ?? 'gpt-5.2-codex';
-                const model = openai(modelId);
-                void engineerLoggerRef.current?.logger({
-                  type: 'engineer-init',
-                  modelId,
-                  apiKeyPresent: Boolean(process.env.OPENAI_API_KEY),
-                  session: screen.session.Name,
-                  meeting: screen.meeting.Name,
-                });
-                engineerRef.current = createEngineerSession({
-                  model,
-                  tools,
-                  system: systemPrompt,
-                  logger: engineerLoggerRef.current?.logger ?? undefined,
-                  onEvent: (event) => {
-                    if (event.type === 'send-start') {
-                      setStreamStatus('Thinking...');
-                      pushActivity('Thinking...');
-                      return;
+              />
+            )}
+            {screen.name === 'session' && (
+              <SessionPicker
+                meeting={screen.meeting}
+                onSelect={(session) =>
+                  setScreen({
+                    name: 'downloading',
+                    year: screen.year,
+                    meetings: screen.meetings,
+                    meeting: screen.meeting,
+                    session,
+                  })
+                }
+              />
+            )}
+            {screen.name === 'downloading' && (
+              <Downloading
+                meeting={screen.meeting}
+                session={screen.session}
+                onComplete={(dir) => {
+                  void (async () => {
+                    const livePath = path.join(dir, 'live.jsonl');
+                    const lines = fs.readFileSync(livePath, 'utf-8');
+                    const summary = summarizeFromLines(lines);
+                    const summaryText = [
+                      'Quick summary:',
+                      summary.winner
+                        ? `Winner: ${summary.winner.name} (#${summary.winner.number})`
+                        : 'Winner: unavailable',
+                      summary.fastestLap
+                        ? `Fastest lap: ${summary.fastestLap.name} (#${summary.fastestLap.number}) ${summary.fastestLap.time}`
+                        : 'Fastest lap: unavailable',
+                      summary.totalLaps
+                        ? `Total laps: ${summary.totalLaps}`
+                        : 'Total laps: unavailable',
+                    ].join('\n');
+                    setSummary(summary);
+                    const loadStart = performance.now();
+                    const store = await loadSessionStore(dir);
+                    const loadDurationMs = performance.now() - loadStart;
+                    void engineerLoggerRef.current?.logger({
+                      type: 'load-session-store',
+                      durationMs: Math.round(loadDurationMs),
+                      livePoints: store.raw.live.length,
+                    });
+                    const timingService = new TimingService();
+                    const subscribe = store.raw.subscribe ?? {};
+                    const processStart = performance.now();
+                    for (const [type, json] of Object.entries(subscribe)) {
+                      timingService.enqueue({
+                        type,
+                        json,
+                        dateTime: new Date(),
+                      });
                     }
-                    if (event.type === 'send-finish') {
-                      setStreamStatus(null);
-                      pushActivity('Response ready');
-                      return;
-                    }
-                    if (event.type === 'stream-error') {
-                      const msg = typeof event.error === 'string' ? event.error : 'error';
-                      setStreamStatus(`Error: ${msg}`);
-                      pushActivity(`Error: ${msg}`);
-                      return;
-                    }
-                    if (event.type !== 'stream-part') return;
-                    const part = event.part as Record<string, unknown> | undefined;
-                    const partType = part?.type as string | undefined;
-                    if (!partType) return;
-                    if (partType === 'text-delta') {
-                      setStreamStatus(null);
-                      pushActivity('Streaming response');
-                      return;
-                    }
-                    if (partType === 'reasoning-start' || partType === 'start-step') {
-                      setStreamStatus('Thinking...');
-                      pushActivity('Thinking...');
-                      return;
-                    }
-                    if (partType === 'tool-input-start') {
-                      setStreamStatus('Preparing tool call...');
-                      pushActivity('Preparing tool call');
-                      return;
-                    }
-                    if (partType === 'tool-call') {
-                      const toolName =
-                        (part as any).toolName ??
-                        (part as any).tool?.name ??
-                        (part as any).toolCall?.name ??
-                        'tool';
-                      setStreamStatus(`Running tool: ${toolName}`);
-                      pushActivity(`Running tool: ${toolName}`);
-                      return;
-                    }
-                    if (partType === 'tool-result') {
-                      const toolName =
-                        (part as any).toolName ??
-                        (part as any).tool?.name ??
-                        (part as any).toolCall?.name ??
-                        'tool';
-                      setStreamStatus(`Processing result: ${toolName}`);
-                      pushActivity(`Processing result: ${toolName}`);
-                    }
-                  },
-                });
-                setActivity([]);
-                setMessages([{ role: 'assistant', content: summaryText }]);
-                setStreamingText('');
-                setScreen({
-                  name: 'engineer',
-                  year: screen.year,
-                  meetings: screen.meetings,
-                  meeting: screen.meeting,
-                  session: screen.session,
-                  dir,
-                });
-              })();
-            }}
-            onStart={async () => {
-              const root = getDataDir('f1aire');
-              const result = await downloadSession({
-                year: screen.year,
-                meeting: screen.meeting,
-                sessionKey: screen.session.Key,
-                dataRoot: root,
-                allowExisting: true,
-              });
-              return result.dir;
-            }}
-          />
-        )}
-        {screen.name === 'engineer' && (
-          <EngineerChat
-            messages={messages}
-            streamingText={streamingText}
-            onSend={handleSend}
-            isStreaming={isStreaming}
-            status={streamStatus}
-            year={screen.year}
-            meeting={screen.meeting}
-            session={screen.session}
-            summary={summary}
-            activity={activity}
-            maxHeight={contentHeight}
-            asOfLabel={asOfLabel}
-          />
-        )}
-        {screen.name === 'summary' && (
-          <Summary summary={screen.summary} dir={screen.dir} />
+                    for (const point of store.raw.live) timingService.enqueue(point);
+                    const processDurationMs = performance.now() - processStart;
+                    void engineerLoggerRef.current?.logger({
+                      type: 'timing-process',
+                      durationMs: Math.round(processDurationMs),
+                      livePoints: store.raw.live.length,
+                    });
+                    const initialTimeCursor: TimeCursor = { latest: true };
+                    setTimeCursor(initialTimeCursor);
+                    const tools = makeTools({
+                      store,
+                      processors: timingService.processors,
+                      timeCursor: initialTimeCursor,
+                      onTimeCursorChange: setTimeCursor,
+                    });
+                    const modelId =
+                      process.env.OPENAI_API_MODEL ?? 'gpt-5.2-codex';
+                    const model = openai(modelId);
+                    void engineerLoggerRef.current?.logger({
+                      type: 'engineer-init',
+                      modelId,
+                      apiKeyPresent: Boolean(process.env.OPENAI_API_KEY),
+                      session: screen.session.Name,
+                      meeting: screen.meeting.Name,
+                    });
+                    engineerRef.current = createEngineerSession({
+                      model,
+                      tools,
+                      system: systemPrompt,
+                      logger: engineerLoggerRef.current?.logger ?? undefined,
+                      onEvent: (event) => {
+                        if (event.type === 'send-start') {
+                          setStreamStatus('Thinking...');
+                          pushActivity('Thinking...');
+                          return;
+                        }
+                        if (event.type === 'send-finish') {
+                          setStreamStatus(null);
+                          pushActivity('Response ready');
+                          return;
+                        }
+                        if (event.type === 'stream-error') {
+                          const msg =
+                            typeof event.error === 'string' ? event.error : 'error';
+                          setStreamStatus(`Error: ${msg}`);
+                          pushActivity(`Error: ${msg}`);
+                          return;
+                        }
+                        if (event.type !== 'stream-part') return;
+                        const part = event.part as Record<string, unknown> | undefined;
+                        const partType = part?.type as string | undefined;
+                        if (!partType) return;
+                        if (partType === 'text-delta') {
+                          setStreamStatus(null);
+                          pushActivity('Streaming response');
+                          return;
+                        }
+                        if (
+                          partType === 'reasoning-start' ||
+                          partType === 'start-step'
+                        ) {
+                          setStreamStatus('Thinking...');
+                          pushActivity('Thinking...');
+                          return;
+                        }
+                        if (partType === 'tool-input-start') {
+                          setStreamStatus('Preparing tool call...');
+                          pushActivity('Preparing tool call');
+                          return;
+                        }
+                        if (partType === 'tool-call') {
+                          const toolName =
+                            (part as any).toolName ??
+                            (part as any).tool?.name ??
+                            (part as any).toolCall?.name ??
+                            'tool';
+                          setStreamStatus(`Running tool: ${toolName}`);
+                          pushActivity(`Running tool: ${toolName}`);
+                          return;
+                        }
+                        if (partType === 'tool-result') {
+                          const toolName =
+                            (part as any).toolName ??
+                            (part as any).tool?.name ??
+                            (part as any).toolCall?.name ??
+                            'tool';
+                          setStreamStatus(`Processing result: ${toolName}`);
+                          pushActivity(`Processing result: ${toolName}`);
+                        }
+                      },
+                    });
+                    setActivity([]);
+                    setMessages([{ role: 'assistant', content: summaryText }]);
+                    setStreamingText('');
+                    setScreen({
+                      name: 'engineer',
+                      year: screen.year,
+                      meetings: screen.meetings,
+                      meeting: screen.meeting,
+                      session: screen.session,
+                      dir,
+                    });
+                  })();
+                }}
+                onStart={async () => {
+                  const root = getDataDir('f1aire');
+                  const result = await downloadSession({
+                    year: screen.year,
+                    meeting: screen.meeting,
+                    sessionKey: screen.session.Key,
+                    dataRoot: root,
+                    allowExisting: true,
+                  });
+                  return result.dir;
+                }}
+              />
+            )}
+            {screen.name === 'engineer' && (
+              <EngineerChat
+                messages={messages}
+                streamingText={streamingText}
+                onSend={handleSend}
+                isStreaming={isStreaming}
+                status={streamStatus}
+                year={screen.year}
+                meeting={screen.meeting}
+                session={screen.session}
+                summary={summary}
+                activity={activity}
+                maxHeight={contentHeight}
+                asOfLabel={asOfLabel}
+              />
+            )}
+            {screen.name === 'summary' && (
+              <Summary summary={screen.summary} dir={screen.dir} />
+            )}
+          </>
         )}
       </Box>
       <FooterHints screen={screen.name} />

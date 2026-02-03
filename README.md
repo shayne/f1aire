@@ -73,3 +73,4 @@ Session downloads are stored under the per-user data directory for the app name 
 - Navigation: Enter selects, `b`/Backspace/Esc goes back, `q` quits (chat mode uses Enter/Esc/Ctrl+C).
 - Downloads fetch data from `livetiming.formula1.com` and write `live.jsonl` and `subscribe.json` under the data directory.
 - If a session folder already exists, the download will fail; delete the folder to re-download.
+- First run downloads the Pyodide runtime (~200MB) into the data directory; later runs reuse the cached assets.
