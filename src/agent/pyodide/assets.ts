@@ -2,8 +2,14 @@ import path from 'node:path';
 import { promises as fs } from 'node:fs';
 import { getPyodideBaseDir } from './paths.js';
 
-const DEFAULT_TARBALL = 'pyodide-0.29.3.tar.bz2';
-const DEFAULT_URL = `https://github.com/pyodide/pyodide/releases/download/0.29.3/${DEFAULT_TARBALL}`;
+function getTarballName(version: string) {
+  return `pyodide-${version}.tar.bz2`;
+}
+
+function getTarballUrl(version: string) {
+  const tarball = getTarballName(version);
+  return `https://github.com/pyodide/pyodide/releases/download/${version}/${tarball}`;
+}
 
 export async function ensurePyodideAssets({
   version,
@@ -22,7 +28,7 @@ export async function ensurePyodideAssets({
     return { ready: true };
   } catch {
     await fs.mkdir(baseDir, { recursive: true });
-    const tarPath = await download(DEFAULT_URL, baseDir);
+    const tarPath = await download(getTarballUrl(version), baseDir);
     await extract(tarPath, baseDir);
     return { ready: true };
   }
@@ -39,5 +45,5 @@ async function defaultDownload(url: string, destDir: string) {
 
 async function defaultExtract(tarPath: string, destDir: string) {
   const { extract } = await import('tar');
-  await extract({ file: tarPath, cwd: destDir });
+  await extract({ file: tarPath, cwd: destDir, strip: 1 });
 }
