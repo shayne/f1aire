@@ -47,6 +47,20 @@ describe('createPythonClient', () => {
     expect(worker.postMessage).toHaveBeenCalledTimes(1);
   });
 
+  it('rejects init when shutdown happens during init', async () => {
+    const worker = new FakeWorker();
+    worker.postMessage = vi.fn();
+    const client = createPythonClient({
+      workerFactory: () => worker as any,
+    });
+    const initPromise = client.init({ indexURL: '/tmp/pyodide' });
+    const initResult = expect(initPromise).rejects.toThrow('pyodide init canceled by shutdown');
+    await client.shutdown();
+    await initResult;
+    expect(worker.postMessage).toHaveBeenCalledWith({ type: 'shutdown' });
+    expect(worker.terminate).toHaveBeenCalled();
+  });
+
   it('derives packageCacheDir from file indexURL when omitted', async () => {
     const worker = new FakeWorker();
     const client = createPythonClient({

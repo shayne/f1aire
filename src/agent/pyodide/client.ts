@@ -97,6 +97,9 @@ export function createPythonClient({
     },
     async shutdown() {
       if (!worker) return;
+      if (initReject || initPromise) {
+        initReject?.(new Error('pyodide init canceled by shutdown'));
+      }
       worker.postMessage({ type: 'shutdown' });
       await worker.terminate();
       worker = null;
