@@ -4,7 +4,7 @@ import type { SessionStore } from '../core/session-store.js';
 import type { RawPoint } from '../core/processors/types.js';
 import { normalizePoint } from '../core/processors/normalize.js';
 import { parseLapTimeMs } from '../core/summary.js';
-import { runJs } from './run-js.js';
+import { runPy } from './run-py.js';
 import { isPlainObject } from '../core/processors/merge.js';
 import {
   decodeCarChannels,
@@ -366,12 +366,12 @@ export function makeTools({
       inputSchema: z.object({}),
       execute: async () => processors.heartbeat?.state ?? null,
     }),
-    run_js: tool({
+    run_py: tool({
       description:
-        'Run JS/TS using store/processors/raw. See Engineer JS Skill in system prompt.',
+        'Run Python using store/processors/raw. See Engineer Python Skill in system prompt.',
       inputSchema: z.object({ code: z.string() }),
       execute: async ({ code }) =>
-        runJs({
+        runPy({
           code,
           context: {
             store,
