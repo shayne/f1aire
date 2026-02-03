@@ -7,6 +7,7 @@ export function createPythonClient({
   workerFactory = () => new NodeWorker(new URL('./worker.js', import.meta.url), { type: 'module' }),
 }: { workerFactory?: () => Worker } = {}) {
   let worker: Worker | null = null;
+  let initPromise: Promise<void> | null = null;
   const pending = new Map<string, (value: any) => void>();
 
   function ensureWorker() {
@@ -27,15 +28,22 @@ export function createPythonClient({
 
   return {
     async init({ indexURL, packageCacheDir }: { indexURL: string; packageCacheDir?: string }) {
+      if (initPromise) return initPromise;
       const w = ensureWorker();
-      return new Promise<void>((resolve, reject) => {
-        w.on('message', (msg: WorkerResponse) => {
+      initPromise = new Promise<void>((resolve, reject) => {
+        const handleMessage = (msg: WorkerResponse) => {
           if (msg.type !== 'init-result') return;
+          w.off('message', handleMessage);
           if (msg.ok) resolve();
-          else reject(new Error(msg.error ?? 'pyodide init failed'));
-        });
+          else {
+            initPromise = null;
+            reject(new Error(msg.error ?? 'pyodide init failed'));
+          }
+        };
+        w.on('message', handleMessage);
         w.postMessage({ type: 'init', indexURL, packageCacheDir: packageCacheDir ?? indexURL });
       });
+      return initPromise;
     },
     async run({ code, context }: { code: string; context?: unknown }) {
       const w = ensureWorker();
@@ -51,6 +59,7 @@ export function createPythonClient({
       worker.postMessage({ type: 'shutdown' });
       await worker.terminate();
       worker = null;
+      initPromise = null;
     },
   };
 }

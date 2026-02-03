@@ -15,6 +15,9 @@ class FakeWorker {
     this.listeners[event] = this.listeners[event] ?? [];
     this.listeners[event].push(cb);
   }
+  off(event: string, cb: Function) {
+    this.listeners[event] = (this.listeners[event] ?? []).filter((listener) => listener !== cb);
+  }
   emit(event: string, payload: unknown) {
     for (const cb of this.listeners[event] ?? []) cb(payload);
   }
@@ -29,5 +32,14 @@ describe('createPythonClient', () => {
     await client.init({ indexURL: '/tmp/pyodide' });
     const result = await client.run({ code: '1+1' });
     expect(result).toEqual({ ok: true, value: { ok: 1 } });
+  });
+
+  it('reuses the init promise for repeated calls', async () => {
+    const worker = new FakeWorker();
+    const client = createPythonClient({
+      workerFactory: () => worker as any,
+    });
+    await Promise.all([client.init({ indexURL: '/tmp/pyodide' }), client.init({ indexURL: '/tmp/pyodide' })]);
+    expect(worker.postMessage).toHaveBeenCalledTimes(1);
   });
 });
