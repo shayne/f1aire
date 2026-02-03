@@ -16,20 +16,26 @@ export async function ensurePyodideAssets({
   baseDir = getPyodideBaseDir(),
   download = defaultDownload,
   extract = defaultExtract,
+  onProgress,
 }: {
   version: string;
   baseDir?: string;
   download?: (url: string, destDir: string) => Promise<string>;
   extract?: (tarPath: string, destDir: string) => Promise<void>;
+  onProgress?: (msg: string) => void;
 }) {
   const marker = path.join(baseDir, 'full', 'index.html');
   try {
     await fs.access(marker);
+    onProgress?.('Python runtime ready.');
     return { ready: true };
   } catch {
     await fs.mkdir(baseDir, { recursive: true });
+    onProgress?.('Downloading Python runtime...');
     const tarPath = await download(getTarballUrl(version), baseDir);
+    onProgress?.('Extracting Python runtime...');
     await extract(tarPath, baseDir);
+    onProgress?.('Python runtime ready.');
     return { ready: true };
   }
 }

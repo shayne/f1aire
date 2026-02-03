@@ -62,7 +62,13 @@ export function App(): React.JSX.Element {
     void (async () => {
       try {
         setRuntimeMessage('Preparing Python runtime...');
-        await ensurePyodideAssets({ version: '0.29.3' });
+        const reportProgress = (msg: string) => {
+          if (!cancelled) setRuntimeMessage(msg);
+        };
+        await ensurePyodideAssets({
+          version: '0.29.3',
+          onProgress: reportProgress,
+        });
         if (!cancelled) setRuntimeReady(true);
       } catch (err) {
         if (!cancelled) {
