@@ -1,4 +1,5 @@
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { getDataDir } from '../../core/xdg.js';
 
 export const PYODIDE_VERSION = '0.29.3';
@@ -8,5 +9,6 @@ export function getPyodideBaseDir() {
 }
 
 export function getPyodideIndexUrl() {
-  return path.join(getPyodideBaseDir(), 'full');
+  const fullDir = path.join(getPyodideBaseDir(), 'full') + path.sep;
+  return pathToFileURL(fullDir).href;
 }

@@ -18,6 +18,9 @@ class FakeWorker {
   off(event: string, cb: Function) {
     this.listeners[event] = (this.listeners[event] ?? []).filter((listener) => listener !== cb);
   }
+  removeAllListeners() {
+    this.listeners = {};
+  }
   emit(event: string, payload: unknown) {
     for (const cb of this.listeners[event] ?? []) cb(payload);
   }

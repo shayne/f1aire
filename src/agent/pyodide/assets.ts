@@ -1,5 +1,5 @@
 import path from 'node:path';
-import { promises as fs } from 'node:fs';
+import * as fs from 'node:fs/promises';
 import { getPyodideBaseDir } from './paths.js';
 
 function getTarballName(version: string) {
@@ -35,6 +35,7 @@ export async function ensurePyodideAssets({
     const tarPath = await download(getTarballUrl(version), baseDir);
     onProgress?.('Extracting Python runtime...');
     await extract(tarPath, baseDir);
+    await fs.unlink(tarPath).catch(() => {});
     onProgress?.('Python runtime ready.');
     return { ready: true };
   }

@@ -29,14 +29,25 @@ parentPort?.on('message', async (msg: WorkerMessage) => {
     }
     try {
       if (msg.context) {
-        pyodide.globals.set('context', pyodide.toPy(msg.context));
+        const contextProxy = pyodide.toPy(msg.context);
+        try {
+          pyodide.globals.set('context', contextProxy);
+        } finally {
+          contextProxy.destroy();
+        }
       }
       const value = await pyodide.runPythonAsync(msg.code);
+      let result = value ?? null;
+      if (value && typeof value === 'object' && typeof (value as { toJs?: unknown }).toJs === 'function') {
+        const proxy = value as { toJs: (opts?: unknown) => unknown; destroy?: () => void };
+        result = proxy.toJs({ dict_converter: Object });
+        proxy.destroy?.();
+      }
       parentPort?.postMessage({
         type: 'run-result',
         id: msg.id,
         ok: true,
-        value: value?.toJs?.({ dict_converter: Object }) ?? value ?? null,
+        value: result,
       });
     } catch (err: any) {
       parentPort?.postMessage({ type: 'run-result', id: msg.id, ok: false, error: String(err?.message ?? err) });
