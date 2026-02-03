@@ -1,3 +1,4 @@
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { describe, it, expect, vi } from 'vitest';
 import { createPythonClient } from './client.js';
 
@@ -44,5 +45,20 @@ describe('createPythonClient', () => {
     });
     await Promise.all([client.init({ indexURL: '/tmp/pyodide' }), client.init({ indexURL: '/tmp/pyodide' })]);
     expect(worker.postMessage).toHaveBeenCalledTimes(1);
+  });
+
+  it('derives packageCacheDir from file indexURL when omitted', async () => {
+    const worker = new FakeWorker();
+    const client = createPythonClient({
+      workerFactory: () => worker as any,
+    });
+    const indexURL = pathToFileURL('/tmp/pyodide/full/').href;
+    await client.init({ indexURL });
+    const [initMessage] = worker.postMessage.mock.calls[0] ?? [];
+    expect(initMessage).toMatchObject({
+      type: 'init',
+      indexURL,
+      packageCacheDir: fileURLToPath(indexURL),
+    });
   });
 });

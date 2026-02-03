@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { Worker } from 'node:worker_threads';
 import { Worker as NodeWorker } from 'node:worker_threads';
+import { fileURLToPath } from 'node:url';
 import type { WorkerResponse } from './protocol.js';
 
 export function createPythonClient({
@@ -79,7 +80,9 @@ export function createPythonClient({
           }
         };
         w.on('message', handleMessage);
-        w.postMessage({ type: 'init', indexURL, packageCacheDir: packageCacheDir ?? indexURL });
+        const resolvedPackageCacheDir =
+          packageCacheDir ?? (indexURL.startsWith('file://') ? fileURLToPath(indexURL) : indexURL);
+        w.postMessage({ type: 'init', indexURL, packageCacheDir: resolvedPackageCacheDir });
       });
       return initPromise;
     },
@@ -97,6 +100,7 @@ export function createPythonClient({
       worker.postMessage({ type: 'shutdown' });
       await worker.terminate();
       worker = null;
+      initReject = null;
       initPromise = null;
     },
   };
