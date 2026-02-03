@@ -6,6 +6,8 @@ import { normalizePoint } from '../core/processors/normalize.js';
 import { parseLapTimeMs } from '../core/summary.js';
 import { runPy } from './run-py.js';
 import { isPlainObject } from '../core/processors/merge.js';
+import { createPythonClient } from './pyodide/client.js';
+import { getPyodideBaseDir, getPyodideIndexUrl } from './pyodide/paths.js';
 import {
   decodeCarChannels,
   decodeSegmentStatus,
@@ -89,6 +91,10 @@ export function makeTools({
   const analysis = createAnalysisContext({ store, processors });
   const analysisIndex = buildAnalysisIndex({ processors });
   let currentCursor: TimeCursor = { ...timeCursor };
+  const pythonClient = createPythonClient();
+  let pythonInit: Promise<void> | null = null;
+  const pyodideIndexUrl = getPyodideIndexUrl();
+  const pyodideCacheDir = getPyodideBaseDir();
 
   const resolveCurrentCursor = () => analysisIndex.resolveAsOf(currentCursor);
   const getDefaultEndLap = () => {
@@ -370,8 +376,20 @@ export function makeTools({
       description:
         'Run Python using store/processors/raw. See Engineer Python Skill in system prompt.',
       inputSchema: z.object({ code: z.string() }),
-      execute: async ({ code }) =>
-        runPy({
+      execute: async ({ code }) => {
+        if (!pythonInit) {
+          pythonInit = pythonClient.init({
+            indexURL: pyodideIndexUrl,
+            packageCacheDir: pyodideCacheDir,
+          });
+        }
+        try {
+          await pythonInit;
+        } catch (error) {
+          pythonInit = null;
+          throw error;
+        }
+        return runPy({
           code,
           context: {
             store,
@@ -399,7 +417,9 @@ export function makeTools({
             },
             analysis,
           },
-        }),
+          runtime: pythonClient,
+        });
+      },
     }),
     set_time_cursor: tool({
       description: 'Set the as-of cursor for analysis (lap or ISO time).',
