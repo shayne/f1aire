@@ -1,5 +1,5 @@
 import { describe, expectTypeOf, it } from 'vitest';
-import type { WorkerMessage, WorkerResponse } from './protocol.js';
+import type { ToolCallMessage, ToolResultMessage, WorkerMessage, WorkerResponse } from './protocol.js';
 
 describe('pyodide protocol tool bridge types', () => {
   it('accepts tool-call and tool-result messages', () => {
@@ -20,5 +20,8 @@ describe('pyodide protocol tool bridge types', () => {
     } as const;
 
     expectTypeOf(toolResult).toMatchTypeOf<WorkerMessage>();
+
+    expectTypeOf<WorkerMessage>().not.toMatchTypeOf<ToolCallMessage>();
+    expectTypeOf<WorkerResponse>().not.toMatchTypeOf<ToolResultMessage>();
   });
 });
