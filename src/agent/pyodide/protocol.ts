@@ -4,10 +4,10 @@ export type ToolCallMessage = { type: 'tool-call'; id: string; name: string; arg
 export type ResetMessage = { type: 'reset' };
 export type ShutdownMessage = { type: 'shutdown' };
 
-export type WorkerMessage = InitMessage | RunMessage | ToolCallMessage | ResetMessage | ShutdownMessage;
+export type WorkerMessage = InitMessage | RunMessage | ToolResultMessage | ResetMessage | ShutdownMessage;
 
 export type InitResult = { type: 'init-result'; ok: boolean; error?: string };
 export type RunResult = { type: 'run-result'; id: string; ok: boolean; value?: unknown; error?: string };
 export type ToolResultMessage = { type: 'tool-result'; id: string; ok: boolean; value?: unknown; error?: string };
 
-export type WorkerResponse = InitResult | RunResult | ToolResultMessage;
+export type WorkerResponse = InitResult | RunResult | ToolCallMessage;
