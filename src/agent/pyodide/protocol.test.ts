@@ -21,7 +21,7 @@ describe('pyodide protocol tool bridge types', () => {
 
     expectTypeOf(toolResult).toMatchTypeOf<WorkerMessage>();
 
-    expectTypeOf<WorkerMessage>().not.toMatchTypeOf<ToolCallMessage>();
-    expectTypeOf<WorkerResponse>().not.toMatchTypeOf<ToolResultMessage>();
+    expectTypeOf<ToolCallMessage>().not.toMatchTypeOf<WorkerMessage>();
+    expectTypeOf<ToolResultMessage>().not.toMatchTypeOf<WorkerResponse>();
   });
 });
