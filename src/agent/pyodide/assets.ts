@@ -1,5 +1,7 @@
 import path from 'node:path';
+import { createReadStream } from 'node:fs';
 import * as fs from 'node:fs/promises';
+import unbzip2Stream from 'unbzip2-stream';
 import { getPyodideBaseDir } from './paths.js';
 
 function getTarballName(version: string) {
@@ -52,5 +54,16 @@ async function defaultDownload(url: string, destDir: string) {
 
 async function defaultExtract(tarPath: string, destDir: string) {
   const { extract } = await import('tar');
+  if (tarPath.endsWith('.bz2')) {
+    await new Promise<void>((resolve, reject) => {
+      const stream = createReadStream(tarPath)
+        .pipe(unbzip2Stream())
+        .pipe(extract({ cwd: destDir, strip: 1 }));
+      stream.on('error', reject);
+      stream.on('close', resolve);
+      stream.on('finish', resolve);
+    });
+    return;
+  }
   await extract({ file: tarPath, cwd: destDir, strip: 1 });
 }
