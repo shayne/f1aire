@@ -28,4 +28,15 @@ describe('tools', () => {
     expect(tools).toHaveProperty('get_position_changes');
     expect(tools).toHaveProperty('set_time_cursor');
   });
+
+  it('run_py schema can be converted to JSON schema', () => {
+    const tools = makeTools({
+      store,
+      processors,
+      timeCursor: { latest: true },
+      onTimeCursorChange: () => {},
+    });
+
+    expect(() => tools.run_py.inputSchema.toJSONSchema()).not.toThrow();
+  });
 });

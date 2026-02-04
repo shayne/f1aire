@@ -30,11 +30,62 @@ import { SeasonPicker } from './tui/screens/SeasonPicker.js';
 import { SessionPicker } from './tui/screens/SessionPicker.js';
 import { Summary } from './tui/screens/Summary.js';
 
+type ToolTimingEntry = {
+  toolName: string;
+  toolCallId?: string;
+  inputBytes?: number;
+  inputStart?: number;
+  callStart?: number;
+};
+
+type ToolPart = Record<string, unknown>;
+
+type RuntimeProgress = {
+  phase: 'downloading' | 'extracting' | 'ready';
+  downloadedBytes?: number;
+  totalBytes?: number;
+};
+
+type RuntimeProgressUpdate = RuntimeProgress & { message: string };
+
+const getToolName = (part: ToolPart): string =>
+  ((part as any).toolName ??
+    (part as any).tool?.name ??
+    (part as any).toolCall?.name ??
+    'tool') as string;
+
+const getToolCallId = (part: ToolPart): string | undefined => {
+  const id =
+    (part as any).toolCallId ??
+    (part as any).toolCall?.id ??
+    (part as any).id;
+  return typeof id === 'string' ? id : undefined;
+};
+
+const getToolInputBytes = (part: ToolPart): number | undefined => {
+  const input =
+    (part as any).args ??
+    (part as any).input ??
+    (part as any).toolCall?.args ??
+    (part as any).tool?.args ??
+    (part as any).toolInput;
+  if (input == null) return undefined;
+  if (typeof input === 'string') return Buffer.byteLength(input, 'utf-8');
+  try {
+    return Buffer.byteLength(JSON.stringify(input), 'utf-8');
+  } catch {
+    return undefined;
+  }
+};
+
 export function App(): React.JSX.Element {
   const [screen, setScreen] = useState<Screen>({ name: 'season' });
   const [runtimeReady, setRuntimeReady] = useState(false);
   const [runtimeMessage, setRuntimeMessage] = useState(
     'Checking Python runtime...',
+  );
+  const [runtimeProgress, setRuntimeProgress] = useState<RuntimeProgress | null>(
+    null,
   );
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [streamingText, setStreamingText] = useState('');
@@ -47,6 +98,11 @@ export function App(): React.JSX.Element {
   const engineerLoggerRef = useRef<ReturnType<typeof createEngineerLogger> | null>(
     null,
   );
+  const toolTimingRef = useRef({
+    byId: new Map<string, ToolTimingEntry>(),
+    inputQueue: [] as ToolTimingEntry[],
+    callQueue: [] as ToolTimingEntry[],
+  });
   const perfStopRef = useRef<(() => void) | null>(null);
   const { stdout } = useStdout();
   const terminalRows = stdout?.rows ?? 40;
@@ -62,8 +118,14 @@ export function App(): React.JSX.Element {
     void (async () => {
       try {
         setRuntimeMessage('Preparing Python runtime...');
-        const reportProgress = (msg: string) => {
-          if (!cancelled) setRuntimeMessage(msg);
+        const reportProgress = (update: RuntimeProgressUpdate) => {
+          if (cancelled) return;
+          setRuntimeMessage(update.message);
+          setRuntimeProgress({
+            phase: update.phase,
+            downloadedBytes: update.downloadedBytes,
+            totalBytes: update.totalBytes,
+          });
         };
         await ensurePyodideAssets({
           version: '0.29.3',
@@ -72,6 +134,7 @@ export function App(): React.JSX.Element {
         if (!cancelled) setRuntimeReady(true);
       } catch (err) {
         if (!cancelled) {
+          setRuntimeProgress(null);
           setRuntimeMessage(
             `Python runtime failed: ${formatUnknownError(err)}`,
           );
@@ -191,7 +254,7 @@ export function App(): React.JSX.Element {
       <Header breadcrumb={breadcrumb} compact={isShort} />
       <Box flexGrow={1} flexDirection="column" marginLeft={1} height={contentHeight}>
         {!runtimeReady ? (
-          <RuntimePreparing message={runtimeMessage} />
+          <RuntimePreparing message={runtimeMessage} progress={runtimeProgress ?? undefined} />
         ) : (
           <>
             {screen.name === 'season' && (
@@ -302,6 +365,10 @@ export function App(): React.JSX.Element {
                       logger: engineerLoggerRef.current?.logger ?? undefined,
                       onEvent: (event) => {
                         if (event.type === 'send-start') {
+                          const toolTiming = toolTimingRef.current;
+                          toolTiming.byId.clear();
+                          toolTiming.inputQueue.length = 0;
+                          toolTiming.callQueue.length = 0;
                           setStreamStatus('Thinking...');
                           pushActivity('Thinking...');
                           return;
@@ -336,26 +403,92 @@ export function App(): React.JSX.Element {
                           return;
                         }
                         if (partType === 'tool-input-start') {
-                          setStreamStatus('Preparing tool call...');
-                          pushActivity('Preparing tool call');
+                          const toolName = getToolName(part);
+                          const toolCallId = getToolCallId(part);
+                          const inputBytes = getToolInputBytes(part);
+                          const toolTiming = toolTimingRef.current;
+                          const inputStart = performance.now();
+                          if (toolCallId) {
+                            toolTiming.byId.set(toolCallId, {
+                              toolName,
+                              toolCallId,
+                              inputBytes,
+                              inputStart,
+                            });
+                          } else {
+                            toolTiming.inputQueue.push({
+                              toolName,
+                              inputBytes,
+                              inputStart,
+                            });
+                          }
+                          setStreamStatus('Writing code...');
+                          pushActivity('Writing code');
                           return;
                         }
                         if (partType === 'tool-call') {
-                          const toolName =
-                            (part as any).toolName ??
-                            (part as any).tool?.name ??
-                            (part as any).toolCall?.name ??
-                            'tool';
+                          const toolName = getToolName(part);
+                          const toolCallId = getToolCallId(part);
+                          const toolTiming = toolTimingRef.current;
+                          const callStart = performance.now();
+                          let entry: ToolTimingEntry | undefined =
+                            toolCallId ? toolTiming.byId.get(toolCallId) : undefined;
+                          if (!entry && toolTiming.inputQueue.length > 0) {
+                            entry = toolTiming.inputQueue.shift();
+                          }
+                          const inputBytes =
+                            entry?.inputBytes ?? getToolInputBytes(part);
+                          const codegenEvent: Record<string, unknown> = {
+                            type: 'tool-timing',
+                            phase: 'codegen',
+                            toolName,
+                            toolCallId,
+                            inputBytes,
+                          };
+                          if (entry?.inputStart != null) {
+                            codegenEvent.durationMs = Math.round(
+                              callStart - entry.inputStart,
+                            );
+                          }
+                          void engineerLoggerRef.current?.logger(codegenEvent);
+                          const nextEntry: ToolTimingEntry = {
+                            toolName,
+                            toolCallId,
+                            inputBytes,
+                            inputStart: entry?.inputStart,
+                            callStart,
+                          };
+                          if (toolCallId) {
+                            toolTiming.byId.set(toolCallId, nextEntry);
+                          } else {
+                            toolTiming.callQueue.push(nextEntry);
+                          }
                           setStreamStatus(`Running tool: ${toolName}`);
                           pushActivity(`Running tool: ${toolName}`);
                           return;
                         }
                         if (partType === 'tool-result') {
-                          const toolName =
-                            (part as any).toolName ??
-                            (part as any).tool?.name ??
-                            (part as any).toolCall?.name ??
-                            'tool';
+                          const toolName = getToolName(part);
+                          const toolCallId = getToolCallId(part);
+                          const toolTiming = toolTimingRef.current;
+                          let entry: ToolTimingEntry | undefined =
+                            toolCallId ? toolTiming.byId.get(toolCallId) : undefined;
+                          if (!entry && toolTiming.callQueue.length > 0) {
+                            entry = toolTiming.callQueue.shift();
+                          }
+                          const executionEvent: Record<string, unknown> = {
+                            type: 'tool-timing',
+                            phase: 'execution',
+                            toolName,
+                            toolCallId,
+                          };
+                          if (entry?.callStart != null) {
+                            executionEvent.durationMs = Math.round(
+                              performance.now() - entry.callStart,
+                            );
+                          }
+                          void engineerLoggerRef.current?.logger(executionEvent);
+                          if (toolCallId) toolTiming.byId.delete(toolCallId);
                           setStreamStatus(`Processing result: ${toolName}`);
                           pushActivity(`Processing result: ${toolName}`);
                         }

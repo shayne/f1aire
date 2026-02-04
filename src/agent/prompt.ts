@@ -27,12 +27,11 @@ Tools:
 
 Engineer Python Skill:
 You can run Python via the run_py tool. A global context dict is provided with:
-- store: SessionStore (topic(name).latest/timeline)
-- processors: { timingData, driverList, timingAppData, timingStats, trackStatus, lapCount, weatherData, sessionInfo, sessionData, extrapolatedClock, topThree, raceControlMessages, teamRadio, championshipPrediction, pitStopSeries, pitLaneTimeCollection, pitStop, carData, position, heartbeat }
 - raw: { subscribe, live }
-- helpers: { parseLapTimeMs, normalizePoint, getDriverName }
-- helpers: { decodeCarChannels, decodeSegmentStatus, extractLapTimeMs, extractSectorTimesMs, extractSegmentStatuses, isCleanLap, trackStatusIsGreen, isPitLap, getTrackStatusAt, parseGapSeconds, parseIntervalSeconds, smartGapToLeaderSeconds, shapeOf, shapeOfMany }
-- analysis: { getDrivers, getDriverName, getDriverNumberByName, getStintsForDriver, getStintForLap, getTrackStatusAt, getLapTable, getTopicStats, getTopicTimeline, getLatestCarTelemetry }
+- processors: { timingData, driverList, timingAppData, timingStats, trackStatus, lapCount, weatherData, sessionInfo, sessionData, extrapolatedClock, topThree, raceControlMessages, teamRadio, championshipPrediction, pitStopSeries, pitLaneTimeCollection, pitStop, carData, position, heartbeat }
+- vars: optional inputs you pass via run_py({ code, vars })
+
+Note: processors entries are the merged state objects (no helper methods). For richer helpers (lap tables, topic timelines, shape inspection), call the JS tools first (get_lap_table, get_topic_timeline, inspect_topic) and pass their results into Python via run_py vars.
 
 Notebook-style persistence: the Python runtime persists between calls; variables/imports stay defined until reset. Reassign or clear if you need a clean slate.
 Output: The tool returns the value of the last expression. Return JSON-serializable values only (dict/list/str/number/bool/None). Convert non-JSON types before returning.
@@ -43,31 +42,19 @@ Tip: Use inspect_topic or context["helpers"].shapeOf/shapeOfMany to discover dat
 Rule: If the user says “as of lap X/time Y”, call set_time_cursor first, then answer.
 
 Examples:
-# best lap vs rival
-max_lap = context["processors"]["timingData"]["bestLaps"].get("1")
-lando = context["processors"]["timingData"]["bestLaps"].get("4")
-{"deltaMs": lando["timeMs"] - max_lap["timeMs"]}
-
-# latest car telemetry channels for a driver
-entry = context["processors"]["carData"]["state"]["Entries"][-1]
-channels = entry["Cars"]["4"]["Channels"]
-context["helpers"].decodeCarChannels(channels)
+# best lap vs rival (from merged TimingData state)
+best_laps = (context["processors"]["timingData"] or {}).get("bestLaps", {})
+max_lap = best_laps.get("1")
+lando = best_laps.get("4")
+{"deltaMs": (lando["timeMs"] - max_lap["timeMs"]) if (lando and max_lap) else None}
 
 # latest positions (merged state)
-context["processors"]["timingData"]["state"]["Lines"]
-
-# last 3 completed laps for a driver
-context["processors"]["timingData"].getLapHistory("4")[-3:]
-
-# get a driver name
-context["helpers"].getDriverName("4")
-
-# lap table for first 10 laps of two drivers
-context["analysis"].getLapTable({"driverNumbers": ["1", "4"], "endLap": 10})
+(context["processors"]["timingData"] or {}).get("Lines")
 
 Cookbook: shape -> compute
 Step 1) inspect_topic({ topic: 'TimingData', samples: 3, maxDepth: 5 })
 Step 2) run_py with:
-rows = context["analysis"].getLapTable({"driverNumbers": ["1", "4"], "includeSectors": True, "limit": 5})
+# (assuming you fetched rows via get_lap_table and pass as vars={"rows": rows})
+rows = context["vars"]["rows"]
 [{"lap": row["lap"], "s1": (row.get("sectorsMs") or [None])[0]} for row in rows]
 `;

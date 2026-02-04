@@ -1,11 +1,35 @@
+import fs from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import type { Worker } from 'node:worker_threads';
 import { Worker as NodeWorker } from 'node:worker_threads';
 import { fileURLToPath } from 'node:url';
 import type { WorkerResponse } from './protocol.js';
 
+type WorkerSpec = {
+  url: URL;
+  execArgv?: string[];
+};
+
+export function resolveWorkerSpec({
+  baseUrl = import.meta.url,
+  existsSync = fs.existsSync,
+}: {
+  baseUrl?: string | URL;
+  existsSync?: (path: string) => boolean;
+} = {}): WorkerSpec {
+  const jsUrl = new URL('./worker.js', baseUrl);
+  if (existsSync(fileURLToPath(jsUrl))) {
+    return { url: jsUrl };
+  }
+  const tsUrl = new URL('./worker.ts', baseUrl);
+  return { url: tsUrl, execArgv: ['--import', 'tsx'] };
+}
+
 export function createPythonClient({
-  workerFactory = () => new NodeWorker(new URL('./worker.js', import.meta.url), { type: 'module' }),
+  workerFactory = () => {
+    const spec = resolveWorkerSpec();
+    return new NodeWorker(spec.url, { type: 'module', execArgv: spec.execArgv });
+  },
 }: { workerFactory?: () => Worker } = {}) {
   let worker: Worker | null = null;
   let initPromise: Promise<void> | null = null;

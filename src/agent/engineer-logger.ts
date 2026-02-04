@@ -18,6 +18,7 @@ const BASE_EVENT_TYPES = new Set([
   'load-session-store',
   'timing-process',
   'event-loop-lag',
+  'tool-timing',
 ]);
 const STREAM_PART_TYPES = new Set([
   'tool-call',

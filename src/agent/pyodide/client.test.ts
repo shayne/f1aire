@@ -1,6 +1,9 @@
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { describe, it, expect, vi } from 'vitest';
-import { createPythonClient } from './client.js';
+import { createPythonClient, resolveWorkerSpec } from './client.js';
 
 class FakeWorker {
   listeners: Record<string, Function[]> = {};
@@ -74,5 +77,29 @@ describe('createPythonClient', () => {
       indexURL,
       packageCacheDir: fileURLToPath(indexURL),
     });
+  });
+
+  it('prefers worker.js when present', () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'f1aire-worker-'));
+    const workerJsPath = path.join(tmpDir, 'worker.js');
+    fs.writeFileSync(workerJsPath, '// worker js');
+    const baseUrl = pathToFileURL(path.join(tmpDir, 'client.ts')).href;
+
+    const spec = resolveWorkerSpec({ baseUrl });
+
+    expect(fileURLToPath(spec.url)).toBe(workerJsPath);
+    expect(spec.execArgv).toBeUndefined();
+  });
+
+  it('falls back to worker.ts with tsx import when js is missing', () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'f1aire-worker-'));
+    const workerTsPath = path.join(tmpDir, 'worker.ts');
+    fs.writeFileSync(workerTsPath, '// worker ts');
+    const baseUrl = pathToFileURL(path.join(tmpDir, 'client.ts')).href;
+
+    const spec = resolveWorkerSpec({ baseUrl });
+
+    expect(fileURLToPath(spec.url)).toBe(workerTsPath);
+    expect(spec.execArgv).toEqual(['--import', 'tsx']);
   });
 });

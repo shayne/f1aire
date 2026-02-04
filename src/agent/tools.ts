@@ -7,6 +7,7 @@ import { parseLapTimeMs } from '../core/summary.js';
 import { runPy } from './run-py.js';
 import { isPlainObject } from '../core/processors/merge.js';
 import { createPythonClient } from './pyodide/client.js';
+import { buildPythonContext } from './pyodide/context.js';
 import { getPyodideBaseDir, getPyodideIndexUrl } from './pyodide/paths.js';
 import {
   decodeCarChannels,
@@ -375,8 +376,11 @@ export function makeTools({
     run_py: tool({
       description:
         'Run Python using store/processors/raw. See Engineer Python Skill in system prompt.',
-      inputSchema: z.object({ code: z.string() }),
-      execute: async ({ code }) => {
+      inputSchema: z.object({
+        code: z.string(),
+        vars: z.record(z.string(), z.any()).optional(),
+      }),
+      execute: async ({ code, vars }) => {
         if (!pythonInit) {
           pythonInit = pythonClient.init({
             indexURL: pyodideIndexUrl,
@@ -389,34 +393,10 @@ export function makeTools({
           pythonInit = null;
           throw error;
         }
+        const context = buildPythonContext({ store, processors, vars });
         return runPy({
           code,
-          context: {
-            store,
-            processors,
-            raw: store.raw,
-            helpers: {
-              parseLapTimeMs,
-              normalizePoint,
-              getDriverName,
-              decodeCarChannels,
-              decodeSegmentStatus,
-              extractLapTimeMs,
-              extractSegmentStatuses,
-              extractSectorTimesMs,
-              isCleanLap,
-              trackStatusIsGreen,
-              isPitLap,
-              getTrackStatusAt: (dateTime: Date) =>
-                processors.trackStatus?.getAt?.(dateTime) ?? null,
-              parseGapSeconds,
-              parseIntervalSeconds,
-              smartGapToLeaderSeconds,
-              shapeOf,
-              shapeOfMany,
-            },
-            analysis,
-          },
+          context,
           runtime: pythonClient,
         });
       },

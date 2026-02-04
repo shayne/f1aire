@@ -1,6 +1,7 @@
 import path from 'node:path';
-import { createReadStream } from 'node:fs';
+import { createReadStream, createWriteStream } from 'node:fs';
 import * as fs from 'node:fs/promises';
+import { Readable } from 'node:stream';
 import unbzip2Stream from 'unbzip2-stream';
 import { getPyodideBaseDir } from './paths.js';
 
@@ -22,33 +23,89 @@ export async function ensurePyodideAssets({
 }: {
   version: string;
   baseDir?: string;
-  download?: (url: string, destDir: string) => Promise<string>;
+  download?: (
+    url: string,
+    destDir: string,
+    onProgress?: (progress: DownloadProgress) => void,
+  ) => Promise<string>;
   extract?: (tarPath: string, destDir: string) => Promise<void>;
-  onProgress?: (msg: string) => void;
+  onProgress?: (update: PyodideProgress) => void;
 }) {
-  const marker = path.join(baseDir, 'full', 'index.html');
+  const marker = path.join(baseDir, 'pyodide-lock.json');
   try {
     await fs.access(marker);
-    onProgress?.('Python runtime ready.');
+    onProgress?.({ phase: 'ready', message: 'Python runtime ready.' });
     return { ready: true };
   } catch {
     await fs.mkdir(baseDir, { recursive: true });
-    onProgress?.('Downloading Python runtime...');
-    const tarPath = await download(getTarballUrl(version), baseDir);
-    onProgress?.('Extracting Python runtime...');
+    onProgress?.({ phase: 'downloading', message: 'Downloading Python runtime...' });
+    const tarPath = await download(getTarballUrl(version), baseDir, (progress) => {
+      onProgress?.({
+        phase: 'downloading',
+        message: 'Downloading Python runtime...',
+        downloadedBytes: progress.downloadedBytes,
+        totalBytes: progress.totalBytes,
+      });
+    });
+    onProgress?.({ phase: 'extracting', message: 'Extracting Python runtime...' });
     await extract(tarPath, baseDir);
     await fs.unlink(tarPath).catch(() => {});
-    onProgress?.('Python runtime ready.');
+    onProgress?.({ phase: 'ready', message: 'Python runtime ready.' });
     return { ready: true };
   }
 }
 
-async function defaultDownload(url: string, destDir: string) {
+type DownloadProgress = {
+  downloadedBytes: number;
+  totalBytes?: number;
+};
+
+type PyodideProgress = {
+  phase: 'downloading' | 'extracting' | 'ready';
+  message: string;
+  downloadedBytes?: number;
+  totalBytes?: number;
+};
+
+async function defaultDownload(
+  url: string,
+  destDir: string,
+  onProgress?: (progress: DownloadProgress) => void,
+) {
   const res = await fetch(url);
   if (!res.ok) throw new Error(`Download failed: ${res.status}`);
   const filePath = path.join(destDir, 'pyodide.tar.bz2');
-  const buf = Buffer.from(await res.arrayBuffer());
-  await fs.writeFile(filePath, buf);
+  const totalBytesHeader = res.headers.get('content-length');
+  const totalBytes =
+    totalBytesHeader && Number.isFinite(Number(totalBytesHeader))
+      ? Number(totalBytesHeader)
+      : undefined;
+  onProgress?.({ downloadedBytes: 0, totalBytes });
+  if (!res.body) {
+    const buf = Buffer.from(await res.arrayBuffer());
+    await fs.writeFile(filePath, buf);
+    onProgress?.({ downloadedBytes: buf.length, totalBytes });
+    return filePath;
+  }
+  const fileStream = createWriteStream(filePath);
+  const stream = Readable.fromWeb(res.body as unknown as ReadableStream);
+  let downloadedBytes = 0;
+  let lastUpdate = 0;
+  await new Promise<void>((resolve, reject) => {
+    stream.on('data', (chunk: Buffer) => {
+      downloadedBytes += chunk.length;
+      const now = Date.now();
+      if (now - lastUpdate > 120) {
+        lastUpdate = now;
+        onProgress?.({ downloadedBytes, totalBytes });
+      }
+    });
+    stream.on('error', reject);
+    fileStream.on('error', reject);
+    fileStream.on('finish', resolve);
+    stream.pipe(fileStream);
+  });
+  onProgress?.({ downloadedBytes, totalBytes });
   return filePath;
 }
 
