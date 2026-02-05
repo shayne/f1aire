@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import type { Worker } from 'node:worker_threads';
 import { Worker as NodeWorker } from 'node:worker_threads';
 import { fileURLToPath } from 'node:url';
-import type { WorkerResponse } from './protocol.js';
+import type { WorkerMessage, WorkerResponse } from './protocol.js';
 
 type WorkerSpec = {
   url: URL;
@@ -58,11 +58,20 @@ export function createPythonClient({
     }
   }
 
+  function safePostMessage(target: Worker, message: WorkerMessage) {
+    try {
+      target.postMessage(message);
+    }
+    catch {
+      // Worker likely terminated; avoid unhandled rejection in tool-call handler.
+    }
+  }
+
   async function handleToolCall({ id, name, args }: { id: string; name: string; args: unknown }) {
     const w = worker;
     if (!w) return;
     if (name === 'run_py') {
-      w.postMessage({
+      safePostMessage(w, {
         type: 'tool-result',
         id,
         ok: false,
@@ -71,7 +80,7 @@ export function createPythonClient({
       return;
     }
     if (!toolHandler) {
-      w.postMessage({
+      safePostMessage(w, {
         type: 'tool-result',
         id,
         ok: false,
@@ -81,11 +90,13 @@ export function createPythonClient({
     }
     try {
       const value = await toolHandler(name, args);
-      w.postMessage({ type: 'tool-result', id, ok: true, value });
+      if (worker !== w) return;
+      safePostMessage(w, { type: 'tool-result', id, ok: true, value });
     }
     catch (error) {
+      if (worker !== w) return;
       const message = error instanceof Error ? error.message : String(error);
-      w.postMessage({ type: 'tool-result', id, ok: false, error: message });
+      safePostMessage(w, { type: 'tool-result', id, ok: false, error: message });
     }
   }
 

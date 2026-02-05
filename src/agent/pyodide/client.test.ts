@@ -62,6 +62,42 @@ describe('createPythonClient', () => {
     });
   });
 
+  it('rejects run_py tool-call with an error result', async () => {
+    const worker = new FakeWorker();
+    const client = createPythonClient({
+      workerFactory: () => worker as any,
+    });
+
+    await client.init({ indexURL: '/tmp/pyodide' });
+    worker.emit('message', { type: 'tool-call', id: 'abc', name: 'run_py', args: {} });
+    await Promise.resolve();
+
+    expect(worker.postMessage).toHaveBeenCalledWith({
+      type: 'tool-result',
+      id: 'abc',
+      ok: false,
+      error: 'run_py is not callable from Python',
+    });
+  });
+
+  it('returns an error result when tool handler is missing', async () => {
+    const worker = new FakeWorker();
+    const client = createPythonClient({
+      workerFactory: () => worker as any,
+    });
+
+    await client.init({ indexURL: '/tmp/pyodide' });
+    worker.emit('message', { type: 'tool-call', id: 'abc', name: 'get_driver_list', args: {} });
+    await Promise.resolve();
+
+    expect(worker.postMessage).toHaveBeenCalledWith({
+      type: 'tool-result',
+      id: 'abc',
+      ok: false,
+      error: 'tool handler not configured',
+    });
+  });
+
   it('reuses the init promise for repeated calls', async () => {
     const worker = new FakeWorker();
     const client = createPythonClient({
