@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { parentPort } from 'node:worker_threads';
 import { loadPyodide } from 'pyodide';
-import { buildPythonBridgePrelude } from './python-bridge.js';
+import { resolveBridgeModuleUrl } from './bridge-loader.js';
 import type { WorkerMessage } from './protocol.js';
 
 let pyodide: Awaited<ReturnType<typeof loadPyodide>> | null = null;
@@ -36,7 +36,12 @@ function registerToolBridge() {
 
 async function installPythonBridge() {
   if (!pyodide) return;
-  const prelude = buildPythonBridgePrelude();
+  const bridgeUrl = resolveBridgeModuleUrl();
+  const bridgeModule = await import(bridgeUrl.href);
+  if (typeof bridgeModule.buildPythonBridgePrelude !== 'function') {
+    throw new Error('python bridge module is missing buildPythonBridgePrelude');
+  }
+  const prelude = bridgeModule.buildPythonBridgePrelude();
   await pyodide.runPythonAsync(prelude);
 }
 
