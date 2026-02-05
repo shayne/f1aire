@@ -32,6 +32,7 @@ export function makeTools({
   processors,
   timeCursor,
   onTimeCursorChange,
+  logger,
 }: {
   store: SessionStore;
   processors: {
@@ -78,6 +79,7 @@ export function makeTools({
   };
   timeCursor: TimeCursor;
   onTimeCursorChange: (cursor: TimeCursor) => void;
+  logger?: (event: Record<string, unknown>) => void | Promise<void>;
 }) {
   const getNormalizedLatest = (topic: string) => {
     const direct = store.topic(topic).latest as RawPoint | null;
@@ -105,7 +107,7 @@ export function makeTools({
     const parsedArgs = target.inputSchema.parse(args);
     return target.execute(parsedArgs);
   };
-  const pythonClient = createPythonClient({ toolHandler });
+  const pythonClient = createPythonClient({ toolHandler, logger });
   let pythonInit: Promise<void> | null = null;
   const pyodideIndexUrl = getPyodideIndexUrl();
   const pyodideCacheDir = getPyodideBaseDir();

@@ -6,4 +6,8 @@ describe('systemPrompt', () => {
     expect(systemPrompt).toContain('Engineer Python Skill');
     expect(systemPrompt).toContain('run_py');
   });
+
+  it('documents call_tool in system prompt', () => {
+    expect(systemPrompt).toContain('call_tool');
+  });
 });

@@ -347,6 +347,7 @@ export function App(): React.JSX.Element {
                       processors: timingService.processors,
                       timeCursor: initialTimeCursor,
                       onTimeCursorChange: setTimeCursor,
+                      logger: engineerLoggerRef.current?.logger ?? undefined,
                     });
                     const modelId =
                       process.env.OPENAI_API_MODEL ?? 'gpt-5.2-codex';

@@ -19,6 +19,7 @@ const BASE_EVENT_TYPES = new Set([
   'timing-process',
   'event-loop-lag',
   'tool-timing',
+  'tool-bridge',
 ]);
 const STREAM_PART_TYPES = new Set([
   'tool-call',

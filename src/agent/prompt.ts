@@ -31,6 +31,10 @@ You can run Python via the run_py tool. A global context dict is provided with:
 - processors: { timingData, driverList, timingAppData, timingStats, trackStatus, lapCount, weatherData, sessionInfo, sessionData, extrapolatedClock, topThree, raceControlMessages, teamRadio, championshipPrediction, pitStopSeries, pitLaneTimeCollection, pitStop, carData, position, heartbeat }
 - vars: optional inputs you pass via run_py({ code, vars })
 
+Tool bridge:
+Use call_tool(name, args) to invoke JS tools from Python (call_tool_async if sync is unavailable).
+Example: pos = call_tool("get_position", {})
+
 Note: processors entries are the merged state objects (no helper methods). For richer helpers (lap tables, topic timelines, shape inspection), call the JS tools first (get_lap_table, get_topic_timeline, inspect_topic) and pass their results into Python via run_py vars.
 
 Notebook-style persistence: the Python runtime persists between calls; variables/imports stay defined until reset. Reassign or clear if you need a clean slate.

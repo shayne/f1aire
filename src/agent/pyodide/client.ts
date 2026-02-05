@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import { randomUUID } from 'node:crypto';
+import { performance } from 'node:perf_hooks';
 import type { Worker } from 'node:worker_threads';
 import { Worker as NodeWorker } from 'node:worker_threads';
 import { fileURLToPath } from 'node:url';
@@ -31,7 +32,12 @@ export function createPythonClient({
     return new NodeWorker(spec.url, { type: 'module', execArgv: spec.execArgv });
   },
   toolHandler,
-}: { workerFactory?: () => Worker; toolHandler?: (name: string, args: unknown) => Promise<unknown> } = {}) {
+  logger,
+}: {
+  workerFactory?: () => Worker;
+  toolHandler?: (name: string, args: unknown) => Promise<unknown>;
+  logger?: (event: Record<string, unknown>) => void | Promise<void>;
+} = {}) {
   let worker: Worker | null = null;
   let initPromise: Promise<void> | null = null;
   let initReject: ((error: Error) => void) | null = null;
@@ -67,9 +73,32 @@ export function createPythonClient({
     }
   }
 
+  function getArgsBytes(args: unknown): number | undefined {
+    if (args == null) return undefined;
+    if (typeof args === 'string') return Buffer.byteLength(args, 'utf-8');
+    try {
+      return Buffer.byteLength(JSON.stringify(args), 'utf-8');
+    } catch {
+      return undefined;
+    }
+  }
+
   async function handleToolCall({ id, name, args }: { id: string; name: string; args: unknown }) {
     const w = worker;
     if (!w) return;
+    const start = performance.now();
+    const argsBytes = getArgsBytes(args);
+    const logResult = (ok: boolean, error?: string) => {
+      logger?.({
+        type: 'tool-bridge',
+        name,
+        toolName: name,
+        argsBytes,
+        durationMs: Math.round(performance.now() - start),
+        ok,
+        error,
+      });
+    };
     if (name === 'run_py') {
       safePostMessage(w, {
         type: 'tool-result',
@@ -77,6 +106,7 @@ export function createPythonClient({
         ok: false,
         error: 'run_py is not callable from Python',
       });
+      logResult(false, 'run_py is not callable from Python');
       return;
     }
     if (!toolHandler) {
@@ -86,17 +116,20 @@ export function createPythonClient({
         ok: false,
         error: 'tool handler not configured',
       });
+      logResult(false, 'tool handler not configured');
       return;
     }
     try {
       const value = await toolHandler(name, args);
       if (worker !== w) return;
       safePostMessage(w, { type: 'tool-result', id, ok: true, value });
+      logResult(true);
     }
     catch (error) {
       if (worker !== w) return;
       const message = error instanceof Error ? error.message : String(error);
       safePostMessage(w, { type: 'tool-result', id, ok: false, error: message });
+      logResult(false, message);
     }
   }
 
