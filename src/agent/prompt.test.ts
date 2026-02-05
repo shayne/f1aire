@@ -10,4 +10,9 @@ describe('systemPrompt', () => {
   it('documents call_tool in system prompt', () => {
     expect(systemPrompt).toContain('call_tool');
   });
+
+  it('discourages vars payloads in favor of call_tool', () => {
+    expect(systemPrompt).toContain('vars only for tiny constants');
+    expect(systemPrompt).toContain('Do not pass data/state via vars');
+  });
 });

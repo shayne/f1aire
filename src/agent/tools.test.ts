@@ -91,4 +91,19 @@ describe('tools', () => {
       capturedToolHandler?.('get_latest', { topic: 123 }),
     ).rejects.toThrow(/expected string/i);
   });
+
+  it('rejects large vars payloads for run_py', async () => {
+    const tools = makeTools({
+      store,
+      processors,
+      timeCursor: { latest: true },
+      onTimeCursorChange: () => {},
+    });
+
+    const bigVars = { payload: 'x'.repeat(9000) };
+
+    await expect(
+      tools.run_py.execute({ code: '1+1', vars: bigVars } as any),
+    ).rejects.toThrow(/vars payload too large/i);
+  });
 });

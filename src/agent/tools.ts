@@ -27,6 +27,17 @@ import { buildAnalysisIndex } from '../core/analysis-index.js';
 import { shapeOf, shapeOfMany } from '../core/inspect.js';
 import type { TimeCursor } from '../core/time-cursor.js';
 
+const MAX_PYTHON_VARS_BYTES = 8 * 1024;
+
+function estimateJsonBytes(value: unknown): number | null {
+  try {
+    return Buffer.byteLength(JSON.stringify(value), 'utf-8');
+  }
+  catch {
+    return null;
+  }
+}
+
 export function makeTools({
   store,
   processors,
@@ -390,12 +401,23 @@ export function makeTools({
     }),
     run_py: tool({
       description:
-        'Run Python using store/processors/raw. See Engineer Python Skill in system prompt.',
+        'Run Python using store/processors/raw. Use call_tool for data; vars only for tiny constants (<= 8 KB). See Engineer Python Skill in system prompt.',
       inputSchema: z.object({
         code: z.string(),
         vars: z.record(z.string(), z.any()).optional(),
       }),
       execute: async ({ code, vars }) => {
+        if (vars !== undefined) {
+          const byteCount = estimateJsonBytes(vars);
+          if (byteCount === null) {
+            throw new Error('run_py vars must be JSON-serializable; use call_tool for data instead');
+          }
+          if (byteCount > MAX_PYTHON_VARS_BYTES) {
+            throw new Error(
+              `vars payload too large (${byteCount} bytes). Use call_tool for data; vars only for tiny constants (<= 8 KB).`,
+            );
+          }
+        }
         if (!pythonInit) {
           pythonInit = pythonClient.init({
             indexURL: pyodideIndexUrl,
