@@ -92,7 +92,20 @@ export function makeTools({
   const analysis = createAnalysisContext({ store, processors });
   const analysisIndex = buildAnalysisIndex({ processors });
   let currentCursor: TimeCursor = { ...timeCursor };
-  const pythonClient = createPythonClient();
+  type ToolDefinition = ReturnType<typeof tool>;
+  let toolsByName: Record<string, ToolDefinition> = {};
+  const toolHandler = async (name: string, args: unknown) => {
+    if (name === 'run_py') {
+      throw new Error('run_py is not callable from Python');
+    }
+    const target = toolsByName[name];
+    if (!target) {
+      throw new Error(`Unknown tool: ${name}`);
+    }
+    const parsedArgs = target.inputSchema.parse(args);
+    return target.execute(parsedArgs);
+  };
+  const pythonClient = createPythonClient({ toolHandler });
   let pythonInit: Promise<void> | null = null;
   const pyodideIndexUrl = getPyodideIndexUrl();
   const pyodideCacheDir = getPyodideBaseDir();
@@ -110,7 +123,7 @@ export function makeTools({
     return entries[entries.length - 1];
   };
 
-  return {
+  const tools = {
     get_latest: tool({
       description:
         'Get latest snapshot for a topic (normalized RawPoint; .z topics are decompressed)',
@@ -619,4 +632,6 @@ export function makeTools({
       },
     }),
   };
+  toolsByName = tools;
+  return tools;
 }

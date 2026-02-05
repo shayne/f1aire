@@ -1,5 +1,18 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { makeTools } from './tools.js';
+
+let capturedToolHandler: ((name: string, args: unknown) => Promise<unknown>) | undefined;
+
+vi.mock('./pyodide/client.js', () => ({
+  createPythonClient: (opts?: { toolHandler?: (name: string, args: unknown) => Promise<unknown> }) => {
+    capturedToolHandler = opts?.toolHandler;
+    return {
+      init: vi.fn(),
+      run: vi.fn(),
+      shutdown: vi.fn(),
+    };
+  },
+}));
 
 const store = {
   topic: () => ({
@@ -13,6 +26,10 @@ const processors = {
 } as any;
 
 describe('tools', () => {
+  beforeEach(() => {
+    capturedToolHandler = undefined;
+  });
+
   it('exposes expected tools', () => {
     const tools = makeTools({
       store,
@@ -38,5 +55,20 @@ describe('tools', () => {
     });
 
     expect(() => tools.run_py.inputSchema.toJSONSchema()).not.toThrow();
+  });
+
+  it('python tool handler rejects run_py and parses input', async () => {
+    makeTools({
+      store,
+      processors,
+      timeCursor: { latest: true },
+      onTimeCursorChange: () => {},
+    });
+
+    expect(capturedToolHandler).toBeTypeOf('function');
+    await expect(capturedToolHandler?.('run_py', {})).rejects.toThrow(/run_py/i);
+    await expect(
+      capturedToolHandler?.('get_latest', { topic: 123 }),
+    ).rejects.toThrow(/expected string/i);
   });
 });
