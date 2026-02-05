@@ -2,13 +2,14 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { makeTools } from './tools.js';
 
 let capturedToolHandler: ((name: string, args: unknown) => Promise<unknown>) | undefined;
+let runMock: ReturnType<typeof vi.fn>;
 
 vi.mock('./pyodide/client.js', () => ({
   createPythonClient: (opts?: { toolHandler?: (name: string, args: unknown) => Promise<unknown> }) => {
     capturedToolHandler = opts?.toolHandler;
     return {
       init: vi.fn(),
-      run: vi.fn(),
+      run: (...args: Parameters<NonNullable<typeof runMock>>) => runMock(...args),
       shutdown: vi.fn(),
     };
   },
@@ -28,6 +29,7 @@ const processors = {
 describe('tools', () => {
   beforeEach(() => {
     capturedToolHandler = undefined;
+    runMock = vi.fn().mockResolvedValue({ ok: true, value: null });
   });
 
   it('exposes expected tools', () => {
@@ -65,9 +67,14 @@ describe('tools', () => {
       onTimeCursorChange: () => {},
     });
 
+    runMock.mockResolvedValueOnce({
+      ok: false,
+      error: 'run_py is not callable from Python',
+    });
+
     await expect(
       tools.run_py.execute({ code: 'call_tool("run_py")' } as any),
-    ).rejects.toThrow();
+    ).rejects.toThrow(/run_py is not callable from Python/i);
   });
 
   it('python tool handler rejects run_py and parses input', async () => {
