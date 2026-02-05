@@ -57,6 +57,19 @@ describe('tools', () => {
     expect(() => tools.run_py.inputSchema.toJSONSchema()).not.toThrow();
   });
 
+  it('tool handler rejects run_py from python', async () => {
+    const tools = makeTools({
+      store,
+      processors,
+      timeCursor: { latest: true },
+      onTimeCursorChange: () => {},
+    });
+
+    await expect(
+      tools.run_py.execute({ code: 'call_tool("run_py")' } as any),
+    ).rejects.toThrow();
+  });
+
   it('python tool handler rejects run_py and parses input', async () => {
     makeTools({
       store,
