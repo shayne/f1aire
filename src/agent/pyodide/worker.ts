@@ -23,7 +23,12 @@ function registerToolBridge() {
       const id = randomUUID();
       return new Promise((resolve, reject) => {
         pendingToolCalls.set(id, { resolve, reject });
-        parentPort.postMessage({ type: 'tool-call', id, name, args });
+        try {
+          parentPort.postMessage({ type: 'tool-call', id, name, args });
+        } catch (err) {
+          pendingToolCalls.delete(id);
+          reject(err instanceof Error ? err : new Error(String(err)));
+        }
       });
     },
   });

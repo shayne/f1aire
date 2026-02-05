@@ -7,14 +7,18 @@ def _reject_run_py(name):
         raise RuntimeError("run_py is not callable from Python")
 
 
+def _normalize_args(args):
+    return {} if args is None else args
+
+
 def call_tool_async(name, args=None):
     _reject_run_py(name)
-    return tool_bridge.callTool(name, args)
+    return tool_bridge.callTool(name, _normalize_args(args))
 
 
 try:
     from pyodide.ffi import run_sync, can_run_sync
-except Exception:
+except ImportError:
     run_sync = None
     can_run_sync = None
 
@@ -25,9 +29,6 @@ def call_tool(name, args=None):
         raise RuntimeError("pyodide.ffi.run_sync is unavailable; use call_tool_async")
     if can_run_sync is not None and not can_run_sync():
         raise RuntimeError("pyodide.ffi.run_sync is unavailable in this context; use call_tool_async")
-    try:
-        return run_sync(tool_bridge.callTool(name, args))
-    except Exception as exc:
-        raise RuntimeError("call_tool requires pyodide.ffi.run_sync; use call_tool_async") from exc
+    return run_sync(tool_bridge.callTool(name, _normalize_args(args)))
 `;
 }
