@@ -86,19 +86,32 @@ export function createPythonClient({
   async function handleToolCall({ id, name, args }: { id: string; name: string; args: unknown }) {
     const w = worker;
     if (!w) return;
-    const start = performance.now();
-    const argsBytes = getArgsBytes(args);
-    const logResult = (ok: boolean, error?: string) => {
-      logger?.({
-        type: 'tool-bridge',
-        name,
-        toolName: name,
-        argsBytes,
-        durationMs: Math.round(performance.now() - start),
-        ok,
-        error,
-      });
-    };
+    const logResult = logger
+      ? (() => {
+          const start = performance.now();
+          const argsBytes = getArgsBytes(args);
+          return (ok: boolean, error?: string) => {
+            const event = {
+              type: 'tool-bridge',
+              name,
+              toolName: name,
+              argsBytes,
+              durationMs: Math.round(performance.now() - start),
+              ok,
+              error,
+            };
+            try {
+              const result = logger(event);
+              if (result && typeof (result as Promise<unknown>).catch === 'function') {
+                void (result as Promise<unknown>).catch(() => {});
+              }
+            }
+            catch {
+              // Logging should be best-effort.
+            }
+          };
+        })()
+      : null;
     if (name === 'run_py') {
       safePostMessage(w, {
         type: 'tool-result',
@@ -106,7 +119,7 @@ export function createPythonClient({
         ok: false,
         error: 'run_py is not callable from Python',
       });
-      logResult(false, 'run_py is not callable from Python');
+      logResult?.(false, 'run_py is not callable from Python');
       return;
     }
     if (!toolHandler) {
@@ -116,20 +129,20 @@ export function createPythonClient({
         ok: false,
         error: 'tool handler not configured',
       });
-      logResult(false, 'tool handler not configured');
+      logResult?.(false, 'tool handler not configured');
       return;
     }
     try {
       const value = await toolHandler(name, args);
       if (worker !== w) return;
       safePostMessage(w, { type: 'tool-result', id, ok: true, value });
-      logResult(true);
+      logResult?.(true);
     }
     catch (error) {
       if (worker !== w) return;
       const message = error instanceof Error ? error.message : String(error);
       safePostMessage(w, { type: 'tool-result', id, ok: false, error: message });
-      logResult(false, message);
+      logResult?.(false, message);
     }
   }
 

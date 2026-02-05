@@ -98,6 +98,58 @@ describe('createPythonClient', () => {
     });
   });
 
+  it('does not serialize args when no logger is provided', async () => {
+    const worker = new FakeWorker();
+    const toolHandler = vi.fn().mockResolvedValue({ ok: 1 });
+    const stringifySpy = vi.spyOn(JSON, 'stringify');
+    const client = createPythonClient({
+      workerFactory: () => worker as any,
+      toolHandler,
+    });
+
+    await client.init({ indexURL: '/tmp/pyodide' });
+    const callsBefore = stringifySpy.mock.calls.length;
+    worker.emit('message', {
+      type: 'tool-call',
+      id: 'abc',
+      name: 'get_driver_list',
+      args: { foo: 'bar' },
+    });
+    await Promise.resolve();
+
+    expect(stringifySpy.mock.calls.length).toBe(callsBefore);
+    stringifySpy.mockRestore();
+  });
+
+  it('swallows logger errors to avoid unhandled rejections', async () => {
+    const worker = new FakeWorker();
+    const toolHandler = vi.fn().mockResolvedValue({ ok: 1 });
+    const logger = vi.fn(() => {
+      throw new Error('boom');
+    });
+    const unhandled = vi.fn();
+    process.once('unhandledRejection', unhandled);
+
+    const client = createPythonClient({
+      workerFactory: () => worker as any,
+      toolHandler,
+      logger,
+    });
+
+    await client.init({ indexURL: '/tmp/pyodide' });
+    worker.emit('message', { type: 'tool-call', id: 'abc', name: 'get_driver_list', args: {} });
+    await new Promise((resolve) => setImmediate(resolve));
+
+    process.removeListener('unhandledRejection', unhandled);
+    expect(unhandled).not.toHaveBeenCalled();
+    expect(worker.postMessage).toHaveBeenCalledWith({
+      type: 'tool-result',
+      id: 'abc',
+      ok: true,
+      value: { ok: 1 },
+    });
+  });
+
   it('reuses the init promise for repeated calls', async () => {
     const worker = new FakeWorker();
     const client = createPythonClient({
