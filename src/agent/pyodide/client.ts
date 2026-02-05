@@ -30,7 +30,8 @@ export function createPythonClient({
     const spec = resolveWorkerSpec();
     return new NodeWorker(spec.url, { type: 'module', execArgv: spec.execArgv });
   },
-}: { workerFactory?: () => Worker } = {}) {
+  toolHandler,
+}: { workerFactory?: () => Worker; toolHandler?: (name: string, args: unknown) => Promise<unknown> } = {}) {
   let worker: Worker | null = null;
   let initPromise: Promise<void> | null = null;
   let initReject: ((error: Error) => void) | null = null;
@@ -57,11 +58,46 @@ export function createPythonClient({
     }
   }
 
+  async function handleToolCall({ id, name, args }: { id: string; name: string; args: unknown }) {
+    const w = worker;
+    if (!w) return;
+    if (name === 'run_py') {
+      w.postMessage({
+        type: 'tool-result',
+        id,
+        ok: false,
+        error: 'run_py is not callable from Python',
+      });
+      return;
+    }
+    if (!toolHandler) {
+      w.postMessage({
+        type: 'tool-result',
+        id,
+        ok: false,
+        error: 'tool handler not configured',
+      });
+      return;
+    }
+    try {
+      const value = await toolHandler(name, args);
+      w.postMessage({ type: 'tool-result', id, ok: true, value });
+    }
+    catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      w.postMessage({ type: 'tool-result', id, ok: false, error: message });
+    }
+  }
+
   function ensureWorker() {
     if (worker) return worker;
     worker = workerFactory();
     worker.on('message', (msg: WorkerResponse) => {
       if (msg.type === 'init-result') return;
+      if (msg.type === 'tool-call') {
+        void handleToolCall(msg);
+        return;
+      }
       if (msg.type === 'run-result') {
         const entry = pending.get(msg.id);
         if (entry) {

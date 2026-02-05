@@ -41,6 +41,27 @@ describe('createPythonClient', () => {
     expect(result).toEqual({ ok: true, value: { ok: 1 } });
   });
 
+  it('handles tool-call from worker and posts tool-result', async () => {
+    const worker = new FakeWorker();
+    const toolHandler = vi.fn().mockResolvedValue({ ok: 1 });
+    const client = createPythonClient({
+      workerFactory: () => worker as any,
+      toolHandler,
+    });
+
+    await client.init({ indexURL: '/tmp/pyodide' });
+    worker.emit('message', { type: 'tool-call', id: 'abc', name: 'get_driver_list', args: {} });
+    await Promise.resolve();
+
+    expect(toolHandler).toHaveBeenCalledWith('get_driver_list', {});
+    expect(worker.postMessage).toHaveBeenCalledWith({
+      type: 'tool-result',
+      id: 'abc',
+      ok: true,
+      value: { ok: 1 },
+    });
+  });
+
   it('reuses the init promise for repeated calls', async () => {
     const worker = new FakeWorker();
     const client = createPythonClient({
