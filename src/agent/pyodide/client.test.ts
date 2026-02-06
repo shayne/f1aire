@@ -7,11 +7,17 @@ import { createPythonClient, resolveWorkerSpec } from './client.js';
 
 class FakeWorker {
   listeners: Record<string, Function[]> = {};
+  inited = false;
   postMessage = vi.fn((msg) => {
     if (msg.type === 'init') {
+      this.inited = true;
       this.emit('message', { type: 'init-result', ok: true });
     }
     if (msg.type === 'run') {
+      if (!this.inited) {
+        this.emit('message', { type: 'run-result', id: msg.id, ok: false, error: 'pyodide is not initialized' });
+        return;
+      }
       this.emit('message', { type: 'run-result', id: msg.id, ok: true, value: { ok: 1 } });
     }
   });
@@ -39,6 +45,32 @@ describe('createPythonClient', () => {
     await client.init({ indexURL: '/tmp/pyodide' });
     const result = await client.run({ code: '1+1' });
     expect(result).toEqual({ ok: true, value: { ok: 1 } });
+  });
+
+  it('auto-initializes a new worker on run after the previous worker exits', async () => {
+    const workers: FakeWorker[] = [];
+    const client = createPythonClient({
+      workerFactory: () => {
+        const w = new FakeWorker();
+        workers.push(w);
+        return w as any;
+      },
+    });
+
+    await client.init({ indexURL: '/tmp/pyodide' });
+    expect(workers).toHaveLength(1);
+
+    // Simulate a worker crash/restart.
+    workers[0]!.emit('exit', 1);
+
+    const result = await client.run({ code: '1+1' });
+    expect(result.ok).toBe(true);
+    expect(workers.length).toBeGreaterThanOrEqual(2);
+
+    const second = workers[1]!;
+    const messageTypes = second.postMessage.mock.calls.map((call) => (call[0] as any).type);
+    expect(messageTypes[0]).toBe('init');
+    expect(messageTypes).toContain('run');
   });
 
   it('handles tool-call from worker and posts tool-result', async () => {

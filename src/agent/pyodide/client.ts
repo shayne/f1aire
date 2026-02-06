@@ -39,8 +39,13 @@ export function createPythonClient({
   logger?: (event: Record<string, unknown>) => void | Promise<void>;
 } = {}) {
   let worker: Worker | null = null;
+  let workerCounter = 0;
+  let currentWorkerId = 0;
   let initPromise: Promise<void> | null = null;
   let initReject: ((error: Error) => void) | null = null;
+  let initWorkerId: number | null = null;
+  let initializedWorkerId: number | null = null;
+  let lastInitArgs: { indexURL: string; packageCacheDir?: string } | null = null;
   const pending = new Map<
     string,
     { resolve: (value: any) => void; reject: (error: Error) => void }
@@ -58,18 +63,23 @@ export function createPythonClient({
       initReject = null;
     }
     initPromise = null;
+    initWorkerId = null;
+    initializedWorkerId = null;
     if (worker) {
       worker.removeAllListeners();
       worker = null;
+      currentWorkerId = 0;
     }
   }
 
   function safePostMessage(target: Worker, message: WorkerMessage) {
     try {
       target.postMessage(message);
+      return true;
     }
     catch {
       // Worker likely terminated; avoid unhandled rejection in tool-call handler.
+      return false;
     }
   }
 
@@ -135,8 +145,19 @@ export function createPythonClient({
     try {
       const value = await toolHandler(name, args);
       if (worker !== w) return;
-      safePostMessage(w, { type: 'tool-result', id, ok: true, value });
-      logResult?.(true);
+      if (safePostMessage(w, { type: 'tool-result', id, ok: true, value })) {
+        logResult?.(true);
+      }
+      else {
+        // Most common cause here is DataCloneError from a non-serializable tool result.
+        safePostMessage(w, {
+          type: 'tool-result',
+          id,
+          ok: false,
+          error: 'tool result could not be sent (non-cloneable value)',
+        });
+        logResult?.(false, 'tool result could not be sent (non-cloneable value)');
+      }
     }
     catch (error) {
       if (worker !== w) return;
@@ -149,6 +170,8 @@ export function createPythonClient({
   function ensureWorker() {
     if (worker) return worker;
     worker = workerFactory();
+    currentWorkerId = (workerCounter += 1);
+    initializedWorkerId = null;
     worker.on('message', (msg: WorkerResponse) => {
       if (msg.type === 'init-result') return;
       if (msg.type === 'tool-call') {
@@ -177,10 +200,16 @@ export function createPythonClient({
     return worker;
   }
 
-  return {
-    async init({ indexURL, packageCacheDir }: { indexURL: string; packageCacheDir?: string }) {
-      if (initPromise) return initPromise;
+  const api = {
+    init: async ({ indexURL, packageCacheDir }: { indexURL: string; packageCacheDir?: string }) => {
       const w = ensureWorker();
+      const workerIdForInit = currentWorkerId;
+      lastInitArgs = { indexURL, packageCacheDir };
+      if (initPromise && initWorkerId === workerIdForInit) return initPromise;
+      // If the worker changed underneath us (should be rare), drop the stale init promise.
+      initPromise = null;
+      initReject = null;
+      initWorkerId = workerIdForInit;
       initPromise = new Promise<void>((resolve, reject) => {
         initReject = reject;
         const handleMessage = (msg: WorkerResponse) => {
@@ -188,10 +217,14 @@ export function createPythonClient({
           w.off('message', handleMessage);
           if (msg.ok) {
             initReject = null;
+            if (worker === w && currentWorkerId === workerIdForInit) {
+              initializedWorkerId = workerIdForInit;
+            }
             resolve();
           }
           else {
             initPromise = null;
+            initWorkerId = null;
             initReject = null;
             reject(new Error(msg.error ?? 'pyodide init failed'));
           }
@@ -203,16 +236,33 @@ export function createPythonClient({
       });
       return initPromise;
     },
-    async run({ code, context }: { code: string; context?: unknown }) {
-      const w = ensureWorker();
-      const id = randomUUID();
-      const result = await new Promise<any>((resolve, reject) => {
-        pending.set(id, { resolve, reject });
-        w.postMessage({ type: 'run', id, code, context });
-      });
+    run: async ({ code, context }: { code: string; context?: unknown }) => {
+      // Tools call init() explicitly, but we also defend against any path that
+      // recreated a worker without re-initializing it (e.g. after a crash).
+      if (lastInitArgs && initializedWorkerId !== currentWorkerId) {
+        await api.init(lastInitArgs);
+      }
+      const doRun = async () => {
+        const w = ensureWorker();
+        const id = randomUUID();
+        return new Promise<any>((resolve, reject) => {
+          pending.set(id, { resolve, reject });
+          w.postMessage({ type: 'run', id, code, context });
+        });
+      };
+      let result = await doRun();
+      if (!result.ok && /pyodide is not initialized/i.test(String(result.error ?? '')) && lastInitArgs) {
+        // If the worker accepted a run call without being initialized, force a re-init and retry once.
+        initPromise = null;
+        initReject = null;
+        initWorkerId = null;
+        initializedWorkerId = null;
+        await api.init(lastInitArgs);
+        result = await doRun();
+      }
       return { ok: result.ok, value: result.value, error: result.error };
     },
-    async shutdown() {
+    shutdown: async () => {
       if (!worker) return;
       if (initReject || initPromise) {
         initReject?.(new Error('pyodide init canceled by shutdown'));
@@ -220,8 +270,12 @@ export function createPythonClient({
       worker.postMessage({ type: 'shutdown' });
       await worker.terminate();
       worker = null;
+      currentWorkerId = 0;
       initReject = null;
       initPromise = null;
+      initWorkerId = null;
+      initializedWorkerId = null;
     },
   };
+  return api;
 }

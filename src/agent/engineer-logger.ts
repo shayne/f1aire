@@ -25,7 +25,7 @@ const STREAM_PART_TYPES = new Set([
   'tool-call',
   'tool-result',
   'tool-input-start',
-  'tool-input-delta',
+  'tool-input-available',
   'tool-error',
   'error',
 ]);

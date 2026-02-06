@@ -23,6 +23,23 @@ export function createEngineerSession({
 }: CreateEngineerSessionArgs) {
   const messages: Message[] = [];
 
+  const getToolName = (part: unknown): string | undefined => {
+    const value =
+      (part as any)?.toolName ??
+      (part as any)?.tool?.name ??
+      (part as any)?.toolCall?.name ??
+      (part as any)?.name;
+    return typeof value === 'string' ? value : undefined;
+  };
+
+  const getToolCallId = (part: unknown): string | undefined => {
+    const value =
+      (part as any)?.toolCallId ??
+      (part as any)?.toolCall?.id ??
+      (part as any)?.id;
+    return typeof value === 'string' ? value : undefined;
+  };
+
   return {
     async *send(input: string) {
       logger?.({ type: 'send-start', inputLength: input.length });
@@ -50,7 +67,18 @@ export function createEngineerSession({
       for await (const part of result.fullStream) {
         onEvent?.({ type: 'stream-part', part });
         if (part.type !== 'text-delta') {
-          logger?.({ type: 'stream-part', partType: part.type });
+          const logEvent: Record<string, unknown> = {
+            type: 'stream-part',
+            partType: part.type,
+          };
+          const toolName = getToolName(part);
+          const toolCallId = getToolCallId(part);
+          if (toolName) logEvent.toolName = toolName;
+          if (toolCallId) logEvent.toolCallId = toolCallId;
+          if (part.type === 'tool-error' || part.type === 'error') {
+            logEvent.error = formatUnknownError((part as any).error);
+          }
+          logger?.(logEvent);
         }
         if (
           part.type === 'tool-call' ||
