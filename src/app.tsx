@@ -484,8 +484,10 @@ export function App(): React.JSX.Element {
                               inputStart,
                             });
                           }
-                          setStreamStatus('Writing code...');
-                          pushActivity('Writing code');
+                          if (toolName === 'run_py') {
+                            setStreamStatus('Writing code...');
+                            pushActivity('Writing code');
+                          }
                           if (toolCallId) {
                             toolInputPreviewRef.current.set(toolCallId, '');
                             if (toolName === 'run_py') setPythonCodePreview('');
@@ -494,7 +496,12 @@ export function App(): React.JSX.Element {
                         }
                         if (partType === 'tool-input-delta') {
                           const toolCallId = getToolCallId(part);
-                          const delta = (part as any)?.inputTextDelta;
+                          const delta =
+                            typeof (part as any)?.inputTextDelta === 'string'
+                              ? ((part as any).inputTextDelta as string)
+                              : typeof (part as any)?.delta === 'string'
+                                ? ((part as any).delta as string)
+                                : undefined;
                           if (typeof toolCallId !== 'string' || typeof delta !== 'string') return;
                           const previous =
                             toolInputPreviewRef.current.get(toolCallId) ?? '';

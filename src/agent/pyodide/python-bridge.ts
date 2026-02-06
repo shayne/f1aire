@@ -2,6 +2,13 @@ export function buildPythonBridgePrelude() {
   return `import tool_bridge
 
 
+_ASYNCIO_RUN_ERROR = (
+    "asyncio.run() and loop.run_until_complete() are not supported in this Pyodide "
+    "Node runtime (requires WebAssembly stack switching). Use top-level 'await' "
+    "in run_py and await call_tool(...) instead."
+)
+
+
 def _reject_run_py(name):
     if name == "run_py":
         raise RuntimeError("run_py is not callable from Python")
@@ -11,24 +18,50 @@ def _normalize_args(args):
     return {} if args is None else args
 
 
-def call_tool_async(name, args=None):
+async def call_tool_async(name, args=None):
     _reject_run_py(name)
-    return tool_bridge.callTool(name, _normalize_args(args))
+    return await tool_bridge.callTool(name, _normalize_args(args))
+
+
+async def call_tool(name, args=None):
+    # call_tool is the preferred name, but it is async in this runtime.
+    return await call_tool_async(name, args)
+
+
+def call_tool_sync(name, args=None):
+    raise RuntimeError(
+        "Synchronous tool calls are not supported in this runtime. "
+        "Use: result = await call_tool(name, args)"
+    )
+
+
+def _block_asyncio_run(*_args, **_kwargs):
+    raise RuntimeError(_ASYNCIO_RUN_ERROR)
 
 
 try:
-    from pyodide.ffi import run_sync, can_run_sync
-except ImportError:
-    run_sync = None
-    can_run_sync = None
+    import asyncio
 
+    asyncio.run = _block_asyncio_run
+    try:
+        asyncio.runners.Runner.run = _block_asyncio_run
+    except Exception:
+        pass
+    try:
+        asyncio.BaseEventLoop.run_until_complete = _block_asyncio_run
+    except Exception:
+        pass
+except Exception:
+    pass
 
-def call_tool(name, args=None):
-    _reject_run_py(name)
-    if run_sync is None:
-        raise RuntimeError("pyodide.ffi.run_sync is unavailable; use call_tool_async")
-    if can_run_sync is not None and not can_run_sync():
-        raise RuntimeError("pyodide.ffi.run_sync is unavailable in this context; use call_tool_async")
-    return run_sync(tool_bridge.callTool(name, _normalize_args(args)))
+try:
+    import pyodide.webloop
+
+    try:
+        pyodide.webloop.WebLoop.run_until_complete = _block_asyncio_run
+    except Exception:
+        pass
+except Exception:
+    pass
 `;
 }

@@ -30,9 +30,10 @@ You can run Python via the run_py tool. A global context dict is provided with:
 - vars: optional inputs you pass via run_py({ code, vars }); vars only for tiny constants (<= 8KB)
 
 Tool bridge:
-Use call_tool(name, args) to invoke JS tools from Python (call_tool_async if sync is unavailable).
-Example: pos = call_tool("get_position", {})
+Use call_tool(name, args) to invoke JS tools from Python. In this runtime it is async, so you MUST use \`await\`.
+Example: pos = await call_tool("get_position", {})
 Do not pass data/state via vars or inline it in code. Always fetch data with call_tool inside Python.
+Async note (Pyodide Node runtime): Do not use asyncio.run() or loop.run_until_complete(). They require WebAssembly stack switching and will fail. Use top-level \`await\` in run_py.
 
 Notebook-style persistence: the Python runtime persists between calls; variables/imports stay defined until reset. Reassign or clear if you need a clean slate.
 Output: The tool returns the value of the last expression. Return JSON-serializable values only (dict/list/str/number/bool/None). Convert non-JSON types before returning.
@@ -41,13 +42,13 @@ Rule: If the user says “as of lap X/time Y”, call set_time_cursor first, the
 
 Examples:
 # latest positions
-timing = call_tool("get_timing_state", {}) or {}
+timing = (await call_tool("get_timing_state", {})) or {}
 timing.get("Lines", {})
 
 Cookbook: shape -> compute
 Step 1) inspect_topic({ topic: 'TimingData', samples: 3, maxDepth: 5 })
 Step 2) run_py with:
 # (fetch rows inside Python via call_tool)
-rows = call_tool("get_lap_table", {"driverNumbers": ["4"]}).get("rows", [])
+rows = (await call_tool("get_lap_table", {"driverNumbers": ["4"]})).get("rows", [])
 [{"lap": row["lap"], "s1": (row.get("sectorsMs") or [None])[0]} for row in rows]
 `;

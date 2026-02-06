@@ -107,6 +107,20 @@ describe('tools', () => {
     ).rejects.toThrow(/vars payload too large/i);
   });
 
+  it('rejects asyncio.run in run_py code', async () => {
+    const tools = makeTools({
+      store,
+      processors,
+      timeCursor: { latest: true },
+      onTimeCursorChange: () => {},
+    });
+
+    await expect(
+      tools.run_py.execute({ code: 'import asyncio\nasyncio.run(main())' } as any),
+    ).rejects.toThrow(/asyncio\.run/i);
+    expect(runMock).not.toHaveBeenCalled();
+  });
+
   it('passes only vars into the python context (no raw/processors)', async () => {
     const noisyStore = {
       ...store,

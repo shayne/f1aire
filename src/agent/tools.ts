@@ -28,6 +28,20 @@ import { shapeOf, shapeOfMany } from '../core/inspect.js';
 import type { TimeCursor } from '../core/time-cursor.js';
 
 const MAX_PYTHON_VARS_BYTES = 8 * 1024;
+const ASYNCIO_RUN_PATTERNS = [
+  /\basyncio\.run\s*\(/,
+  /\brun_until_complete\s*\(/,
+];
+
+function assertPythonCodeAllowed(code: string) {
+  for (const pattern of ASYNCIO_RUN_PATTERNS) {
+    if (pattern.test(code)) {
+      throw new Error(
+        "asyncio.run() and loop.run_until_complete() are not supported in this Pyodide Node runtime. Use top-level 'await' in run_py and await call_tool(...) instead.",
+      );
+    }
+  }
+}
 
 function estimateJsonBytes(value: unknown): number | null {
   try {
@@ -412,6 +426,7 @@ export function makeTools({
         vars: z.record(z.string(), z.any()).optional(),
       }),
       execute: async ({ code, vars }) => {
+        assertPythonCodeAllowed(code);
         if (vars !== undefined) {
           const byteCount = estimateJsonBytes(vars);
           if (byteCount === null) {

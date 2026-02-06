@@ -15,4 +15,9 @@ describe('systemPrompt', () => {
     expect(systemPrompt).toContain('vars only for tiny constants');
     expect(systemPrompt).toContain('Do not pass data/state via vars');
   });
+
+  it('warns against asyncio.run in the Pyodide runtime', () => {
+    expect(systemPrompt).toContain('asyncio.run');
+    expect(systemPrompt).toContain('run_until_complete');
+  });
 });
