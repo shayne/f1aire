@@ -32,12 +32,22 @@ const ASYNCIO_RUN_PATTERNS = [
   /\basyncio\.run\s*\(/,
   /\brun_until_complete\s*\(/,
 ];
+const MICROPIP_PATTERNS = [
+  /\bmicropip\.install\s*\(/,
+];
 
 function assertPythonCodeAllowed(code: string) {
   for (const pattern of ASYNCIO_RUN_PATTERNS) {
     if (pattern.test(code)) {
       throw new Error(
         "asyncio.run() and loop.run_until_complete() are not supported in this Pyodide Node runtime. Use top-level 'await' in run_py and await call_tool(...) instead.",
+      );
+    }
+  }
+  for (const pattern of MICROPIP_PATTERNS) {
+    if (pattern.test(code)) {
+      throw new Error(
+        'micropip.install(...) is disabled in this environment. Use only allowlisted packages shipped with the runtime (e.g. numpy).',
       );
     }
   }

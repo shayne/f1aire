@@ -93,6 +93,51 @@ export function createPythonClient({
     }
   }
 
+  function jsonCloneToolValue(value: unknown): unknown {
+    const seen = new WeakSet<object>();
+    const json = JSON.stringify(value, (_key, val) => {
+      if (typeof val === 'bigint') {
+        const asNumber = Number(val);
+        return Number.isSafeInteger(asNumber) ? asNumber : val.toString();
+      }
+      if (typeof val === 'function') return undefined;
+      if (typeof val === 'symbol') return val.toString();
+
+      if (val instanceof Date) return val.toISOString();
+      if (val instanceof Map) return Object.fromEntries(val);
+      if (val instanceof Set) return Array.from(val);
+      if (val instanceof Error) {
+        return { name: val.name, message: val.message, stack: val.stack };
+      }
+      if (typeof ArrayBuffer !== 'undefined') {
+        if (val instanceof ArrayBuffer) return Array.from(new Uint8Array(val));
+        if (ArrayBuffer.isView(val)) {
+          if (val instanceof DataView) {
+            return Array.from(new Uint8Array(val.buffer, val.byteOffset, val.byteLength));
+          }
+          const view = val as unknown as { length?: number; [key: number]: unknown };
+          if (typeof view.length === 'number') {
+            return Array.from({ length: view.length }, (_, i) => view[i]);
+          }
+          return Array.from(new Uint8Array(val.buffer, val.byteOffset, val.byteLength));
+        }
+      }
+
+      if (val && typeof val === 'object') {
+        if (seen.has(val)) return '<cycle>';
+        seen.add(val);
+      }
+
+      return val;
+    });
+    if (json === undefined) return null;
+    try {
+      return JSON.parse(json);
+    } catch {
+      return null;
+    }
+  }
+
   async function handleToolCall({ id, name, args }: { id: string; name: string; args: unknown }) {
     const w = worker;
     if (!w) return;
@@ -100,7 +145,7 @@ export function createPythonClient({
       ? (() => {
           const start = performance.now();
           const argsBytes = getArgsBytes(args);
-          return (ok: boolean, error?: string) => {
+          return (ok: boolean, error?: string, sanitized?: boolean) => {
             const event = {
               type: 'tool-bridge',
               name,
@@ -109,6 +154,7 @@ export function createPythonClient({
               durationMs: Math.round(performance.now() - start),
               ok,
               error,
+              sanitized: sanitized ? true : undefined,
             };
             try {
               const result = logger(event);
@@ -147,16 +193,21 @@ export function createPythonClient({
       if (worker !== w) return;
       if (safePostMessage(w, { type: 'tool-result', id, ok: true, value })) {
         logResult?.(true);
-      }
-      else {
+      } else {
         // Most common cause here is DataCloneError from a non-serializable tool result.
-        safePostMessage(w, {
-          type: 'tool-result',
-          id,
-          ok: false,
-          error: 'tool result could not be sent (non-cloneable value)',
-        });
-        logResult?.(false, 'tool result could not be sent (non-cloneable value)');
+        // Best-effort: JSON-clone it (dropping functions, cycles) and retry.
+        const cloned = jsonCloneToolValue(value);
+        if (safePostMessage(w, { type: 'tool-result', id, ok: true, value: cloned })) {
+          logResult?.(true, undefined, true);
+        } else {
+          safePostMessage(w, {
+            type: 'tool-result',
+            id,
+            ok: false,
+            error: 'tool result could not be sent (non-cloneable value)',
+          });
+          logResult?.(false, 'tool result could not be sent (non-cloneable value)');
+        }
       }
     }
     catch (error) {

@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
-import { normalizePythonResultForPostMessage, normalizeToolArgsForPostMessage } from './worker.js';
+import {
+  extractMissingModuleName,
+  normalizePythonResultForPostMessage,
+  normalizeToolArgsForPostMessage,
+} from './worker.js';
 
 describe('normalizeToolArgsForPostMessage', () => {
   it('converts PyProxy-like args to structured-clone safe objects', () => {
@@ -45,6 +49,21 @@ describe('normalizeToolArgsForPostMessage', () => {
       },
     };
     expect(normalizeToolArgsForPostMessage(proxy as any)).toEqual({});
+  });
+
+  it('falls back to empty args if converted args are not structured-cloneable', () => {
+    const proxy = {
+      toJs: () => ({ bad: () => {} }),
+    };
+    expect(normalizeToolArgsForPostMessage(proxy as any)).toEqual({});
+  });
+});
+
+describe('extractMissingModuleName', () => {
+  it('extracts module name from ModuleNotFoundError strings', () => {
+    expect(extractMissingModuleName(new Error("ModuleNotFoundError: No module named 'numpy'"))).toBe('numpy');
+    expect(extractMissingModuleName("No module named 'pandas.core.frame'")).toBe('pandas');
+    expect(extractMissingModuleName(new Error('something else'))).toBeNull();
   });
 });
 

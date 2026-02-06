@@ -8,6 +8,11 @@ _ASYNCIO_RUN_ERROR = (
     "in run_py and await call_tool(...) instead."
 )
 
+_MICROPIP_ERROR = (
+    "micropip.install(...) is disabled in this environment. "
+    "Use only allowlisted packages shipped with the runtime (e.g. numpy)."
+)
+
 
 def _reject_run_py(name):
     if name == "run_py":
@@ -37,6 +42,10 @@ def call_tool_sync(name, args=None):
 
 def _block_asyncio_run(*_args, **_kwargs):
     raise RuntimeError(_ASYNCIO_RUN_ERROR)
+
+
+async def _block_micropip_install(*_args, **_kwargs):
+    raise RuntimeError(_MICROPIP_ERROR)
 
 
 def __f1aire_to_jsonable(obj, _depth=0, _max_depth=6, _seen=None):
@@ -126,6 +135,13 @@ try:
         asyncio.BaseEventLoop.run_until_complete = _block_asyncio_run
     except Exception:
         pass
+except Exception:
+    pass
+
+try:
+    import micropip
+
+    micropip.install = _block_micropip_install
 except Exception:
     pass
 

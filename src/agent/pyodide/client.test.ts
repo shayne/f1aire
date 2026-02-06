@@ -94,6 +94,60 @@ describe('createPythonClient', () => {
     });
   });
 
+  it('json-clones non-cloneable tool results before posting to the worker', async () => {
+    class CloneCheckingWorker {
+      listeners: Record<string, Function[]> = {};
+      inited = false;
+      postMessage = vi.fn((msg) => {
+        if (msg.type === 'init') {
+          this.inited = true;
+          this.emit('message', { type: 'init-result', ok: true });
+          return;
+        }
+        if (msg.type === 'tool-result' && msg.ok) {
+          // Simulate Node worker_threads structured clone behavior.
+          structuredClone(msg);
+        }
+      });
+      on(event: string, cb: Function) {
+        this.listeners[event] = this.listeners[event] ?? [];
+        this.listeners[event].push(cb);
+      }
+      off(event: string, cb: Function) {
+        this.listeners[event] = (this.listeners[event] ?? []).filter((listener) => listener !== cb);
+      }
+      removeAllListeners() {
+        this.listeners = {};
+      }
+      emit(event: string, payload: unknown) {
+        for (const cb of this.listeners[event] ?? []) cb(payload);
+      }
+      terminate = vi.fn();
+    }
+
+    const worker = new CloneCheckingWorker();
+    const toolHandler = vi.fn().mockResolvedValue({ ok: 1, fn: () => {} });
+    const client = createPythonClient({
+      workerFactory: () => worker as any,
+      toolHandler,
+    });
+
+    await client.init({ indexURL: '/tmp/pyodide' });
+    worker.emit('message', { type: 'tool-call', id: 'abc', name: 'get_driver_list', args: {} });
+    await new Promise((resolve) => setImmediate(resolve));
+
+    const toolResultMessages = worker.postMessage.mock.calls
+      .map((call) => call[0] as any)
+      .filter((msg) => msg.type === 'tool-result' && msg.ok);
+    expect(toolResultMessages.length).toBeGreaterThanOrEqual(1);
+    expect(toolResultMessages[toolResultMessages.length - 1]).toMatchObject({
+      type: 'tool-result',
+      id: 'abc',
+      ok: true,
+      value: { ok: 1 },
+    });
+  });
+
   it('rejects run_py tool-call with an error result', async () => {
     const worker = new FakeWorker();
     const client = createPythonClient({

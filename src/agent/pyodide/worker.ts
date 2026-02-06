@@ -13,6 +13,8 @@ type PyProxyLike = {
   destroy?: () => void;
 };
 
+const AUTOLOAD_PACKAGES = new Set(['numpy']);
+
 function resolvePythonBridgeModuleUrl(baseUrl: string | URL = import.meta.url) {
   const jsUrl = new URL('./python-bridge.js', baseUrl);
   if (fs.existsSync(fileURLToPath(jsUrl))) {
@@ -42,6 +44,16 @@ function isConversionError(error: unknown): boolean {
     message.includes('pyodide.ffi.ConversionError')
     || message.includes('No conversion known for x')
   );
+}
+
+export function extractMissingModuleName(error: unknown): string | null {
+  const message = error instanceof Error ? error.message : String(error ?? '');
+  if (!message.includes('No module named')) return null;
+  const match = message.match(/No module named ['"]([^'"]+)['"]/);
+  if (!match) return null;
+  const mod = match[1]?.trim();
+  if (!mod) return null;
+  return mod.split('.')[0] ?? null;
 }
 
 export async function normalizePythonResultForPostMessage({
@@ -110,7 +122,18 @@ export function normalizeToolArgsForPostMessage(args: unknown): unknown {
       dict_converter: Object.fromEntries,
       create_pyproxies: false,
     });
-    return converted;
+    // postMessage uses structured clone; eagerly validate and strip any
+    // non-cloneable values (functions, proxies) to avoid DataCloneError.
+    try {
+      return structuredClone(converted);
+    } catch {
+      try {
+        const json = JSON.stringify(converted, (_key, val) => (typeof val === 'bigint' ? val.toString() : val));
+        return json === undefined ? {} : (JSON.parse(json) as unknown);
+      } catch {
+        return {};
+      }
+    }
   } catch {
     // Avoid crashing the bridge on conversion failures; the tool handler will
     // surface invalid args (typically via Zod) with a clearer error than DataCloneError.
@@ -198,18 +221,40 @@ parentPort?.on('message', async (msg: WorkerMessage) => {
       });
       return;
     }
+    const py = pyodide;
     try {
-      if (msg.context) {
-        const contextProxy = pyodide.toPy(msg.context);
+      const applyContext = () => {
+        if (!msg.context) return;
+        const contextProxy = py.toPy(msg.context);
         try {
-          pyodide.globals.set('context', contextProxy);
+          py.globals.set('context', contextProxy);
         } finally {
           contextProxy.destroy();
         }
+      };
+      const runOnce = async () => {
+        applyContext();
+        return py.runPythonAsync(msg.code);
+      };
+
+      let value: unknown;
+      try {
+        value = await runOnce();
+      } catch (error) {
+        const missing = extractMissingModuleName(error);
+        if (
+          missing
+          && AUTOLOAD_PACKAGES.has(missing)
+          && typeof (py as any).loadPackage === 'function'
+        ) {
+          await (py as any).loadPackage(missing);
+          value = await runOnce();
+        } else {
+          throw error;
+        }
       }
-      const value = await pyodide.runPythonAsync(msg.code);
       const result = await normalizePythonResultForPostMessage({
-        pyodideInstance: pyodide,
+        pyodideInstance: py,
         value,
       });
       parentPort?.postMessage({

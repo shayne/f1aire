@@ -34,6 +34,7 @@ Use call_tool(name, args) to invoke JS tools from Python. In this runtime it is 
 Example: pos = await call_tool("get_position", {})
 Do not pass data/state via vars or inline it in code. Always fetch data with call_tool inside Python.
 Async note (Pyodide Node runtime): Do not use asyncio.run() or loop.run_until_complete(). They require WebAssembly stack switching and will fail. Use top-level \`await\` in run_py.
+Packages: This is a Pyodide Python runtime (WASM). Standard library is available. \`numpy\` is available and auto-loads on first import (just \`import numpy as np\`). Do NOT use \`micropip.install(...)\` or attempt to install other packages at runtime.
 
 Notebook-style persistence: the Python runtime persists between calls; variables/imports stay defined until reset. Reassign or clear if you need a clean slate.
 Output: The tool returns the value of the last expression. Return JSON-serializable values only (dict/list/str/number/bool/None). Convert non-JSON types before returning.
@@ -49,6 +50,6 @@ Cookbook: shape -> compute
 Step 1) inspect_topic({ topic: 'TimingData', samples: 3, maxDepth: 5 })
 Step 2) run_py with:
 # (fetch rows inside Python via call_tool)
-rows = (await call_tool("get_lap_table", {"driverNumbers": ["4"]})).get("rows", [])
+rows = (await call_tool("get_lap_table", {"driverNumbers": ["4"]})) or []
 [{"lap": row["lap"], "s1": (row.get("sectorsMs") or [None])[0]} for row in rows]
 `;
