@@ -27,17 +27,19 @@ export function normalizeToolArgsForPostMessage(args: unknown): unknown {
   if (!args || typeof args !== 'object') return args;
   const maybeProxy = args as {
     toJs?: (opts?: unknown) => unknown;
-    destroy?: () => void;
   };
   if (typeof maybeProxy.toJs !== 'function') return args;
 
   try {
-    const converted = maybeProxy.toJs({ dict_converter: Object });
-    try {
-      maybeProxy.destroy?.();
-    } catch {
-      // Best-effort cleanup.
-    }
+    const converted = maybeProxy.toJs({
+      dict_converter: Object.fromEntries,
+      create_pyproxies: false,
+    });
+    // Important: do NOT call destroy() here.
+    //
+    // Tool-call args arrive as borrowed proxies when Python calls into JS. In
+    // Pyodide's Node runtime, explicitly destroying them can trigger a fatal
+    // "Object has already been destroyed" error inside proxy GC.
     return converted;
   } catch {
     // Avoid crashing the bridge on conversion failures; the tool handler will
@@ -131,7 +133,10 @@ parentPort?.on('message', async (msg: WorkerMessage) => {
       let result = value ?? null;
       if (value && typeof value === 'object' && typeof (value as { toJs?: unknown }).toJs === 'function') {
         const proxy = value as { toJs: (opts?: unknown) => unknown; destroy?: () => void };
-        result = proxy.toJs({ dict_converter: Object });
+        result = proxy.toJs({
+          dict_converter: Object.fromEntries,
+          create_pyproxies: false,
+        });
         proxy.destroy?.();
       }
       parentPort?.postMessage({
