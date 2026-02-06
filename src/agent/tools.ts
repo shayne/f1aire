@@ -138,7 +138,6 @@ export function makeTools({
     return target.execute(parsedArgs);
   };
   const pythonClient = createPythonClient({ toolHandler, logger });
-  let pythonInit: Promise<void> | null = null;
   const pyodideIndexUrl = getPyodideIndexUrl();
   const pyodideCacheDir = getPyodideBaseDir();
 
@@ -438,24 +437,32 @@ export function makeTools({
             );
           }
         }
-        if (!pythonInit) {
-          pythonInit = pythonClient.init({
-            indexURL: pyodideIndexUrl,
-            packageCacheDir: pyodideCacheDir,
+        // Always defer to the client's internal init memoization so we recover cleanly
+        // if the worker process crashes/restarts.
+        await pythonClient.init({
+          indexURL: pyodideIndexUrl,
+          packageCacheDir: pyodideCacheDir,
+        });
+        const context = buildPythonContext({ vars });
+        try {
+          return await runPy({
+            code,
+            context,
+            runtime: pythonClient,
           });
         }
-        try {
-          await pythonInit;
-        } catch (error) {
-          pythonInit = null;
+        catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          if (/pyodide is not initialized/i.test(message)) {
+            // The worker likely restarted between init and run. Re-init and retry once.
+            await pythonClient.init({
+              indexURL: pyodideIndexUrl,
+              packageCacheDir: pyodideCacheDir,
+            });
+            return runPy({ code, context, runtime: pythonClient });
+          }
           throw error;
         }
-        const context = buildPythonContext({ vars });
-        return runPy({
-          code,
-          context,
-          runtime: pythonClient,
-        });
       },
     }),
     set_time_cursor: tool({

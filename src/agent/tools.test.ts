@@ -3,12 +3,14 @@ import { makeTools } from './tools.js';
 
 let capturedToolHandler: ((name: string, args: unknown) => Promise<unknown>) | undefined;
 let runMock: ReturnType<typeof vi.fn>;
+let initMock: ReturnType<typeof vi.fn>;
 
 vi.mock('./pyodide/client.js', () => ({
   createPythonClient: (opts?: { toolHandler?: (name: string, args: unknown) => Promise<unknown> }) => {
     capturedToolHandler = opts?.toolHandler;
+    initMock = vi.fn().mockResolvedValue(undefined);
     return {
-      init: vi.fn(),
+      init: initMock,
       run: (...args: Parameters<NonNullable<typeof runMock>>) => runMock(...args),
       shutdown: vi.fn(),
     };
@@ -30,6 +32,7 @@ describe('tools', () => {
   beforeEach(() => {
     capturedToolHandler = undefined;
     runMock = vi.fn().mockResolvedValue({ ok: true, value: null });
+    initMock?.mockClear?.();
   });
 
   it('exposes expected tools', () => {
@@ -147,5 +150,24 @@ describe('tools', () => {
         context: { vars: { driver: '4' } },
       }),
     );
+  });
+
+  it('re-initializes and retries once if the worker reports uninitialized', async () => {
+    const tools = makeTools({
+      store,
+      processors,
+      timeCursor: { latest: true },
+      onTimeCursorChange: () => {},
+    });
+
+    runMock
+      .mockResolvedValueOnce({ ok: false, error: 'pyodide is not initialized' })
+      .mockResolvedValueOnce({ ok: true, value: 2 });
+
+    const value = await tools.run_py.execute({ code: '1+1' } as any);
+
+    expect(value).toBe(2);
+    expect(initMock).toHaveBeenCalledTimes(2);
+    expect(runMock).toHaveBeenCalledTimes(2);
   });
 });
