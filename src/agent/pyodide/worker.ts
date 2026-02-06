@@ -27,24 +27,37 @@ export function normalizeToolArgsForPostMessage(args: unknown): unknown {
   if (!args || typeof args !== 'object') return args;
   const maybeProxy = args as {
     toJs?: (opts?: unknown) => unknown;
+    copy?: () => unknown;
+    destroy?: () => void;
   };
   if (typeof maybeProxy.toJs !== 'function') return args;
 
+  // Tool-call args arrive as borrowed proxies when Python calls into JS.
+  // In Pyodide's Node runtime, explicitly destroying a borrowed proxy can
+  // trigger a fatal "Object has already been destroyed" error inside proxy GC.
+  //
+  // If copy() exists, use it so we can safely destroy the owned proxy without
+  // touching the borrowed one.
+  const owned =
+    typeof maybeProxy.copy === 'function' ? (maybeProxy.copy() as any) : maybeProxy;
   try {
-    const converted = maybeProxy.toJs({
+    const converted = (owned as any).toJs({
       dict_converter: Object.fromEntries,
       create_pyproxies: false,
     });
-    // Important: do NOT call destroy() here.
-    //
-    // Tool-call args arrive as borrowed proxies when Python calls into JS. In
-    // Pyodide's Node runtime, explicitly destroying them can trigger a fatal
-    // "Object has already been destroyed" error inside proxy GC.
     return converted;
   } catch {
     // Avoid crashing the bridge on conversion failures; the tool handler will
     // surface invalid args (typically via Zod) with a clearer error than DataCloneError.
     return {};
+  } finally {
+    if (owned !== maybeProxy) {
+      try {
+        owned.destroy?.();
+      } catch {
+        // Best-effort cleanup.
+      }
+    }
   }
 }
 
