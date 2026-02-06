@@ -149,6 +149,7 @@ export function App(): React.JSX.Element {
   const [streamStatus, setStreamStatus] = useState<string | null>(null);
   const [activity, setActivity] = useState<string[]>([]);
   const [pythonCodePreview, setPythonCodePreview] = useState('');
+  const [pythonCodeTarget, setPythonCodeTarget] = useState('');
   const [summary, setSummary] = useState<SummaryData | null>(null);
   const [timeCursor, setTimeCursor] = useState<TimeCursor>({ latest: true });
   const engineerRef = useRef<ReturnType<typeof createEngineerSession> | null>(null);
@@ -170,6 +171,26 @@ export function App(): React.JSX.Element {
       dataDir: getDataDir('f1aire'),
     });
   }
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setPythonCodePreview((prev) => {
+        if (prev === pythonCodeTarget) return prev;
+        if (!pythonCodeTarget.startsWith(prev)) return pythonCodeTarget;
+        const remaining = pythonCodeTarget.slice(prev.length);
+        const newlineIndex = remaining.indexOf('\n');
+        const advance = Math.max(
+          1,
+          Math.min(
+            newlineIndex >= 0 ? newlineIndex + 1 : remaining.length,
+            240,
+          ),
+        );
+        return pythonCodeTarget.slice(0, prev.length + advance);
+      });
+    }, 35);
+    return () => clearInterval(timer);
+  }, [pythonCodeTarget]);
 
   useEffect(() => {
     let cancelled = false;
@@ -430,6 +451,7 @@ export function App(): React.JSX.Element {
                           toolTiming.callQueue.length = 0;
                           toolInputPreviewRef.current.clear();
                           setPythonCodePreview('');
+                          setPythonCodeTarget('');
                           setStreamStatus('Thinking...');
                           pushActivity('Thinking...');
                           return;
@@ -490,7 +512,10 @@ export function App(): React.JSX.Element {
                           }
                           if (toolCallId) {
                             toolInputPreviewRef.current.set(toolCallId, '');
-                            if (toolName === 'run_py') setPythonCodePreview('');
+                            if (toolName === 'run_py') {
+                              setPythonCodePreview('');
+                              setPythonCodeTarget('');
+                            }
                           }
                           return;
                         }
@@ -513,7 +538,7 @@ export function App(): React.JSX.Element {
                               ?.toolName;
                           if (toolName === 'run_py') {
                             const extracted = tryExtractJsonStringField(next, 'code');
-                            if (extracted != null) setPythonCodePreview(extracted);
+                            if (extracted != null) setPythonCodeTarget(extracted);
                           }
                           return;
                         }
@@ -522,7 +547,7 @@ export function App(): React.JSX.Element {
                           if (toolName === 'run_py') {
                             const input = (part as any)?.input;
                             if (input && typeof input === 'object' && typeof input.code === 'string') {
-                              setPythonCodePreview(input.code);
+                              setPythonCodeTarget(input.code);
                             }
                           }
                           return;
@@ -572,7 +597,7 @@ export function App(): React.JSX.Element {
                               (part as any).tool?.args ??
                               (part as any).toolInput;
                             if (args && typeof args === 'object' && typeof args.code === 'string') {
-                              setPythonCodePreview(args.code);
+                              setPythonCodeTarget(args.code);
                             }
                           }
                           setStreamStatus(`Running tool: ${toolName}`);
