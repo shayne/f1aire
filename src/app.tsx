@@ -513,7 +513,7 @@ export function App(): React.JSX.Element {
                               ?.toolName;
                           if (toolName === 'run_py') {
                             const extracted = tryExtractJsonStringField(next, 'code');
-                            setPythonCodePreview(extracted ?? next);
+                            if (extracted != null) setPythonCodePreview(extracted);
                           }
                           return;
                         }
