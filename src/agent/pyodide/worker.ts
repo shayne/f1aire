@@ -8,6 +8,11 @@ import type { WorkerMessage } from './protocol.js';
 let pyodide: Awaited<ReturnType<typeof loadPyodide>> | null = null;
 const pendingToolCalls = new Map<string, { resolve: (value: unknown) => void; reject: (error: Error) => void }>();
 
+type PyProxyLike = {
+  toJs: (opts?: unknown) => unknown;
+  destroy?: () => void;
+};
+
 function resolvePythonBridgeModuleUrl(baseUrl: string | URL = import.meta.url) {
   const jsUrl = new URL('./python-bridge.js', baseUrl);
   if (fs.existsSync(fileURLToPath(jsUrl))) {
@@ -21,6 +26,66 @@ function rejectPendingToolCalls(error: Error) {
     reject(error);
   }
   pendingToolCalls.clear();
+}
+
+function isPyProxyLike(value: unknown): value is PyProxyLike {
+  return Boolean(
+    value
+      && typeof value === 'object'
+      && typeof (value as any).toJs === 'function',
+  );
+}
+
+function isConversionError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error ?? '');
+  return (
+    message.includes('pyodide.ffi.ConversionError')
+    || message.includes('No conversion known for x')
+  );
+}
+
+export async function normalizePythonResultForPostMessage({
+  pyodideInstance,
+  value,
+}: {
+  pyodideInstance: Awaited<ReturnType<typeof loadPyodide>>;
+  value: unknown;
+}): Promise<unknown> {
+  if (!isPyProxyLike(value)) return value ?? null;
+
+  const proxy = value;
+  try {
+    try {
+      return proxy.toJs({ dict_converter: Object.fromEntries, create_pyproxies: false });
+    } catch (error) {
+      if (!isConversionError(error)) throw error;
+
+      // Best-effort: convert non-JSONable values (range, generators, etc) to
+      // JSON-friendly structures in Python, then convert to a clone-safe JS value.
+      pyodideInstance.globals.set('__f1aire_result', proxy as any);
+      let normalized: unknown = null;
+      try {
+        normalized = await pyodideInstance.runPythonAsync('__f1aire_to_jsonable(__f1aire_result)');
+      } finally {
+        try {
+          (pyodideInstance.globals as any).delete?.('__f1aire_result');
+        } catch {
+          // Best-effort cleanup.
+        }
+      }
+
+      if (!isPyProxyLike(normalized)) return normalized ?? null;
+
+      const normalizedProxy = normalized;
+      try {
+        return normalizedProxy.toJs({ dict_converter: Object.fromEntries, create_pyproxies: false });
+      } finally {
+        normalizedProxy.destroy?.();
+      }
+    }
+  } finally {
+    proxy.destroy?.();
+  }
 }
 
 export function normalizeToolArgsForPostMessage(args: unknown): unknown {
@@ -143,15 +208,10 @@ parentPort?.on('message', async (msg: WorkerMessage) => {
         }
       }
       const value = await pyodide.runPythonAsync(msg.code);
-      let result = value ?? null;
-      if (value && typeof value === 'object' && typeof (value as { toJs?: unknown }).toJs === 'function') {
-        const proxy = value as { toJs: (opts?: unknown) => unknown; destroy?: () => void };
-        result = proxy.toJs({
-          dict_converter: Object.fromEntries,
-          create_pyproxies: false,
-        });
-        proxy.destroy?.();
-      }
+      const result = await normalizePythonResultForPostMessage({
+        pyodideInstance: pyodide,
+        value,
+      });
       parentPort?.postMessage({
         type: 'run-result',
         id: msg.id,
