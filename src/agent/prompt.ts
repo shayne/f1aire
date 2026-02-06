@@ -50,6 +50,7 @@ Cookbook: shape -> compute
 Step 1) inspect_topic({ topic: 'TimingData', samples: 3, maxDepth: 5 })
 Step 2) run_py with:
 # (fetch rows inside Python via call_tool)
-rows = (await call_tool("get_lap_table", {"driverNumbers": ["4"]})) or []
+lap_table = (await call_tool("get_lap_table", {"driverNumbers": ["4"]})) or {}
+rows = lap_table.get("rows", [])
 [{"lap": row["lap"], "s1": (row.get("sectorsMs") or [None])[0]} for row in rows]
 `;

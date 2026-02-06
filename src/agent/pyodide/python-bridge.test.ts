@@ -6,6 +6,7 @@ describe('python bridge prelude', () => {
     const code = buildPythonBridgePrelude();
     expect(code).toContain('import tool_bridge');
     expect(code).toContain('def call_tool');
+    expect(code).toContain('to_py');
     expect(code).toContain('run_py');
     expect(code).toContain('asyncio.run');
     expect(code).toContain('run_until_complete');

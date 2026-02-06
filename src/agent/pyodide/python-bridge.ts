@@ -25,7 +25,23 @@ def _normalize_args(args):
 
 async def call_tool_async(name, args=None):
     _reject_run_py(name)
-    return await tool_bridge.callTool(name, _normalize_args(args))
+    result = await tool_bridge.callTool(name, _normalize_args(args))
+    # Tool results are JS values crossing the Pyodide boundary; convert them to
+    # native Python values so dict/list helpers like .get() work as expected.
+    try:
+        from pyodide.ffi import JsProxy
+
+        if isinstance(result, JsProxy):
+            try:
+                return result.to_py()
+            finally:
+                try:
+                    result.destroy()
+                except Exception:
+                    pass
+    except Exception:
+        pass
+    return result
 
 
 async def call_tool(name, args=None):

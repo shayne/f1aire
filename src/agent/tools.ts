@@ -309,7 +309,7 @@ export function makeTools({
     }),
     get_lap_table: tool({
       description:
-        'Get per-lap table derived from TimingData (lap time, sectors, gaps, stints, optional segments). Useful for any lap-based analysis.',
+        'Get per-lap table derived from TimingData (lap time, sectors, gaps, stints, optional segments). Returns { rows }. Useful for any lap-based analysis.',
       inputSchema: z.object({
         driverNumbers: z.array(z.union([z.string(), z.number()])).optional(),
         startLap: z.number().optional(),
@@ -326,10 +326,11 @@ export function makeTools({
       }),
       execute: async (opts) => {
         const defaultEndLap = getDefaultEndLap();
-        return analysis.getLapTable({
+        const rows = analysis.getLapTable({
           ...opts,
           endLap: typeof opts.endLap === 'number' ? opts.endLap : defaultEndLap,
         });
+        return { rows };
       },
     }),
     get_data_catalog: tool({
