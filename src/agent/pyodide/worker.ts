@@ -23,6 +23,29 @@ function rejectPendingToolCalls(error: Error) {
   pendingToolCalls.clear();
 }
 
+export function normalizeToolArgsForPostMessage(args: unknown): unknown {
+  if (!args || typeof args !== 'object') return args;
+  const maybeProxy = args as {
+    toJs?: (opts?: unknown) => unknown;
+    destroy?: () => void;
+  };
+  if (typeof maybeProxy.toJs !== 'function') return args;
+
+  try {
+    const converted = maybeProxy.toJs({ dict_converter: Object });
+    try {
+      maybeProxy.destroy?.();
+    } catch {
+      // Best-effort cleanup.
+    }
+    return converted;
+  } catch {
+    // Avoid crashing the bridge on conversion failures; the tool handler will
+    // surface invalid args (typically via Zod) with a clearer error than DataCloneError.
+    return {};
+  }
+}
+
 function registerToolBridge() {
   pyodide?.registerJsModule('tool_bridge', {
     callTool: (name: string, args: unknown) => {
@@ -34,7 +57,8 @@ function registerToolBridge() {
       return new Promise((resolve, reject) => {
         pendingToolCalls.set(id, { resolve, reject });
         try {
-          port.postMessage({ type: 'tool-call', id, name, args });
+          const safeArgs = normalizeToolArgsForPostMessage(args);
+          port.postMessage({ type: 'tool-call', id, name, args: safeArgs });
         } catch (err) {
           pendingToolCalls.delete(id);
           reject(err instanceof Error ? err : new Error(String(err)));
