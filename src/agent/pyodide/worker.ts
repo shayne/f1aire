@@ -56,6 +56,32 @@ export function extractMissingModuleName(error: unknown): string | null {
   return mod.split('.')[0] ?? null;
 }
 
+export function ensureStructuredCloneable(value: unknown): unknown {
+  try {
+    structuredClone(value);
+    return value;
+  } catch {
+    try {
+      const seen = new WeakSet<object>();
+      const json = JSON.stringify(value, (_key, val) => {
+        if (typeof val === 'bigint') return val.toString();
+        if (typeof val === 'function') return undefined;
+        if (typeof val === 'symbol') return val.toString();
+        if (!val || typeof val !== 'object') return val;
+        if (seen.has(val)) return '<cycle>';
+        seen.add(val);
+        if (val instanceof Date) return val.toISOString();
+        if (val instanceof Map) return Object.fromEntries(val);
+        if (val instanceof Set) return Array.from(val);
+        return val;
+      });
+      return json === undefined ? null : (JSON.parse(json) as unknown);
+    } catch {
+      return null;
+    }
+  }
+}
+
 export async function normalizePythonResultForPostMessage({
   pyodideInstance,
   value,
@@ -261,7 +287,7 @@ parentPort?.on('message', async (msg: WorkerMessage) => {
         type: 'run-result',
         id: msg.id,
         ok: true,
-        value: result,
+        value: ensureStructuredCloneable(result),
       });
     } catch (err: any) {
       parentPort?.postMessage({ type: 'run-result', id: msg.id, ok: false, error: String(err?.message ?? err) });

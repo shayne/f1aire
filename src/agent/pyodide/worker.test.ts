@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
   extractMissingModuleName,
+  ensureStructuredCloneable,
   normalizePythonResultForPostMessage,
   normalizeToolArgsForPostMessage,
 } from './worker.js';
@@ -64,6 +65,31 @@ describe('extractMissingModuleName', () => {
     expect(extractMissingModuleName(new Error("ModuleNotFoundError: No module named 'numpy'"))).toBe('numpy');
     expect(extractMissingModuleName("No module named 'pandas.core.frame'")).toBe('pandas');
     expect(extractMissingModuleName(new Error('something else'))).toBeNull();
+  });
+});
+
+describe('ensureStructuredCloneable', () => {
+  it('passes through cloneable values', () => {
+    const value = { a: 1, b: [2, 3] };
+    const out = ensureStructuredCloneable(value);
+    expect(out).toEqual(value);
+    expect(() => structuredClone(out)).not.toThrow();
+  });
+
+  it('drops non-cloneable values like functions', () => {
+    const value = { ok: 1, fn: () => {} };
+    const out = ensureStructuredCloneable(value);
+    expect(out).toEqual({ ok: 1 });
+    expect(() => structuredClone(out)).not.toThrow();
+  });
+
+  it('handles cycles', () => {
+    const value: any = { a: 1 };
+    value.self = value;
+    const out = ensureStructuredCloneable(value);
+    // Cycles are structured-cloneable; we just need to ensure the worker won't crash when posting.
+    expect(out).toMatchObject({ a: 1 });
+    expect(() => structuredClone(out)).not.toThrow();
   });
 });
 
