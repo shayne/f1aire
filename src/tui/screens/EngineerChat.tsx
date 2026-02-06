@@ -10,6 +10,19 @@ import { theme } from '../theme.js';
 import { renderMarkdownToTerminal } from '../terminal-markdown.js';
 
 const SPINNER_FRAMES = ['|', '/', '-', '\\'];
+const ANSI_SGR_REGEX = /\x1b\[[0-9;]*m/g;
+
+function padTerminalLines(text: string, width: number): string {
+  if (width <= 0 || !text) return text;
+  const lines = text.split('\n');
+  return lines
+    .map((line) => {
+      const visible = line.replace(ANSI_SGR_REGEX, '');
+      const pad = width - visible.length;
+      return pad > 0 ? `${line}${' '.repeat(pad)}` : line;
+    })
+    .join('\n');
+}
 
 function Spinner({ active }: { active: boolean }) {
   const [index, setIndex] = useState(0);
@@ -35,7 +48,7 @@ const MessageBlock = React.memo(function MessageBlock({
     <Box flexDirection="column" marginBottom={1}>
       <Text color={color}>{label}</Text>
       <Box paddingLeft={2}>
-        <Text wrap="truncate-end">{content}</Text>
+        <Text>{content}</Text>
       </Box>
     </Box>
   );
@@ -108,7 +121,7 @@ const ConversationPanel = React.memo(function ConversationPanel({
           <Box flexDirection="column" marginBottom={1}>
             <Text color={theme.assistant}>Engineer</Text>
             <Box paddingLeft={2}>
-              <Text wrap="truncate-end">{streamingText}</Text>
+              <Text>{streamingText}</Text>
             </Box>
           </Box>
         ) : null}
@@ -195,7 +208,10 @@ export function EngineerChat({
   const messageContentWidth = Math.max(10, contentWidth - 2);
   const renderedStreamingText = useMemo(() => {
     if (!streamingText) return '';
-    return renderMarkdownToTerminal(streamingText, messageContentWidth);
+    return padTerminalLines(
+      renderMarkdownToTerminal(streamingText, messageContentWidth),
+      messageContentWidth,
+    );
   }, [streamingText, messageContentWidth]);
 
   useEffect(() => {
@@ -225,12 +241,15 @@ export function EngineerChat({
 
     const renderMessageContent = (message: ChatMessage) => {
       if (message.role === 'assistant') {
-        return renderMarkdownToTerminal(message.content, messageContentWidth);
+        return padTerminalLines(
+          renderMarkdownToTerminal(message.content, messageContentWidth),
+          messageContentWidth,
+        );
       }
       const lines = message.content
         .split('\n')
         .flatMap((line) => wrapPlainTextLine(line, messageContentWidth));
-      return lines.join('\n');
+      return padTerminalLines(lines.join('\n'), messageContentWidth);
     };
 
     const getMessageHeight = (message: ChatMessage) => {
