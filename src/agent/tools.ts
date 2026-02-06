@@ -105,8 +105,7 @@ export function makeTools({
   const analysis = createAnalysisContext({ store, processors });
   const analysisIndex = buildAnalysisIndex({ processors });
   let currentCursor: TimeCursor = { ...timeCursor };
-  type ToolDefinition = ReturnType<typeof tool>;
-  let toolsByName: Record<string, ToolDefinition> = {};
+  let toolsByName: Record<string, any> = {};
   const toolHandler = async (name: string, args: unknown) => {
     if (name === 'run_py') {
       throw new Error('run_py is not callable from Python');
@@ -115,7 +114,13 @@ export function makeTools({
     if (!target) {
       throw new Error(`Unknown tool: ${name}`);
     }
-    const parsedArgs = target.inputSchema.parse(args);
+    const parsedArgs =
+      typeof target.inputSchema?.parse === 'function'
+        ? target.inputSchema.parse(args)
+        : args;
+    if (typeof target.execute !== 'function') {
+      throw new Error(`Tool is missing execute(): ${name}`);
+    }
     return target.execute(parsedArgs);
   };
   const pythonClient = createPythonClient({ toolHandler, logger });
@@ -401,7 +406,7 @@ export function makeTools({
     }),
     run_py: tool({
       description:
-        'Run Python using store/processors/raw. Use call_tool for data; vars only for tiny constants (<= 8 KB). See Engineer Python Skill in system prompt.',
+        'Run Python with the call_tool bridge. Use call_tool for data; vars only for tiny constants (<= 8 KB). See Engineer Python Skill in system prompt.',
       inputSchema: z.object({
         code: z.string(),
         vars: z.record(z.string(), z.any()).optional(),
@@ -430,7 +435,7 @@ export function makeTools({
           pythonInit = null;
           throw error;
         }
-        const context = buildPythonContext({ store, processors, vars });
+        const context = buildPythonContext({ vars });
         return runPy({
           code,
           context,
@@ -538,8 +543,9 @@ export function makeTools({
       execute: async () => {
         const resolved = resolveCurrentCursor();
         const changes = analysisIndex.getPositionChanges();
-        if (typeof resolved.lap !== 'number') return changes;
-        return changes.filter((change) => change.lap <= resolved.lap);
+        const lap = resolved.lap;
+        if (typeof lap !== 'number') return changes;
+        return changes.filter((change) => change.lap <= lap);
       },
     }),
     get_clean_lap_pace: tool({

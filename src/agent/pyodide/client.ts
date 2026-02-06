@@ -29,7 +29,7 @@ export function resolveWorkerSpec({
 export function createPythonClient({
   workerFactory = () => {
     const spec = resolveWorkerSpec();
-    return new NodeWorker(spec.url, { type: 'module', execArgv: spec.execArgv });
+    return new NodeWorker(spec.url, { type: 'module', execArgv: spec.execArgv } as any);
   },
   toolHandler,
   logger,

@@ -1,11 +1,20 @@
+import fs from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import { parentPort } from 'node:worker_threads';
+import { fileURLToPath } from 'node:url';
 import { loadPyodide } from 'pyodide';
-import { resolveBridgeModuleUrl } from './bridge-loader.js';
 import type { WorkerMessage } from './protocol.js';
 
 let pyodide: Awaited<ReturnType<typeof loadPyodide>> | null = null;
 const pendingToolCalls = new Map<string, { resolve: (value: unknown) => void; reject: (error: Error) => void }>();
+
+function resolvePythonBridgeModuleUrl(baseUrl: string | URL = import.meta.url) {
+  const jsUrl = new URL('./python-bridge.js', baseUrl);
+  if (fs.existsSync(fileURLToPath(jsUrl))) {
+    return jsUrl;
+  }
+  return new URL('./python-bridge.ts', baseUrl);
+}
 
 function rejectPendingToolCalls(error: Error) {
   for (const { reject } of pendingToolCalls.values()) {
@@ -17,14 +26,15 @@ function rejectPendingToolCalls(error: Error) {
 function registerToolBridge() {
   pyodide?.registerJsModule('tool_bridge', {
     callTool: (name: string, args: unknown) => {
-      if (!parentPort) {
+      const port = parentPort;
+      if (!port) {
         return Promise.reject(new Error('tool bridge unavailable'));
       }
       const id = randomUUID();
       return new Promise((resolve, reject) => {
         pendingToolCalls.set(id, { resolve, reject });
         try {
-          parentPort.postMessage({ type: 'tool-call', id, name, args });
+          port.postMessage({ type: 'tool-call', id, name, args });
         } catch (err) {
           pendingToolCalls.delete(id);
           reject(err instanceof Error ? err : new Error(String(err)));
@@ -36,7 +46,7 @@ function registerToolBridge() {
 
 async function installPythonBridge() {
   if (!pyodide) return;
-  const bridgeUrl = resolveBridgeModuleUrl();
+  const bridgeUrl = resolvePythonBridgeModuleUrl();
   const bridgeModule = await import(bridgeUrl.href);
   if (typeof bridgeModule.buildPythonBridgePrelude !== 'function') {
     throw new Error('python bridge module is missing buildPythonBridgePrelude');

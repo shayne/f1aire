@@ -45,6 +45,11 @@ describe('ensurePyodideAssets', () => {
 
     expect(download).toHaveBeenCalled();
     expect(extract).toHaveBeenCalled();
+    expect(writeFileMock).toHaveBeenCalledWith(
+      path.join(tmpRoot, 'pyodide-lock.json'),
+      expect.any(String),
+      'utf-8',
+    );
   });
 
   it('checks for the pyodide lockfile marker before downloading', async () => {
@@ -87,5 +92,6 @@ describe('ensurePyodideAssets', () => {
         totalBytes: 10,
       }),
     );
+    expect(writeFileMock).toHaveBeenCalled();
   });
 });

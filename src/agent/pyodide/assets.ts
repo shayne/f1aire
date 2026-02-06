@@ -37,6 +37,22 @@ export async function ensurePyodideAssets({
     onProgress?.({ phase: 'ready', message: 'Python runtime ready.' });
     return { ready: true };
   } catch {
+    // Backwards-compat: older versions downloaded/extracted without writing the marker.
+    // If we detect the extracted runtime already present, just create the marker and continue.
+    const sentinel = path.join(baseDir, 'pyodide.asm.js');
+    try {
+      await fs.access(sentinel);
+      await fs.writeFile(
+        marker,
+        JSON.stringify({ version, extractedAt: new Date().toISOString(), migrated: true }, null, 2),
+        'utf-8',
+      );
+      onProgress?.({ phase: 'ready', message: 'Python runtime ready.' });
+      return { ready: true };
+    } catch {
+      // fall through to download/extract
+    }
+
     await fs.mkdir(baseDir, { recursive: true });
     onProgress?.({ phase: 'downloading', message: 'Downloading Python runtime...' });
     const tarPath = await download(getTarballUrl(version), baseDir, (progress) => {
@@ -49,6 +65,11 @@ export async function ensurePyodideAssets({
     });
     onProgress?.({ phase: 'extracting', message: 'Extracting Python runtime...' });
     await extract(tarPath, baseDir);
+    await fs.writeFile(
+      marker,
+      JSON.stringify({ version, extractedAt: new Date().toISOString() }, null, 2),
+      'utf-8',
+    );
     await fs.unlink(tarPath).catch(() => {});
     onProgress?.({ phase: 'ready', message: 'Python runtime ready.' });
     return { ready: true };
@@ -110,8 +131,28 @@ async function defaultDownload(
 }
 
 async function defaultExtract(tarPath: string, destDir: string) {
+  async function readHeaderBytes(filePath: string, length: number) {
+    const handle = await fs.open(filePath, 'r');
+    try {
+      const buffer = Buffer.alloc(length);
+      const { bytesRead } = await handle.read(buffer, 0, length, 0);
+      return buffer.subarray(0, bytesRead);
+    } finally {
+      await handle.close();
+    }
+  }
+
   const { extract } = await import('tar');
   if (tarPath.endsWith('.bz2')) {
+    const header = await readHeaderBytes(tarPath, 3);
+    const looksLikeBzip = header.length === 3 && header.toString('utf-8') === 'BZh';
+    if (!looksLikeBzip) {
+      const preview =
+        header.length > 0 ? JSON.stringify(header.toString('utf-8')) : '"<empty>"';
+      throw new Error(
+        `Downloaded runtime archive does not look like a .bz2 file (expected \\"BZh\\" header, got ${preview}).`,
+      );
+    }
     await new Promise<void>((resolve, reject) => {
       const stream = createReadStream(tarPath)
         .pipe(unbzip2Stream())

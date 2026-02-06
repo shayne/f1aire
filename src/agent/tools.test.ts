@@ -106,4 +106,32 @@ describe('tools', () => {
       tools.run_py.execute({ code: '1+1', vars: bigVars } as any),
     ).rejects.toThrow(/vars payload too large/i);
   });
+
+  it('passes only vars into the python context (no raw/processors)', async () => {
+    const noisyStore = {
+      ...store,
+      raw: {
+        ...store.raw,
+        // Real SessionStore.raw contains functions and other non-cloneable values.
+        subscribe: () => {},
+      },
+    } as any;
+
+    const tools = makeTools({
+      store: noisyStore,
+      processors,
+      timeCursor: { latest: true },
+      onTimeCursorChange: () => {},
+    });
+
+    await tools.run_py.execute({ code: '1+1', vars: { driver: '4' } } as any);
+
+    expect(runMock).toHaveBeenCalledTimes(1);
+    expect(runMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        code: '1+1',
+        context: { vars: { driver: '4' } },
+      }),
+    );
+  });
 });

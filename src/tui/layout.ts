@@ -15,8 +15,8 @@ export type DataStatus = {
 export type RightPaneMode = 'minimal' | 'compact' | 'full';
 
 export type SessionSummary = {
-  winner?: { name: string; number: number } | null;
-  fastestLap?: { name: string; number: number; time: string } | null;
+  winner?: { name: string; number: string } | null;
+  fastestLap?: { name: string; number: string; time: string } | null;
   totalLaps?: number | null;
 };
 
@@ -129,7 +129,6 @@ export function getActivityLimit(mode: RightPaneMode): number {
 }
 
 const PANEL_OVERHEAD_LINES = 4;
-const ACTIVITY_STATUS_LINES = 2;
 
 export function fitRightPane({
   rows,
@@ -137,18 +136,22 @@ export function fitRightPane({
   sessionItems,
   activityEntries,
   dataItems,
+  codeLines = [],
 }: {
   rows: number;
   mode: RightPaneMode;
   sessionItems: StatItem[];
   activityEntries: string[];
   dataItems: StatItem[];
+  codeLines?: string[];
 }): {
   sessionItems: StatItem[];
   activityEntries: string[];
   dataItems: StatItem[];
+  codeLines: string[];
   showActivity: boolean;
   showData: boolean;
+  showCode: boolean;
 } {
   const safeRows = Number.isFinite(rows) ? Math.max(0, rows) : 40;
   const gap = safeRows < 32 ? 0 : 1;
@@ -163,17 +166,11 @@ export function fitRightPane({
   let activityLimit = 0;
   if (remaining > 0) {
     const remainingAfterGap = remaining - gap;
-    if (remainingAfterGap >= PANEL_OVERHEAD_LINES + ACTIVITY_STATUS_LINES) {
+    if (remainingAfterGap >= PANEL_OVERHEAD_LINES + 1) {
       showActivity = true;
-      const extraCapacity =
-        remainingAfterGap -
-        (PANEL_OVERHEAD_LINES + ACTIVITY_STATUS_LINES);
-      activityLimit = Math.max(
-        0,
-        Math.min(targetActivityLimit, extraCapacity),
-      );
-      const activityHeight =
-        PANEL_OVERHEAD_LINES + ACTIVITY_STATUS_LINES + activityLimit;
+      const extraCapacity = remainingAfterGap - PANEL_OVERHEAD_LINES;
+      activityLimit = Math.max(0, Math.min(targetActivityLimit, extraCapacity));
+      const activityHeight = PANEL_OVERHEAD_LINES + activityLimit;
       remaining = remainingAfterGap - activityHeight;
     }
   }
@@ -189,13 +186,26 @@ export function fitRightPane({
     }
   }
 
+  let codeLimit = 0;
+  let showCode = false;
+  if (remaining > 0 && codeLines.length > 0) {
+    const remainingAfterGap = remaining - gap;
+    if (remainingAfterGap >= PANEL_OVERHEAD_LINES + 1) {
+      const codeCapacity = remainingAfterGap - PANEL_OVERHEAD_LINES;
+      codeLimit = Math.max(0, Math.min(codeLines.length, codeCapacity));
+      showCode = codeLimit > 0;
+    }
+  }
+
   return {
     sessionItems,
     activityEntries: showActivity
       ? activityEntries.slice(-activityLimit)
       : [],
     dataItems: showData ? dataItems.slice(0, dataLimit) : [],
+    codeLines: showCode ? codeLines.slice(-codeLimit) : [],
     showActivity,
     showData,
+    showCode,
   };
 }

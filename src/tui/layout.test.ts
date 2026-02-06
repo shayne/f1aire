@@ -16,8 +16,8 @@ describe('layout helpers', () => {
 
   it('shrinks session items when rows are limited', () => {
     const summary = {
-      winner: { name: 'Max', number: 1 },
-      fastestLap: { name: 'Lando', number: 4, time: '1:32.000' },
+      winner: { name: 'Max', number: '1' },
+      fastestLap: { name: 'Lando', number: '4', time: '1:32.000' },
       totalLaps: 56,
     };
 
@@ -125,6 +125,6 @@ describe('layout helpers', () => {
       dataItems,
     });
 
-    expect(layout.dataItems.length).toBe(6);
+    expect(layout.dataItems.length).toBe(8);
   });
 });

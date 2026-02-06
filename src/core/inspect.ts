@@ -4,7 +4,15 @@ export type InspectOptions = {
   maxArray?: number;
 };
 
-type Shape = string | { _type: 'array'; items: Shape } | Record<string, Shape>;
+type PrimitiveShape = string;
+interface ArrayShape {
+  _type: 'array';
+  items: Shape;
+}
+interface ObjectShape {
+  [key: string]: Shape;
+}
+type Shape = PrimitiveShape | ArrayShape | ObjectShape;
 
 type ShapeKind = 'primitive' | 'array' | 'object';
 

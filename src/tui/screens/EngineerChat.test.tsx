@@ -78,6 +78,20 @@ describe('EngineerChat', () => {
 
     expect(onConversationRender).toHaveBeenCalledTimes(1);
   });
+
+  it('renders a python code preview panel when pythonCode is present', () => {
+    const { lastFrame } = render(
+      <EngineerChat
+        {...baseProps}
+        maxHeight={44}
+        pythonCode={'import numpy as np\nprint(\"hi\")\n2+2'}
+      />,
+    );
+
+    const frame = stripAnsi(lastFrame() ?? '');
+    expect(frame).toContain('Python');
+    expect(frame).toContain('print(\"hi\")');
+  });
 });
 
   it('does not re-render the root when typing', async () => {

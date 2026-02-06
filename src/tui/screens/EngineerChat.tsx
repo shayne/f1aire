@@ -1,6 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Box, Text, useStdout } from 'ink';
-import Markdown from '@inkkit/ink-markdown';
 import TextInput from 'ink-text-input';
 import type { ChatMessage } from '../chat-state.js';
 import type { Summary as SummaryData } from '../../core/summary.js';
@@ -8,6 +7,7 @@ import type { Meeting, Session } from '../../core/types.js';
 import { fitRightPane, getRightPaneMode, getSessionItems } from '../layout.js';
 import { Panel } from '../components/Panel.js';
 import { theme } from '../theme.js';
+import { renderMarkdownToTerminal } from '../terminal-markdown.js';
 
 const SPINNER_FRAMES = ['|', '/', '-', '\\'];
 
@@ -31,20 +31,11 @@ const MessageBlock = React.memo(function MessageBlock({
 }: ChatMessage) {
   const label = role === 'assistant' ? 'Engineer' : 'You';
   const color = role === 'assistant' ? theme.assistant : theme.user;
-  const isAssistant = role === 'assistant';
   return (
     <Box flexDirection="column" marginBottom={1}>
       <Text color={color}>{label}</Text>
       <Box paddingLeft={2}>
-        {isAssistant ? (
-          <Markdown>{content}</Markdown>
-        ) : (
-          <Box flexDirection="column">
-            {content.split('\n').map((line, index) => (
-              <Text key={`${line}-${index}`}>{line}</Text>
-            ))}
-          </Box>
-        )}
+        <Text wrap="truncate-end">{content}</Text>
       </Box>
     </Box>
   );
@@ -117,7 +108,7 @@ const ConversationPanel = React.memo(function ConversationPanel({
           <Box flexDirection="column" marginBottom={1}>
             <Text color={theme.assistant}>Engineer</Text>
             <Box paddingLeft={2}>
-              <Markdown>{streamingText}</Markdown>
+              <Text wrap="truncate-end">{streamingText}</Text>
             </Box>
           </Box>
         ) : null}
@@ -167,6 +158,7 @@ export function EngineerChat({
   session,
   summary,
   activity,
+  pythonCode,
   asOfLabel,
   maxHeight,
   onConversationRender,
@@ -182,6 +174,7 @@ export function EngineerChat({
   session: Session;
   summary: SummaryData | null;
   activity: string[];
+  pythonCode?: string;
   asOfLabel?: string | null;
   maxHeight?: number;
   onConversationRender?: () => void;
@@ -199,6 +192,11 @@ export function EngineerChat({
   const gutter = isNarrow ? 0 : 2;
   const leftPaneWidth = Math.max(20, columns - (rightWidth ?? 0) - gutter);
   const contentWidth = Math.max(12, leftPaneWidth - 6);
+  const messageContentWidth = Math.max(10, contentWidth - 2);
+  const renderedStreamingText = useMemo(() => {
+    if (!streamingText) return '';
+    return renderMarkdownToTerminal(streamingText, messageContentWidth);
+  }, [streamingText, messageContentWidth]);
 
   useEffect(() => {
     onRender?.();
@@ -211,22 +209,35 @@ export function EngineerChat({
   const conversationPanelHeight = Math.max(availableForConversation, 0);
 
   const pendingHeight = useMemo(() => {
-    return isStreaming && status && !streamingText ? 3 : 0;
-  }, [isStreaming, status, streamingText]);
+    return isStreaming && status && !renderedStreamingText ? 3 : 0;
+  }, [isStreaming, status, renderedStreamingText]);
 
   const visibleMessages = useMemo(() => {
-    const estimateLines = (content: string) => {
-      return content
-        .split('\n')
-        .reduce(
-          (total, line) =>
-            total + Math.max(1, Math.ceil(line.length / contentWidth)),
-          0,
-        );
+    const wrapPlainTextLine = (line: string, width: number) => {
+      if (width <= 0) return [line];
+      if (line.length <= width) return [line];
+      const parts: string[] = [];
+      for (let i = 0; i < line.length; i += width) {
+        parts.push(line.slice(i, i + width));
+      }
+      return parts;
     };
 
-    const estimateMessageHeight = (message: ChatMessage) => {
-      return 1 + estimateLines(message.content) + 1;
+    const renderMessageContent = (message: ChatMessage) => {
+      if (message.role === 'assistant') {
+        return renderMarkdownToTerminal(message.content, messageContentWidth);
+      }
+      const lines = message.content
+        .split('\n')
+        .flatMap((line) => wrapPlainTextLine(line, messageContentWidth));
+      return lines.join('\n');
+    };
+
+    const getMessageHeight = (message: ChatMessage) => {
+      const rendered = renderMessageContent(message);
+      const lineCount = Math.max(1, rendered.split('\n').length);
+      // label + content + bottom margin
+      return 1 + lineCount + 1;
     };
 
     const availableMessageLines = Math.max(
@@ -237,13 +248,16 @@ export function EngineerChat({
     let remaining = Math.max(availableMessageLines - pendingHeight, 0);
     const visible: ChatMessage[] = [];
     for (let i = messages.length - 1; i >= 0; i -= 1) {
-      const height = estimateMessageHeight(messages[i]);
+      const height = getMessageHeight(messages[i]);
       if (height > remaining && visible.length > 0) break;
       remaining -= height;
-      visible.push(messages[i]);
+      visible.push({
+        ...messages[i],
+        content: renderMessageContent(messages[i]),
+      });
     }
     return visible.reverse();
-  }, [messages, conversationPanelHeight, contentWidth, pendingHeight]);
+  }, [messages, conversationPanelHeight, messageContentWidth, pendingHeight]);
 
   const activityEntries = useMemo(() => {
     return activity.length ? activity : status ? [status] : ['Idle'];
@@ -269,6 +283,11 @@ export function EngineerChat({
     asOfLabel,
   ]);
 
+  const pythonCodeLines = useMemo(() => {
+    if (!pythonCode) return [];
+    return pythonCode.split('\n');
+  }, [pythonCode]);
+
   const rightPane = useMemo(() => {
     return fitRightPane({
       rows,
@@ -276,8 +295,9 @@ export function EngineerChat({
       sessionItems,
       activityEntries,
       dataItems: [],
+      codeLines: pythonCodeLines,
     });
-  }, [rows, rightPaneMode, sessionItems, activityEntries]);
+  }, [rows, rightPaneMode, sessionItems, activityEntries, pythonCodeLines]);
 
   return (
     <Box
@@ -295,7 +315,7 @@ export function EngineerChat({
           visibleMessages={visibleMessages}
           isStreaming={isStreaming}
           status={status}
-          streamingText={streamingText}
+          streamingText={renderedStreamingText}
           height={conversationPanelHeight}
           onRender={onConversationRender}
         />
@@ -316,12 +336,6 @@ export function EngineerChat({
         </Panel>
         {rightPane.showActivity ? (
           <Panel title="Activity" tone={isStreaming ? 'accent' : 'neutral'}>
-            <Box gap={1} marginBottom={1}>
-              <Spinner active={isStreaming} />
-              <Text color={isStreaming ? theme.status.thinking : theme.muted}>
-                {status ?? (isStreaming ? 'Working...' : 'Idle')}
-              </Text>
-            </Box>
             <Box flexDirection="column">
               {rightPane.activityEntries.map((entry, index) => {
                 const marker =
@@ -332,6 +346,17 @@ export function EngineerChat({
                   </Text>
                 );
               })}
+            </Box>
+          </Panel>
+        ) : null}
+        {rightPane.showCode ? (
+          <Panel title="Python" tone="muted">
+            <Box flexDirection="column">
+              {rightPane.codeLines.map((line, index) => (
+                <Text key={`${line}-${index}`} wrap="truncate-end" color={theme.muted}>
+                  {line}
+                </Text>
+              ))}
             </Box>
           </Panel>
         ) : null}

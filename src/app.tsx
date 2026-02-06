@@ -8,6 +8,7 @@ import { createEngineerLogger } from './agent/engineer-logger.js';
 import { createEngineerSession } from './agent/engineer.js';
 import { formatUnknownError } from './agent/error-utils.js';
 import { ensurePyodideAssets } from './agent/pyodide/assets.js';
+import { PYODIDE_VERSION } from './agent/pyodide/paths.js';
 import { systemPrompt } from './agent/prompt.js';
 import { makeTools } from './agent/tools.js';
 import { downloadSession } from './core/download.js';
@@ -47,6 +48,61 @@ type RuntimeProgress = {
 };
 
 type RuntimeProgressUpdate = RuntimeProgress & { message: string };
+
+function tryExtractJsonStringField(value: string, fieldName: string): string | null {
+  const key = `"${fieldName}"`;
+  const keyIndex = value.indexOf(key);
+  if (keyIndex < 0) return null;
+  const colonIndex = value.indexOf(':', keyIndex + key.length);
+  if (colonIndex < 0) return null;
+  let i = colonIndex + 1;
+  while (i < value.length && /\s/.test(value[i] ?? '')) i += 1;
+  if (value[i] !== '"') return null;
+  i += 1;
+  let out = '';
+  while (i < value.length) {
+    const ch = value[i]!;
+    if (ch === '"') return out;
+    if (ch === '\\') {
+      const next = value[i + 1];
+      if (next === undefined) return out;
+      if (next === 'n') {
+        out += '\n';
+        i += 2;
+        continue;
+      }
+      if (next === 'r') {
+        out += '\r';
+        i += 2;
+        continue;
+      }
+      if (next === 't') {
+        out += '\t';
+        i += 2;
+        continue;
+      }
+      if (next === '\\' || next === '"' || next === '/') {
+        out += next;
+        i += 2;
+        continue;
+      }
+      if (next === 'u' && i + 5 < value.length) {
+        const hex = value.slice(i + 2, i + 6);
+        if (/^[0-9a-fA-F]{4}$/.test(hex)) {
+          out += String.fromCharCode(Number.parseInt(hex, 16));
+          i += 6;
+          continue;
+        }
+      }
+      out += next;
+      i += 2;
+      continue;
+    }
+    out += ch;
+    i += 1;
+  }
+  return out;
+}
 
 const getToolName = (part: ToolPart): string =>
   ((part as any).toolName ??
@@ -92,6 +148,7 @@ export function App(): React.JSX.Element {
   const [isStreaming, setIsStreaming] = useState(false);
   const [streamStatus, setStreamStatus] = useState<string | null>(null);
   const [activity, setActivity] = useState<string[]>([]);
+  const [pythonCodePreview, setPythonCodePreview] = useState('');
   const [summary, setSummary] = useState<SummaryData | null>(null);
   const [timeCursor, setTimeCursor] = useState<TimeCursor>({ latest: true });
   const engineerRef = useRef<ReturnType<typeof createEngineerSession> | null>(null);
@@ -103,6 +160,7 @@ export function App(): React.JSX.Element {
     inputQueue: [] as ToolTimingEntry[],
     callQueue: [] as ToolTimingEntry[],
   });
+  const toolInputPreviewRef = useRef(new Map<string, string>());
   const perfStopRef = useRef<(() => void) | null>(null);
   const { stdout } = useStdout();
   const terminalRows = stdout?.rows ?? 40;
@@ -128,7 +186,7 @@ export function App(): React.JSX.Element {
           });
         };
         await ensurePyodideAssets({
-          version: '0.29.3',
+          version: PYODIDE_VERSION,
           onProgress: reportProgress,
         });
         if (!cancelled) setRuntimeReady(true);
@@ -370,6 +428,8 @@ export function App(): React.JSX.Element {
                           toolTiming.byId.clear();
                           toolTiming.inputQueue.length = 0;
                           toolTiming.callQueue.length = 0;
+                          toolInputPreviewRef.current.clear();
+                          setPythonCodePreview('');
                           setStreamStatus('Thinking...');
                           pushActivity('Thinking...');
                           return;
@@ -387,8 +447,9 @@ export function App(): React.JSX.Element {
                           return;
                         }
                         if (event.type !== 'stream-part') return;
-                        const part = event.part as Record<string, unknown> | undefined;
-                        const partType = part?.type as string | undefined;
+                        const part = event.part as ToolPart | undefined;
+                        if (!part) return;
+                        const partType = part.type as string | undefined;
                         if (!partType) return;
                         if (partType === 'text-delta') {
                           setStreamStatus(null);
@@ -425,6 +486,38 @@ export function App(): React.JSX.Element {
                           }
                           setStreamStatus('Writing code...');
                           pushActivity('Writing code');
+                          if (toolCallId) {
+                            toolInputPreviewRef.current.set(toolCallId, '');
+                            if (toolName === 'run_py') setPythonCodePreview('');
+                          }
+                          return;
+                        }
+                        if (partType === 'tool-input-delta') {
+                          const toolCallId = getToolCallId(part);
+                          const delta = (part as any)?.inputTextDelta;
+                          if (typeof toolCallId !== 'string' || typeof delta !== 'string') return;
+                          const previous =
+                            toolInputPreviewRef.current.get(toolCallId) ?? '';
+                          const next = previous + delta;
+                          toolInputPreviewRef.current.set(toolCallId, next);
+                          const toolName =
+                            toolTimingRef.current.byId.get(toolCallId)?.toolName ??
+                            toolTimingRef.current.inputQueue.find((e) => e.toolCallId === toolCallId)
+                              ?.toolName;
+                          if (toolName === 'run_py') {
+                            const extracted = tryExtractJsonStringField(next, 'code');
+                            setPythonCodePreview(extracted ?? next);
+                          }
+                          return;
+                        }
+                        if (partType === 'tool-input-available') {
+                          const toolName = getToolName(part);
+                          if (toolName === 'run_py') {
+                            const input = (part as any)?.input;
+                            if (input && typeof input === 'object' && typeof input.code === 'string') {
+                              setPythonCodePreview(input.code);
+                            }
+                          }
                           return;
                         }
                         if (partType === 'tool-call') {
@@ -463,6 +556,17 @@ export function App(): React.JSX.Element {
                             toolTiming.byId.set(toolCallId, nextEntry);
                           } else {
                             toolTiming.callQueue.push(nextEntry);
+                          }
+                          if (toolName === 'run_py') {
+                            const args =
+                              (part as any).args ??
+                              (part as any).input ??
+                              (part as any).toolCall?.args ??
+                              (part as any).tool?.args ??
+                              (part as any).toolInput;
+                            if (args && typeof args === 'object' && typeof args.code === 'string') {
+                              setPythonCodePreview(args.code);
+                            }
                           }
                           setStreamStatus(`Running tool: ${toolName}`);
                           pushActivity(`Running tool: ${toolName}`);
@@ -533,6 +637,7 @@ export function App(): React.JSX.Element {
                 session={screen.session}
                 summary={summary}
                 activity={activity}
+                pythonCode={pythonCodePreview}
                 maxHeight={contentHeight}
                 asOfLabel={asOfLabel}
               />

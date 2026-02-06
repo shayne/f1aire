@@ -36,6 +36,7 @@ export function classifyTraffic({
   thresholds?: TrafficThresholds;
 }): TrafficLabel {
   if (!Number.isFinite(lapTimeMs ?? NaN)) return 'unknown';
+  if (gapAheadSec == null || gapBehindSec == null) return 'unknown';
   if (!Number.isFinite(gapAheadSec ?? NaN) || !Number.isFinite(gapBehindSec ?? NaN)) {
     return 'unknown';
   }
