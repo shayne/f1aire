@@ -53,6 +53,28 @@ function assertPythonCodeAllowed(code: string) {
   }
 }
 
+function classifyPythonFailure(message: string): string | undefined {
+  if (/no module named ['"]numpy['"]/i.test(message)) {
+    return "Importing numpy should succeed (it's bundled). If it failed, retry once; the runtime will auto-load it.";
+  }
+  if (/asyncio\.run|run_until_complete|stack switching/i.test(message)) {
+    return "Don't use asyncio.run() or run_until_complete(). Use top-level `await` and `await call_tool(...)` in run_py.";
+  }
+  if (/micropip\.install/i.test(message)) {
+    return 'Runtime installs are disabled. Use only allowlisted packages bundled with the runtime (e.g. numpy).';
+  }
+  if (/DataCloneError|could not be cloned|structured clone/i.test(message)) {
+    return 'Return JSON-serializable values only (dict/list/str/number/bool/None). Convert NumPy arrays to lists (e.g. arr.tolist()).';
+  }
+  if (/vars payload too large/i.test(message)) {
+    return 'Use call_tool(...) inside Python for data. vars is only for tiny constants (<= 8KB).';
+  }
+  if (/AttributeError:\s*get\b/i.test(message)) {
+    return "If you're calling .get(...), ensure the value is a dict. call_tool(...) returns Python dict/list; for lap tables use: tbl = await call_tool('get_lap_table', ...); rows = tbl.get('rows', []).";
+  }
+  return undefined;
+}
+
 function estimateJsonBytes(value: unknown): number | null {
   try {
     return Buffer.byteLength(JSON.stringify(value), 'utf-8');
@@ -430,49 +452,54 @@ export function makeTools({
     }),
     run_py: tool({
       description:
-        'Run Python with the call_tool bridge. Use call_tool for data; vars only for tiny constants (<= 8 KB). See Engineer Python Skill in system prompt.',
+        'Run Python with the call_tool bridge. Returns { ok: true, value } or { ok: false, error, hint? }. Use call_tool for data; vars only for tiny constants (<= 8 KB). See Engineer Python Skill in system prompt.',
       inputSchema: z.object({
         code: z.string(),
         vars: z.record(z.string(), z.any()).optional(),
       }),
       execute: async ({ code, vars }) => {
-        assertPythonCodeAllowed(code);
-        if (vars !== undefined) {
-          const byteCount = estimateJsonBytes(vars);
-          if (byteCount === null) {
-            throw new Error('run_py vars must be JSON-serializable; use call_tool for data instead');
-          }
-          if (byteCount > MAX_PYTHON_VARS_BYTES) {
-            throw new Error(
-              `vars payload too large (${byteCount} bytes). Use call_tool for data; vars only for tiny constants (<= 8 KB).`,
-            );
-          }
-        }
-        // Always defer to the client's internal init memoization so we recover cleanly
-        // if the worker process crashes/restarts.
-        await pythonClient.init({
-          indexURL: pyodideIndexUrl,
-          packageCacheDir: pyodideCacheDir,
-        });
-        const context = buildPythonContext({ vars });
+        const fail = (err: unknown) => {
+          const message = err instanceof Error ? err.message : String(err);
+          return { ok: false, error: message, hint: classifyPythonFailure(message) };
+        };
+
         try {
-          return await runPy({
-            code,
-            context,
-            runtime: pythonClient,
+          assertPythonCodeAllowed(code);
+          if (vars !== undefined) {
+            const byteCount = estimateJsonBytes(vars);
+            if (byteCount === null) {
+              return fail('run_py vars must be JSON-serializable; use call_tool for data instead');
+            }
+            if (byteCount > MAX_PYTHON_VARS_BYTES) {
+              return fail(
+                `vars payload too large (${byteCount} bytes). Use call_tool for data; vars only for tiny constants (<= 8 KB).`,
+              );
+            }
+          }
+
+          // Always defer to the client's internal init memoization so we recover cleanly
+          // if the worker process crashes/restarts.
+          await pythonClient.init({
+            indexURL: pyodideIndexUrl,
+            packageCacheDir: pyodideCacheDir,
           });
-        }
-        catch (error) {
-          const message = error instanceof Error ? error.message : String(error);
-          if (/pyodide is not initialized/i.test(message)) {
+
+          const context = buildPythonContext({ vars });
+          let result = await runPy({ code, context, runtime: pythonClient });
+          if (!result.ok && /pyodide is not initialized/i.test(result.error)) {
             // The worker likely restarted between init and run. Re-init and retry once.
             await pythonClient.init({
               indexURL: pyodideIndexUrl,
               packageCacheDir: pyodideCacheDir,
             });
-            return runPy({ code, context, runtime: pythonClient });
+            result = await runPy({ code, context, runtime: pythonClient });
           }
-          throw error;
+          if (!result.ok) {
+            return { ...result, hint: classifyPythonFailure(result.error) };
+          }
+          return result;
+        } catch (err) {
+          return fail(err);
         }
       },
     }),

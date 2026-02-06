@@ -33,11 +33,16 @@ Tool bridge:
 Use call_tool(name, args) to invoke JS tools from Python. In this runtime it is async, so you MUST use \`await\`.
 Example: pos = await call_tool("get_position", {})
 Do not pass data/state via vars or inline it in code. Always fetch data with call_tool inside Python.
+For speed and fewer tool steps, prefer doing all fetch + compute in a single run_py call (Python can call tools itself).
 Async note (Pyodide Node runtime): Do not use asyncio.run() or loop.run_until_complete(). They require WebAssembly stack switching and will fail. Use top-level \`await\` in run_py.
 Packages: This is a Pyodide Python runtime (WASM). Standard library is available. \`numpy\` is available and auto-loads on first import (just \`import numpy as np\`). Do NOT use \`micropip.install(...)\` or attempt to install other packages at runtime.
 
 Notebook-style persistence: the Python runtime persists between calls; variables/imports stay defined until reset. Reassign or clear if you need a clean slate.
-Output: The tool returns the value of the last expression. Return JSON-serializable values only (dict/list/str/number/bool/None). Convert non-JSON types before returning.
+Output: run_py returns an object:
+- Success: { ok: true, value: <value-of-last-expression> }
+- Failure: { ok: false, error: <traceback>, hint?: <fix suggestion> }
+If run_py fails, you MUST fix the Python and retry (up to 2 retries) before answering.
+Return JSON-serializable values only (dict/list/str/number/bool/None). Convert non-JSON types before returning.
 
 Rule: If the user says “as of lap X/time Y”, call set_time_cursor first, then answer.
 

@@ -75,9 +75,31 @@ describe('tools', () => {
       error: 'run_py is not callable from Python',
     });
 
-    await expect(
-      tools.run_py.execute({ code: 'call_tool("run_py")' } as any),
-    ).rejects.toThrow(/run_py is not callable from Python/i);
+    const result = await tools.run_py.execute({ code: 'call_tool("run_py")' } as any);
+    expect(result).toMatchObject({
+      ok: false,
+      error: expect.stringMatching(/run_py is not callable from Python/i),
+    });
+  });
+
+  it('returns an error object instead of throwing when python runtime fails', async () => {
+    const tools = makeTools({
+      store,
+      processors,
+      timeCursor: { latest: true },
+      onTimeCursorChange: () => {},
+    });
+
+    runMock.mockResolvedValueOnce({
+      ok: false,
+      error: 'Traceback (most recent call last):\nRuntimeError: boom',
+    });
+
+    const result = await tools.run_py.execute({ code: '1+1' } as any);
+    expect(result).toMatchObject({
+      ok: false,
+      error: expect.stringMatching(/RuntimeError: boom/i),
+    });
   });
 
   it('python tool handler rejects run_py and parses input', async () => {
@@ -105,9 +127,11 @@ describe('tools', () => {
 
     const bigVars = { payload: 'x'.repeat(9000) };
 
-    await expect(
-      tools.run_py.execute({ code: '1+1', vars: bigVars } as any),
-    ).rejects.toThrow(/vars payload too large/i);
+    const result = await tools.run_py.execute({ code: '1+1', vars: bigVars } as any);
+    expect(result).toMatchObject({
+      ok: false,
+      error: expect.stringMatching(/vars payload too large/i),
+    });
   });
 
   it('rejects asyncio.run in run_py code', async () => {
@@ -118,9 +142,27 @@ describe('tools', () => {
       onTimeCursorChange: () => {},
     });
 
-    await expect(
-      tools.run_py.execute({ code: 'import asyncio\nasyncio.run(main())' } as any),
-    ).rejects.toThrow(/asyncio\.run/i);
+    const result = await tools.run_py.execute({ code: 'import asyncio\nasyncio.run(main())' } as any);
+    expect(result).toMatchObject({
+      ok: false,
+      error: expect.stringMatching(/asyncio\.run/i),
+    });
+    expect(runMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects micropip.install in run_py code', async () => {
+    const tools = makeTools({
+      store,
+      processors,
+      timeCursor: { latest: true },
+      onTimeCursorChange: () => {},
+    });
+
+    const result = await tools.run_py.execute({ code: 'import micropip\nawait micropip.install(\"numpy\")' } as any);
+    expect(result).toMatchObject({
+      ok: false,
+      error: expect.stringMatching(/micropip\.install/i),
+    });
     expect(runMock).not.toHaveBeenCalled();
   });
 
@@ -164,9 +206,9 @@ describe('tools', () => {
       .mockResolvedValueOnce({ ok: false, error: 'pyodide is not initialized' })
       .mockResolvedValueOnce({ ok: true, value: 2 });
 
-    const value = await tools.run_py.execute({ code: '1+1' } as any);
+    const result = await tools.run_py.execute({ code: '1+1' } as any);
 
-    expect(value).toBe(2);
+    expect(result).toEqual({ ok: true, value: 2 });
     expect(initMock).toHaveBeenCalledTimes(2);
     expect(runMock).toHaveBeenCalledTimes(2);
   });
