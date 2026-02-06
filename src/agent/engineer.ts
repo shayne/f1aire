@@ -52,7 +52,9 @@ export function createEngineerSession({
         system,
         messages,
         tools,
-        stopWhen: stepCountIs(5),
+        // Allow enough steps for tool retries (e.g. python self-healing) while
+        // keeping an upper bound so a bad loop can't run forever.
+        stopWhen: stepCountIs(8),
         onError({ error }) {
           errorMessage = formatUnknownError(error);
           logger?.({
