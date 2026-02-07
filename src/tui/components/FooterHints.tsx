@@ -10,9 +10,22 @@ export function FooterHints({ screen }: { screen: string }): React.JSX.Element {
       </Text>
     );
   }
+  if (screen === 'apiKey') {
+    return (
+      <Text color={theme.muted}>
+        enter save · esc back · ctrl+c quit
+      </Text>
+    );
+  }
+  const showSettings =
+    screen === 'season' ||
+    screen === 'meeting' ||
+    screen === 'session' ||
+    screen === 'summary';
   return (
     <Text color={theme.muted}>
-      enter select · b/backspace/esc back · q quit
+      enter select · {showSettings ? 's settings · ' : ''}
+      b/backspace/esc back · q quit
     </Text>
   );
 }

@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { performance } from 'node:perf_hooks';
-import { openai } from '@ai-sdk/openai';
+import { createOpenAI } from '@ai-sdk/openai';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Box, useInput, useStdout } from 'ink';
 import { createEngineerLogger } from './agent/engineer-logger.js';
@@ -11,6 +11,12 @@ import { ensurePyodideAssets } from './agent/pyodide/assets.js';
 import { PYODIDE_VERSION } from './agent/pyodide/paths.js';
 import { systemPrompt } from './agent/prompt.js';
 import { makeTools } from './agent/tools.js';
+import {
+  clearStoredOpenAIApiKey,
+  getAppConfigPath,
+  readAppConfig,
+  writeOpenAIApiKey,
+} from './core/config.js';
 import { downloadSession } from './core/download.js';
 import { getMeetings } from './core/f1-api.js';
 import { summarizeFromLines, type Summary as SummaryData } from './core/summary.js';
@@ -26,9 +32,11 @@ import { startEventLoopLagMonitor } from './tui/perf.js';
 import { Downloading } from './tui/screens/Downloading.js';
 import { EngineerChat } from './tui/screens/EngineerChat.js';
 import { MeetingPicker } from './tui/screens/MeetingPicker.js';
+import { ApiKeyPrompt } from './tui/screens/ApiKeyPrompt.js';
 import { RuntimePreparing } from './tui/screens/RuntimePreparing.js';
 import { SeasonPicker } from './tui/screens/SeasonPicker.js';
 import { SessionPicker } from './tui/screens/SessionPicker.js';
+import { Settings, type SettingsAction } from './tui/screens/Settings.js';
 import { Summary } from './tui/screens/Summary.js';
 
 type ToolTimingEntry = {
@@ -48,6 +56,10 @@ type RuntimeProgress = {
 };
 
 type RuntimeProgressUpdate = RuntimeProgress & { message: string };
+
+type DownloadScreen = Extract<Screen, { name: 'downloading' }>;
+
+type PendingEngineer = Omit<DownloadScreen, 'name'> & { dir: string };
 
 function tryExtractJsonStringField(value: string, fieldName: string): string | null {
   const key = `"${fieldName}"`;
@@ -143,6 +155,8 @@ export function App(): React.JSX.Element {
   const [runtimeProgress, setRuntimeProgress] = useState<RuntimeProgress | null>(
     null,
   );
+  const [storedApiKey, setStoredApiKey] = useState<string | null>(null);
+  const [apiKeyError, setApiKeyError] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [streamingText, setStreamingText] = useState('');
   const [isStreaming, setIsStreaming] = useState(false);
@@ -153,6 +167,7 @@ export function App(): React.JSX.Element {
   const [summary, setSummary] = useState<SummaryData | null>(null);
   const [timeCursor, setTimeCursor] = useState<TimeCursor>({ latest: true });
   const engineerRef = useRef<ReturnType<typeof createEngineerSession> | null>(null);
+  const pendingEngineerRef = useRef<PendingEngineer | null>(null);
   const engineerLoggerRef = useRef<ReturnType<typeof createEngineerLogger> | null>(
     null,
   );
@@ -166,11 +181,50 @@ export function App(): React.JSX.Element {
   const { stdout } = useStdout();
   const terminalRows = stdout?.rows ?? 40;
   const isShort = terminalRows < 32;
+  const configPath = useMemo(() => getAppConfigPath('f1aire'), []);
+  const envApiKey =
+    typeof process.env.OPENAI_API_KEY === 'string' &&
+    process.env.OPENAI_API_KEY.trim().length > 0
+      ? process.env.OPENAI_API_KEY.trim()
+      : null;
+  const effectiveApiKey = envApiKey ?? storedApiKey;
+  const keyStatus = useMemo(() => {
+    const inUse: 'env' | 'stored' | 'none' = envApiKey
+      ? 'env'
+      : storedApiKey
+        ? 'stored'
+        : 'none';
+    return {
+      envKeyPresent: Boolean(envApiKey),
+      storedKeyPresent: Boolean(storedApiKey),
+      inUse,
+    };
+  }, [envApiKey, storedApiKey]);
   if (!engineerLoggerRef.current) {
     engineerLoggerRef.current = createEngineerLogger({
       dataDir: getDataDir('f1aire'),
     });
   }
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const cfg = await readAppConfig('f1aire');
+        if (cancelled) return;
+        const key =
+          typeof cfg.openaiApiKey === 'string' && cfg.openaiApiKey.trim().length > 0
+            ? cfg.openaiApiKey.trim()
+            : null;
+        setStoredApiKey(key);
+      } catch {
+        if (!cancelled) setStoredApiKey(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -275,8 +329,337 @@ export function App(): React.JSX.Element {
       setStreamStatus(null);
     }
   };
+
+  const resolveApiKeyForUse = async (): Promise<string | null> => {
+    const fromEnv =
+      typeof process.env.OPENAI_API_KEY === 'string' &&
+      process.env.OPENAI_API_KEY.trim().length > 0
+        ? process.env.OPENAI_API_KEY.trim()
+        : null;
+    if (fromEnv) return fromEnv;
+    if (storedApiKey) return storedApiKey;
+    try {
+      const cfg = await readAppConfig('f1aire');
+      const key =
+        typeof cfg.openaiApiKey === 'string' && cfg.openaiApiKey.trim().length > 0
+          ? cfg.openaiApiKey.trim()
+          : null;
+      if (key) setStoredApiKey(key);
+      return key;
+    } catch {
+      return null;
+    }
+  };
+
+  const startEngineer = async (pending: PendingEngineer, apiKey: string) => {
+    const livePath = path.join(pending.dir, 'live.jsonl');
+    const lines = fs.readFileSync(livePath, 'utf-8');
+    const computedSummary = summarizeFromLines(lines);
+    const summaryText = [
+      'Quick summary:',
+      computedSummary.winner
+        ? `Winner: ${computedSummary.winner.name} (#${computedSummary.winner.number})`
+        : 'Winner: unavailable',
+      computedSummary.fastestLap
+        ? `Fastest lap: ${computedSummary.fastestLap.name} (#${computedSummary.fastestLap.number}) ${computedSummary.fastestLap.time}`
+        : 'Fastest lap: unavailable',
+      computedSummary.totalLaps
+        ? `Total laps: ${computedSummary.totalLaps}`
+        : 'Total laps: unavailable',
+    ].join('\n');
+    setSummary(computedSummary);
+    const loadStart = performance.now();
+    const store = await loadSessionStore(pending.dir);
+    const loadDurationMs = performance.now() - loadStart;
+    void engineerLoggerRef.current?.logger({
+      type: 'load-session-store',
+      durationMs: Math.round(loadDurationMs),
+      livePoints: store.raw.live.length,
+    });
+    const timingService = new TimingService();
+    const subscribe = store.raw.subscribe ?? {};
+    const processStart = performance.now();
+    for (const [type, json] of Object.entries(subscribe)) {
+      timingService.enqueue({
+        type,
+        json,
+        dateTime: new Date(),
+      });
+    }
+    for (const point of store.raw.live) timingService.enqueue(point);
+    const processDurationMs = performance.now() - processStart;
+    void engineerLoggerRef.current?.logger({
+      type: 'timing-process',
+      durationMs: Math.round(processDurationMs),
+      livePoints: store.raw.live.length,
+    });
+    const initialTimeCursor: TimeCursor = { latest: true };
+    setTimeCursor(initialTimeCursor);
+    const tools = makeTools({
+      store,
+      processors: timingService.processors,
+      timeCursor: initialTimeCursor,
+      onTimeCursorChange: setTimeCursor,
+      logger: engineerLoggerRef.current?.logger ?? undefined,
+    });
+    const modelId = process.env.OPENAI_API_MODEL ?? 'gpt-5.2-codex';
+    const keyToUse = await resolveApiKeyForUse();
+    const provider = createOpenAI({
+      apiKey: keyToUse ?? apiKey,
+    });
+    const model = provider(modelId);
+    void engineerLoggerRef.current?.logger({
+      type: 'engineer-init',
+      modelId,
+      envKeyPresent: Boolean(process.env.OPENAI_API_KEY),
+      storedKeyPresent: Boolean(storedApiKey),
+      effectiveKeySource: keyStatus.inUse,
+      session: pending.session.Name,
+      meeting: pending.meeting.Name,
+    });
+    engineerRef.current = createEngineerSession({
+      model,
+      tools,
+      system: systemPrompt,
+      logger: engineerLoggerRef.current?.logger ?? undefined,
+      onEvent: (event) => {
+        if (event.type === 'send-start') {
+          const toolTiming = toolTimingRef.current;
+          toolTiming.byId.clear();
+          toolTiming.inputQueue.length = 0;
+          toolTiming.callQueue.length = 0;
+          toolInputPreviewRef.current.clear();
+          setPythonCodePreview('');
+          setPythonCodeTarget('');
+          setStreamStatus('Thinking...');
+          pushActivity('Thinking...');
+          return;
+        }
+        if (event.type === 'send-finish') {
+          setStreamStatus(null);
+          pushActivity('Response ready');
+          return;
+        }
+        if (event.type === 'stream-error') {
+          const msg =
+            typeof event.error === 'string' ? event.error : 'error';
+          setStreamStatus(`Error: ${msg}`);
+          pushActivity(`Error: ${msg}`);
+          return;
+        }
+        if (event.type !== 'stream-part') return;
+        const part = event.part as ToolPart | undefined;
+        if (!part) return;
+        const partType = part.type as string | undefined;
+        if (!partType) return;
+        if (partType === 'text-delta') {
+          setStreamStatus(null);
+          pushActivity('Streaming response');
+          return;
+        }
+        if (
+          partType === 'reasoning-start' ||
+          partType === 'start-step'
+        ) {
+          setStreamStatus('Thinking...');
+          pushActivity('Thinking...');
+          return;
+        }
+        if (partType === 'tool-input-start') {
+          const toolName = getToolName(part);
+          const toolCallId = getToolCallId(part);
+          const inputBytes = getToolInputBytes(part);
+          const toolTiming = toolTimingRef.current;
+          const inputStart = performance.now();
+          if (toolCallId) {
+            toolTiming.byId.set(toolCallId, {
+              toolName,
+              toolCallId,
+              inputBytes,
+              inputStart,
+            });
+          } else {
+            toolTiming.inputQueue.push({
+              toolName,
+              inputBytes,
+              inputStart,
+            });
+          }
+          if (toolName === 'run_py') {
+            setStreamStatus('Writing code...');
+            pushActivity('Writing code');
+          }
+          if (toolCallId) {
+            toolInputPreviewRef.current.set(toolCallId, '');
+            if (toolName === 'run_py') {
+              setPythonCodePreview('');
+              setPythonCodeTarget('');
+            }
+          }
+          return;
+        }
+        if (partType === 'tool-input-delta') {
+          const toolCallId = getToolCallId(part);
+          const delta =
+            typeof (part as any)?.inputTextDelta === 'string'
+              ? ((part as any).inputTextDelta as string)
+              : typeof (part as any)?.delta === 'string'
+                ? ((part as any).delta as string)
+                : undefined;
+          if (typeof toolCallId !== 'string' || typeof delta !== 'string') return;
+          const previous =
+            toolInputPreviewRef.current.get(toolCallId) ?? '';
+          const next = previous + delta;
+          toolInputPreviewRef.current.set(toolCallId, next);
+          const toolName =
+            toolTimingRef.current.byId.get(toolCallId)?.toolName ??
+            toolTimingRef.current.inputQueue.find((e) => e.toolCallId === toolCallId)
+              ?.toolName;
+          if (toolName === 'run_py') {
+            const extracted = tryExtractJsonStringField(next, 'code');
+            if (extracted != null) setPythonCodeTarget(extracted);
+          }
+          return;
+        }
+        if (partType === 'tool-input-available') {
+          const toolName = getToolName(part);
+          if (toolName === 'run_py') {
+            const input = (part as any)?.input;
+            if (input && typeof input === 'object' && typeof input.code === 'string') {
+              setPythonCodeTarget(input.code);
+            }
+          }
+          return;
+        }
+        if (partType === 'tool-call') {
+          const toolName = getToolName(part);
+          const toolCallId = getToolCallId(part);
+          const inputBytes = getToolInputBytes(part);
+          const toolTiming = toolTimingRef.current;
+          const callStart = performance.now();
+          if (toolCallId) {
+            const entry = toolTiming.byId.get(toolCallId);
+            if (entry) {
+              entry.callStart = callStart;
+              if (inputBytes != null) entry.inputBytes = inputBytes;
+            } else {
+              toolTiming.byId.set(toolCallId, {
+                toolName,
+                toolCallId,
+                inputBytes,
+                callStart,
+              });
+            }
+          } else {
+            const nextEntry = toolTiming.inputQueue.shift();
+            if (nextEntry) {
+              nextEntry.callStart = callStart;
+              if (inputBytes != null) nextEntry.inputBytes = inputBytes;
+              toolTiming.callQueue.push(nextEntry);
+            }
+          }
+          if (toolName === 'run_py') {
+            const args =
+              (part as any).args ??
+              (part as any).input ??
+              (part as any).toolCall?.args ??
+              (part as any).tool?.args ??
+              (part as any).toolInput;
+            if (args && typeof args === 'object' && typeof args.code === 'string') {
+              setPythonCodeTarget(args.code);
+            }
+          }
+          setStreamStatus(`Running tool: ${toolName}`);
+          pushActivity(`Running tool: ${toolName}`);
+          return;
+        }
+        if (partType === 'tool-result') {
+          const toolName = getToolName(part);
+          const toolCallId = getToolCallId(part);
+          const toolTiming = toolTimingRef.current;
+          let entry: ToolTimingEntry | undefined =
+            toolCallId ? toolTiming.byId.get(toolCallId) : undefined;
+          if (!entry && toolTiming.callQueue.length > 0) {
+            entry = toolTiming.callQueue.shift();
+          }
+          const executionEvent: Record<string, unknown> = {
+            type: 'tool-timing',
+            phase: 'execution',
+            toolName,
+            toolCallId,
+          };
+          if (entry?.callStart != null) {
+            executionEvent.durationMs = Math.round(
+              performance.now() - entry.callStart,
+            );
+          }
+          void engineerLoggerRef.current?.logger(executionEvent);
+          if (toolCallId) toolTiming.byId.delete(toolCallId);
+          setStreamStatus(`Processing result: ${toolName}`);
+          pushActivity(`Processing result: ${toolName}`);
+        }
+      },
+    });
+    setActivity([]);
+    setMessages([{ role: 'assistant', content: summaryText }]);
+    setStreamingText('');
+    setScreen({
+      name: 'engineer',
+      year: pending.year,
+      meetings: pending.meetings,
+      meeting: pending.meeting,
+      session: pending.session,
+      dir: pending.dir,
+    });
+  };
+
+  const handleApiKeySave = async (apiKey: string) => {
+    setApiKeyError(null);
+    try {
+      await writeOpenAIApiKey('f1aire', apiKey);
+      setStoredApiKey(apiKey.trim());
+      const pending = pendingEngineerRef.current;
+      if (pending) {
+        pendingEngineerRef.current = null;
+        await startEngineer(pending, apiKey.trim());
+        return;
+      }
+      if (screen.name === 'apiKey') {
+        setScreen(screen.returnTo);
+      }
+    } catch (err) {
+      setApiKeyError(formatUnknownError(err));
+    }
+  };
+
+  const handleSettingsAction = (action: SettingsAction) => {
+    if (action === 'back') {
+      const next = getBackScreen(screen);
+      if (next) setScreen(next);
+      return;
+    }
+    if (action === 'paste') {
+      setApiKeyError(null);
+      setScreen({ name: 'apiKey', returnTo: screen });
+      return;
+    }
+    if (action === 'clear') {
+      void (async () => {
+        try {
+          await clearStoredOpenAIApiKey('f1aire');
+          setStoredApiKey(null);
+        } catch (err) {
+          setApiKeyError(formatUnknownError(err));
+        }
+      })();
+      return;
+    }
+  };
+
   const breadcrumb = useMemo(() => {
     if (screen.name === 'season') return ['Season'];
+    if (screen.name === 'settings') return ['Settings'];
+    if (screen.name === 'apiKey') return ['OpenAI API Key'];
     if (screen.name === 'meeting') return [`${screen.year}`, 'Meeting'];
     if (screen.name === 'session') {
       return [`${screen.year}`, screen.meeting.Name, 'Session'];
@@ -302,12 +685,28 @@ export function App(): React.JSX.Element {
   }, [screen]);
 
   useInput((input, key) => {
-    if (screen.name === 'engineer') {
+    if (screen.name === 'engineer' || screen.name === 'apiKey') {
       if (key.escape) {
+        if (screen.name === 'apiKey') {
+          pendingEngineerRef.current = null;
+          setApiKeyError(null);
+        }
         const next = getBackScreen(screen);
         if (next) setScreen(next);
       }
       if (key.ctrl && input === 'c') process.exit(0);
+      return;
+    }
+    if (
+      input === 's' &&
+      runtimeReady &&
+      (screen.name === 'season' ||
+        screen.name === 'meeting' ||
+        screen.name === 'session' ||
+        screen.name === 'summary')
+    ) {
+      setApiKeyError(null);
+      setScreen({ name: 'settings', returnTo: screen });
       return;
     }
     if (input === 'q') process.exit(0);
@@ -344,6 +743,16 @@ export function App(): React.JSX.Element {
                 }}
               />
             )}
+            {screen.name === 'settings' && (
+              <Settings status={keyStatus} onAction={handleSettingsAction} />
+            )}
+            {screen.name === 'apiKey' && (
+              <ApiKeyPrompt
+                configPath={configPath}
+                onSave={handleApiKeySave}
+                error={apiKeyError}
+              />
+            )}
             {screen.name === 'meeting' && (
               <MeetingPicker
                 year={screen.year}
@@ -378,270 +787,24 @@ export function App(): React.JSX.Element {
                 session={screen.session}
                 onComplete={(dir) => {
                   void (async () => {
-                    const livePath = path.join(dir, 'live.jsonl');
-                    const lines = fs.readFileSync(livePath, 'utf-8');
-                    const summary = summarizeFromLines(lines);
-                    const summaryText = [
-                      'Quick summary:',
-                      summary.winner
-                        ? `Winner: ${summary.winner.name} (#${summary.winner.number})`
-                        : 'Winner: unavailable',
-                      summary.fastestLap
-                        ? `Fastest lap: ${summary.fastestLap.name} (#${summary.fastestLap.number}) ${summary.fastestLap.time}`
-                        : 'Fastest lap: unavailable',
-                      summary.totalLaps
-                        ? `Total laps: ${summary.totalLaps}`
-                        : 'Total laps: unavailable',
-                    ].join('\n');
-                    setSummary(summary);
-                    const loadStart = performance.now();
-                    const store = await loadSessionStore(dir);
-                    const loadDurationMs = performance.now() - loadStart;
-                    void engineerLoggerRef.current?.logger({
-                      type: 'load-session-store',
-                      durationMs: Math.round(loadDurationMs),
-                      livePoints: store.raw.live.length,
-                    });
-                    const timingService = new TimingService();
-                    const subscribe = store.raw.subscribe ?? {};
-                    const processStart = performance.now();
-                    for (const [type, json] of Object.entries(subscribe)) {
-                      timingService.enqueue({
-                        type,
-                        json,
-                        dateTime: new Date(),
-                      });
-                    }
-                    for (const point of store.raw.live) timingService.enqueue(point);
-                    const processDurationMs = performance.now() - processStart;
-                    void engineerLoggerRef.current?.logger({
-                      type: 'timing-process',
-                      durationMs: Math.round(processDurationMs),
-                      livePoints: store.raw.live.length,
-                    });
-                    const initialTimeCursor: TimeCursor = { latest: true };
-                    setTimeCursor(initialTimeCursor);
-                    const tools = makeTools({
-                      store,
-                      processors: timingService.processors,
-                      timeCursor: initialTimeCursor,
-                      onTimeCursorChange: setTimeCursor,
-                      logger: engineerLoggerRef.current?.logger ?? undefined,
-                    });
-                    const modelId =
-                      process.env.OPENAI_API_MODEL ?? 'gpt-5.2-codex';
-                    const model = openai(modelId);
-                    void engineerLoggerRef.current?.logger({
-                      type: 'engineer-init',
-                      modelId,
-                      apiKeyPresent: Boolean(process.env.OPENAI_API_KEY),
-                      session: screen.session.Name,
-                      meeting: screen.meeting.Name,
-                    });
-                    engineerRef.current = createEngineerSession({
-                      model,
-                      tools,
-                      system: systemPrompt,
-                      logger: engineerLoggerRef.current?.logger ?? undefined,
-                      onEvent: (event) => {
-                        if (event.type === 'send-start') {
-                          const toolTiming = toolTimingRef.current;
-                          toolTiming.byId.clear();
-                          toolTiming.inputQueue.length = 0;
-                          toolTiming.callQueue.length = 0;
-                          toolInputPreviewRef.current.clear();
-                          setPythonCodePreview('');
-                          setPythonCodeTarget('');
-                          setStreamStatus('Thinking...');
-                          pushActivity('Thinking...');
-                          return;
-                        }
-                        if (event.type === 'send-finish') {
-                          setStreamStatus(null);
-                          pushActivity('Response ready');
-                          return;
-                        }
-                        if (event.type === 'stream-error') {
-                          const msg =
-                            typeof event.error === 'string' ? event.error : 'error';
-                          setStreamStatus(`Error: ${msg}`);
-                          pushActivity(`Error: ${msg}`);
-                          return;
-                        }
-                        if (event.type !== 'stream-part') return;
-                        const part = event.part as ToolPart | undefined;
-                        if (!part) return;
-                        const partType = part.type as string | undefined;
-                        if (!partType) return;
-                        if (partType === 'text-delta') {
-                          setStreamStatus(null);
-                          pushActivity('Streaming response');
-                          return;
-                        }
-                        if (
-                          partType === 'reasoning-start' ||
-                          partType === 'start-step'
-                        ) {
-                          setStreamStatus('Thinking...');
-                          pushActivity('Thinking...');
-                          return;
-                        }
-                        if (partType === 'tool-input-start') {
-                          const toolName = getToolName(part);
-                          const toolCallId = getToolCallId(part);
-                          const inputBytes = getToolInputBytes(part);
-                          const toolTiming = toolTimingRef.current;
-                          const inputStart = performance.now();
-                          if (toolCallId) {
-                            toolTiming.byId.set(toolCallId, {
-                              toolName,
-                              toolCallId,
-                              inputBytes,
-                              inputStart,
-                            });
-                          } else {
-                            toolTiming.inputQueue.push({
-                              toolName,
-                              inputBytes,
-                              inputStart,
-                            });
-                          }
-                          if (toolName === 'run_py') {
-                            setStreamStatus('Writing code...');
-                            pushActivity('Writing code');
-                          }
-                          if (toolCallId) {
-                            toolInputPreviewRef.current.set(toolCallId, '');
-                            if (toolName === 'run_py') {
-                              setPythonCodePreview('');
-                              setPythonCodeTarget('');
-                            }
-                          }
-                          return;
-                        }
-                        if (partType === 'tool-input-delta') {
-                          const toolCallId = getToolCallId(part);
-                          const delta =
-                            typeof (part as any)?.inputTextDelta === 'string'
-                              ? ((part as any).inputTextDelta as string)
-                              : typeof (part as any)?.delta === 'string'
-                                ? ((part as any).delta as string)
-                                : undefined;
-                          if (typeof toolCallId !== 'string' || typeof delta !== 'string') return;
-                          const previous =
-                            toolInputPreviewRef.current.get(toolCallId) ?? '';
-                          const next = previous + delta;
-                          toolInputPreviewRef.current.set(toolCallId, next);
-                          const toolName =
-                            toolTimingRef.current.byId.get(toolCallId)?.toolName ??
-                            toolTimingRef.current.inputQueue.find((e) => e.toolCallId === toolCallId)
-                              ?.toolName;
-                          if (toolName === 'run_py') {
-                            const extracted = tryExtractJsonStringField(next, 'code');
-                            if (extracted != null) setPythonCodeTarget(extracted);
-                          }
-                          return;
-                        }
-                        if (partType === 'tool-input-available') {
-                          const toolName = getToolName(part);
-                          if (toolName === 'run_py') {
-                            const input = (part as any)?.input;
-                            if (input && typeof input === 'object' && typeof input.code === 'string') {
-                              setPythonCodeTarget(input.code);
-                            }
-                          }
-                          return;
-                        }
-                        if (partType === 'tool-call') {
-                          const toolName = getToolName(part);
-                          const toolCallId = getToolCallId(part);
-                          const toolTiming = toolTimingRef.current;
-                          const callStart = performance.now();
-                          let entry: ToolTimingEntry | undefined =
-                            toolCallId ? toolTiming.byId.get(toolCallId) : undefined;
-                          if (!entry && toolTiming.inputQueue.length > 0) {
-                            entry = toolTiming.inputQueue.shift();
-                          }
-                          const inputBytes =
-                            entry?.inputBytes ?? getToolInputBytes(part);
-                          const codegenEvent: Record<string, unknown> = {
-                            type: 'tool-timing',
-                            phase: 'codegen',
-                            toolName,
-                            toolCallId,
-                            inputBytes,
-                          };
-                          if (entry?.inputStart != null) {
-                            codegenEvent.durationMs = Math.round(
-                              callStart - entry.inputStart,
-                            );
-                          }
-                          void engineerLoggerRef.current?.logger(codegenEvent);
-                          const nextEntry: ToolTimingEntry = {
-                            toolName,
-                            toolCallId,
-                            inputBytes,
-                            inputStart: entry?.inputStart,
-                            callStart,
-                          };
-                          if (toolCallId) {
-                            toolTiming.byId.set(toolCallId, nextEntry);
-                          } else {
-                            toolTiming.callQueue.push(nextEntry);
-                          }
-                          if (toolName === 'run_py') {
-                            const args =
-                              (part as any).args ??
-                              (part as any).input ??
-                              (part as any).toolCall?.args ??
-                              (part as any).tool?.args ??
-                              (part as any).toolInput;
-                            if (args && typeof args === 'object' && typeof args.code === 'string') {
-                              setPythonCodeTarget(args.code);
-                            }
-                          }
-                          setStreamStatus(`Running tool: ${toolName}`);
-                          pushActivity(`Running tool: ${toolName}`);
-                          return;
-                        }
-                        if (partType === 'tool-result') {
-                          const toolName = getToolName(part);
-                          const toolCallId = getToolCallId(part);
-                          const toolTiming = toolTimingRef.current;
-                          let entry: ToolTimingEntry | undefined =
-                            toolCallId ? toolTiming.byId.get(toolCallId) : undefined;
-                          if (!entry && toolTiming.callQueue.length > 0) {
-                            entry = toolTiming.callQueue.shift();
-                          }
-                          const executionEvent: Record<string, unknown> = {
-                            type: 'tool-timing',
-                            phase: 'execution',
-                            toolName,
-                            toolCallId,
-                          };
-                          if (entry?.callStart != null) {
-                            executionEvent.durationMs = Math.round(
-                              performance.now() - entry.callStart,
-                            );
-                          }
-                          void engineerLoggerRef.current?.logger(executionEvent);
-                          if (toolCallId) toolTiming.byId.delete(toolCallId);
-                          setStreamStatus(`Processing result: ${toolName}`);
-                          pushActivity(`Processing result: ${toolName}`);
-                        }
-                      },
-                    });
-                    setActivity([]);
-                    setMessages([{ role: 'assistant', content: summaryText }]);
-                    setStreamingText('');
-                    setScreen({
-                      name: 'engineer',
+                    const key = await resolveApiKeyForUse();
+                    const pending: PendingEngineer = {
                       year: screen.year,
                       meetings: screen.meetings,
                       meeting: screen.meeting,
                       session: screen.session,
                       dir,
-                    });
+                    };
+                    if (!key) {
+                      pendingEngineerRef.current = pending;
+                      setApiKeyError(null);
+                      setScreen({
+                        name: 'apiKey',
+                        returnTo: getBackScreen(screen) ?? { name: 'season' },
+                      });
+                      return;
+                    }
+                    await startEngineer(pending, key);
                   })();
                 }}
                 onStart={async () => {
