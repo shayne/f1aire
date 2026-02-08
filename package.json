@@ -1,7 +1,17 @@
 {
   "name": "f1aire",
   "version": "0.1.2",
+  "description": "An F1 AI race engineer chat agent (terminal UI).",
   "type": "module",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/shayne/f1aire.git"
+  },
+  "bugs": {
+    "url": "https://github.com/shayne/f1aire/issues"
+  },
+  "homepage": "https://github.com/shayne/f1aire#readme",
   "files": [
     "dist",
     "README.md"
