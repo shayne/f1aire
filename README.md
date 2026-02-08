@@ -1,6 +1,8 @@
 # F1aire
 
-Terminal UI for browsing Formula 1 meetings, downloading session data, and viewing quick summaries.
+Terminal F1 AI race engineer chat agent.
+
+Pick a season/Grand Prix/session, download the official live timing feeds, then chat with an “engineer” that answers using the loaded session data (pace deltas, stints/tyres, gaps, safety car phases, undercut windows, etc.). The agent can also run sandboxed Python (Pyodide) for custom calculations.
 
 ## Setup
 
@@ -18,43 +20,50 @@ Terminal UI for browsing Formula 1 meetings, downloading session data, and viewi
 
 ## Running
 
-- Dev TUI:
+- Dev TUI (Ink):
 
   ```bash
   mise run dev
   ```
 
-- Tests:
+- Unit tests (Vitest):
 
   ```bash
   mise run test
   ```
 
-## E2E tests (optional)
+## Configuration
 
-Run a live streaming call against the OpenAI API:
+OpenAI:
 
 ```bash
 export OPENAI_API_KEY=...
-export OPENAI_API_MODEL=gpt-5.2-codex
-npm run test:e2e
+# optional (defaults to gpt-5.2-codex)
+export OPENAI_API_MODEL=...
 ```
+
+You can also paste/store the API key in-app (Settings on the season/meeting/session screens, or when prompted after a download).
+
+## Usage
+
+- Navigation: Enter selects, `b`/Backspace/Esc goes back, `q` quits.
+- Engineer chat: Enter sends, PgUp/PgDn scroll, Home/End jump, Esc back, Ctrl+C quits.
 
 ## AI Race Engineer
 
-Set your OpenAI key:
+After a session download finishes, the UI switches into chat mode. The first assistant message includes a quick summary, then you can ask questions like:
+
+- “Compare Norris vs Verstappen on clean laps 10–25.”
+- “What was the undercut window vs car #1? Assume 20.5s pit loss.”
+- “As of lap 35, who’s gaining the most on average?”
+
+## E2E tests (optional)
+
+Runs a live streaming call against the OpenAI API (networked; costs money):
 
 ```bash
-export OPENAI_API_KEY=...
+npm run test:e2e
 ```
-
-After a session download finishes, the UI switches into chat mode.
-The first assistant message includes a quick summary, then you can ask questions.
-
-Chat controls:
-- Enter: send
-- Esc: back
-- Ctrl+C: quit
 
 ## Data directory
 
@@ -70,7 +79,6 @@ Session downloads are stored under the per-user data directory for the app name 
 
 ## Usage notes
 
-- Navigation: Enter selects, `b`/Backspace/Esc goes back, `q` quits (chat mode uses Enter/Esc/Ctrl+C).
 - Downloads fetch data from `livetiming.formula1.com` and write `live.jsonl` and `subscribe.json` under the data directory.
-- If a session folder already exists, the download will fail; delete the folder to re-download.
+- If a session folder already exists, it will be reused; delete the folder to re-download cleanly (partial folders are rejected).
 - First run downloads the Pyodide runtime (~200MB) into the data directory; later runs reuse the cached assets.
