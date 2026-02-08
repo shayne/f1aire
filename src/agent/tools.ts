@@ -25,6 +25,11 @@ import {
 import { createAnalysisContext } from '../core/analysis.js';
 import { buildAnalysisIndex } from '../core/analysis-index.js';
 import { shapeOf, shapeOfMany } from '../core/inspect.js';
+import {
+  computeGapTrainsForLap,
+  computePitLaneTimeStats,
+  computeScVscDeltas,
+} from '../core/race-engineer-metrics.js';
 import type { TimeCursor } from '../core/time-cursor.js';
 import { getDataBookIndex, getDataBookTopic } from './data-book/data-book.js';
 
@@ -762,6 +767,132 @@ export function makeTools({
         });
         return { rows };
       },
+    }),
+    get_drs_trains: tool({
+      description:
+        'Detect DRS-style gap trains from TimingData (cars within thresholdSec of the car ahead). Uses per-lap IntervalToPositionAhead as an approximation.',
+      inputSchema: z.object({
+        lap: z.number().optional(),
+        startLap: z.number().optional(),
+        endLap: z.number().optional(),
+        thresholdSec: z.number().optional(),
+        minCars: z.number().optional(),
+        requireGreen: z.boolean().optional(),
+      }),
+      execute: async ({ lap, startLap, endLap, thresholdSec, minCars, requireGreen }) => {
+        const defaultEndLap = getDefaultEndLap() ?? analysisIndex.lapNumbers.at(-1);
+        const resolvedThreshold = typeof thresholdSec === 'number' && thresholdSec > 0 ? thresholdSec : 1.0;
+        const resolvedMinCars = typeof minCars === 'number' && minCars >= 2 ? Math.floor(minCars) : 3;
+        const resolvedRequireGreen = requireGreen !== false;
+
+        const lapList: number[] = [];
+        if (typeof lap === 'number') {
+          lapList.push(lap);
+        } else {
+          const resolvedEnd = typeof endLap === 'number' ? endLap : defaultEndLap;
+          if (typeof resolvedEnd === 'number') {
+            const resolvedStart = typeof startLap === 'number' ? startLap : resolvedEnd;
+            const from = Math.min(resolvedStart, resolvedEnd);
+            const to = Math.max(resolvedStart, resolvedEnd);
+            for (let current = from; current <= to; current += 1) lapList.push(current);
+          }
+        }
+
+        const laps = lapList.map((lapValue) => {
+          const lapRecords = analysisIndex.byLap.get(lapValue);
+          if (!lapRecords) {
+            return {
+              lap: lapValue,
+              thresholdSec: resolvedThreshold,
+              minCars: resolvedMinCars,
+              requireGreen: resolvedRequireGreen,
+              trackStatus: null,
+              trains: [],
+              skipped: true,
+              skippedReason: 'missing-lap',
+            };
+          }
+          return computeGapTrainsForLap({
+            lap: lapValue,
+            lapRecords,
+            thresholdSec: resolvedThreshold,
+            minCars: resolvedMinCars,
+            requireGreen: resolvedRequireGreen,
+            getDriverName,
+          });
+        });
+
+        return {
+          thresholdSec: resolvedThreshold,
+          minCars: resolvedMinCars,
+          requireGreen: resolvedRequireGreen,
+          laps,
+        };
+      },
+    }),
+    get_sc_vsc_deltas: tool({
+      description:
+        'Compute lap-time deltas under SC/VSC/yellow/red vs green baseline (median). Defaults to field median unless driverNumber is provided.',
+      inputSchema: z.object({
+        driverNumber: z.union([z.string(), z.number()]).optional(),
+        startLap: z.number().optional(),
+        endLap: z.number().optional(),
+        includePitLaps: z.boolean().optional(),
+      }),
+      execute: async ({ driverNumber, startLap, endLap, includePitLaps }) => {
+        const defaultEndLap = getDefaultEndLap() ?? analysisIndex.lapNumbers.at(-1);
+        const resolvedEndLap =
+          typeof endLap === 'number'
+            ? endLap
+            : typeof defaultEndLap === 'number'
+              ? defaultEndLap
+              : undefined;
+        const resolvedStartLap =
+          typeof startLap === 'number'
+            ? startLap
+            : typeof resolvedEndLap === 'number'
+              ? resolvedEndLap
+              : 1;
+        const from =
+          typeof resolvedEndLap === 'number'
+            ? Math.min(resolvedStartLap, resolvedEndLap)
+            : resolvedStartLap;
+        const to =
+          typeof resolvedEndLap === 'number'
+            ? Math.max(resolvedStartLap, resolvedEndLap)
+            : resolvedStartLap;
+        const driver = driverNumber === undefined ? null : String(driverNumber);
+        const report = computeScVscDeltas({
+          byLap: analysisIndex.byLap,
+          startLap: from,
+          endLap: to,
+          driverNumber: driver,
+          includePitLaps,
+        });
+        return {
+          ...report,
+          driverName: driver ? getDriverName(driver) : null,
+        };
+      },
+    }),
+    get_pit_loss_estimate: tool({
+      description:
+        'Estimate pit lane traversal time from PitLaneTimeCollection (Duration). Returns median/mean in ms/sec; lane time only (not full pit loss incl. in/out laps).',
+      inputSchema: z.object({
+        driverNumber: z.union([z.string(), z.number()]).optional(),
+        startLap: z.number().optional(),
+        endLap: z.number().optional(),
+        method: z.enum(['median', 'mean']).optional(),
+      }),
+      execute: async ({ driverNumber, startLap, endLap, method }) =>
+        computePitLaneTimeStats({
+          state: processors.pitLaneTimeCollection?.state ?? null,
+          method,
+          driverNumber: driverNumber === undefined ? null : String(driverNumber),
+          startLap,
+          endLap,
+          getDriverName,
+        }),
     }),
     get_data_catalog: tool({
       description:

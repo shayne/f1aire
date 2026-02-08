@@ -22,6 +22,9 @@ Tools:
 - get_pit_stop_series, get_pit_lane_times, get_pit_stop
 - get_car_data, get_car_telemetry, get_position, get_heartbeat
 - get_clean_lap_pace
+- get_drs_trains (traffic/DRS trains by lap)
+- get_sc_vsc_deltas (neutralization lap-time deltas vs green)
+- get_pit_loss_estimate (pit lane traversal time estimate)
 - get_stint_pace, compare_drivers
 - get_undercut_window, simulate_rejoin
 - get_position_changes

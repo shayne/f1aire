@@ -99,7 +99,7 @@ export const DATA_BOOK_TOPICS: DataBookTopic[] = [
       'Message conventions vary; prefer using both Status and Message when filtering.',
     ],
     relatedTopics: ['RaceControlMessages', 'TimingData'],
-    bestTools: ['get_track_status', 'get_track_status_history', 'get_lap_table'],
+    bestTools: ['get_track_status', 'get_track_status_history', 'get_sc_vsc_deltas', 'get_lap_table'],
   },
   {
     topic: 'WeatherData',
@@ -183,7 +183,7 @@ export const DATA_BOOK_TOPICS: DataBookTopic[] = [
       'TimingData is a patch stream; you must merge state (do not treat each line as full state).',
     ],
     relatedTopics: ['TimingAppData', 'TrackStatus', 'RaceControlMessages', 'Position', 'CarData'],
-    bestTools: ['get_timing_state', 'get_lap_table', 'compare_drivers', 'get_clean_lap_pace', 'inspect_topic'],
+    bestTools: ['get_timing_state', 'get_lap_table', 'get_drs_trains', 'compare_drivers', 'get_clean_lap_pace', 'inspect_topic'],
   },
   {
     topic: 'TimingAppData',
@@ -423,7 +423,7 @@ export const DATA_BOOK_TOPICS: DataBookTopic[] = [
       'Duration formatting varies; parse carefully.',
     ],
     relatedTopics: ['PitStopSeries', 'TimingData', 'TimingAppData'],
-    bestTools: ['get_pit_lane_times', 'inspect_topic'],
+    bestTools: ['get_pit_lane_times', 'get_pit_loss_estimate', 'inspect_topic'],
   },
   {
     topic: 'PitStopSeries',
