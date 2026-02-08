@@ -34,6 +34,42 @@ type DownloadManifestV1 = {
   topics: Record<string, DownloadTopicResult>;
 };
 
+type DownloadManifestV2 = {
+  version: 2;
+  createdAt: string;
+  userAgent: string;
+  year: number;
+  meeting: { key: number; name: string; location: string };
+  session: { key: number; name: string; type: string; path: string };
+  prefix: string;
+  sessionIndex: {
+    ok: boolean;
+    statusCode: number | null;
+    error: string | null;
+    bytes: number | null;
+    feeds: Record<string, { keyFramePath: string | null; streamPath: string | null }>;
+  };
+  startUtc: string;
+  heartbeat: { utc: string; offsetMs: number };
+  required: {
+    SessionInfo: DownloadTopicResult;
+    Heartbeat: DownloadTopicResult;
+  };
+  topicsAttempted: string[];
+  topics: Record<string, DownloadTopicResult>;
+  keyframes: Record<string, DownloadTopicResult>;
+};
+
+type SessionIndexPayload = {
+  Feeds?: Record<string, { KeyFramePath?: unknown; StreamPath?: unknown }>;
+};
+
+type FeedDef = {
+  name: string;
+  keyFramePath: string | null;
+  streamPath: string | null;
+};
+
 export async function downloadSession(opts: {
   year: number;
   meeting: Meeting;
@@ -71,14 +107,21 @@ export async function downloadSession(opts: {
     ? normalizedPath
     : `${normalizedPath}/`;
   const prefix = `https://livetiming.formula1.com/static/${pathWithSlash}`;
-  const manifest: DownloadManifestV1 = {
-    version: 1,
+  const manifest: DownloadManifestV2 = {
+    version: 2,
     createdAt: new Date().toISOString(),
     userAgent: USER_AGENT,
     year: opts.year,
     meeting: { key: opts.meeting.Key, name: opts.meeting.Name, location: opts.meeting.Location },
     session: { key: session.Key, name: session.Name, type: session.Type, path: session.Path },
     prefix,
+    sessionIndex: {
+      ok: false,
+      statusCode: null,
+      error: null,
+      bytes: null,
+      feeds: {},
+    },
     startUtc: '',
     heartbeat: { utc: '', offsetMs: 0 },
     required: {
@@ -101,9 +144,59 @@ export async function downloadSession(opts: {
     },
     topicsAttempted: [],
     topics: {},
+    keyframes: {},
   };
 
-  const sessionInfoFetch = await fetchStreamWithMeta(prefix, 'SessionInfo');
+  const sessionIndexFetch = await fetchUrlWithMeta(`${prefix}Index.json`);
+  let feeds: FeedDef[] | null = null;
+  if (!sessionIndexFetch.ok) {
+    manifest.sessionIndex = {
+      ok: false,
+      statusCode: sessionIndexFetch.statusCode ?? null,
+      error: sessionIndexFetch.error,
+      bytes: null,
+      feeds: {},
+    };
+  } else {
+    manifest.sessionIndex.ok = true;
+    manifest.sessionIndex.statusCode = sessionIndexFetch.statusCode;
+    manifest.sessionIndex.error = null;
+    manifest.sessionIndex.bytes = sessionIndexFetch.bytes;
+    try {
+      const parsed = parseJsonText(sessionIndexFetch.raw) as SessionIndexPayload;
+      if (isSessionIndexPayload(parsed)) {
+        feeds = extractFeeds(parsed);
+        for (const feed of feeds) {
+          manifest.sessionIndex.feeds[feed.name] = {
+            keyFramePath: feed.keyFramePath,
+            streamPath: feed.streamPath,
+          };
+        }
+      } else {
+        manifest.sessionIndex.ok = false;
+        manifest.sessionIndex.error = 'Invalid session Index.json payload (missing Feeds map)';
+      }
+    } catch (err) {
+      manifest.sessionIndex.ok = false;
+      manifest.sessionIndex.error = err instanceof Error ? err.message : String(err);
+    }
+  }
+
+  // Fallback to static topic registry if per-session index isn't available.
+  if (!feeds) {
+    const topics = getStreamTopicsForSessionType(session.Type);
+    feeds = topics.map((topic) => ({
+      name: topic,
+      keyFramePath: `${topic}.json`,
+      streamPath: `${topic}.jsonStream`,
+    }));
+  }
+
+  const feedByName = new Map(feeds.map((feed) => [feed.name, feed]));
+  const sessionInfoStream = feedByName.get('SessionInfo')?.streamPath ?? 'SessionInfo.jsonStream';
+  const heartbeatStream = feedByName.get('Heartbeat')?.streamPath ?? 'Heartbeat.jsonStream';
+
+  const sessionInfoFetch = await fetchUrlWithMeta(`${prefix}${sessionInfoStream}`);
   if (!sessionInfoFetch.ok) {
     manifest.required.SessionInfo = {
       ok: false,
@@ -129,7 +222,7 @@ export async function downloadSession(opts: {
     invalidLines: null,
   };
 
-  const heartbeatFetch = await fetchStreamWithMeta(prefix, 'Heartbeat');
+  const heartbeatFetch = await fetchUrlWithMeta(`${prefix}${heartbeatStream}`);
   if (!heartbeatFetch.ok) {
     manifest.required.Heartbeat = {
       ok: false,
@@ -166,12 +259,20 @@ export async function downloadSession(opts: {
     offsetMs: heartbeat.offsetMs,
   };
 
-  const topics = getStreamTopicsForSessionType(session.Type);
+  const topics = feeds.map((f) => f.name).sort((a, b) => a.localeCompare(b));
   manifest.topicsAttempted = topics;
 
   const all = (await Promise.all(
     topics.map(async (topic) => {
-      const result = await fetchStreamWithMeta(prefix, topic);
+      const def = feedByName.get(topic);
+      const streamPath = def?.streamPath ?? `${topic}.jsonStream`;
+      const url = `${prefix}${streamPath}`;
+      const result =
+        topic === 'SessionInfo'
+          ? sessionInfoFetch
+          : topic === 'Heartbeat'
+            ? heartbeatFetch
+            : await fetchUrlWithMeta(url);
       if (!result.ok) {
         manifest.topics[topic] = {
           ok: false,
@@ -201,6 +302,42 @@ export async function downloadSession(opts: {
     }),
   )).flat();
 
+  // Download keyframes to a separate file (useful for schema inspection and when streams are missing).
+  const keyframes: Record<string, unknown> = {};
+  await Promise.all(
+    topics.map(async (topic) => {
+      const def = feedByName.get(topic);
+      const keyFramePath = def?.keyFramePath ?? `${topic}.json`;
+      const url = `${prefix}${keyFramePath}`;
+      const result = await fetchUrlWithMeta(url);
+      if (!result.ok) {
+        manifest.keyframes[topic] = {
+          ok: false,
+          statusCode: result.statusCode ?? null,
+          error: result.error,
+          bytes: null,
+          points: null,
+          invalidLines: null,
+        };
+        return;
+      }
+      manifest.keyframes[topic] = {
+        ok: true,
+        statusCode: result.statusCode,
+        error: null,
+        bytes: result.bytes,
+        points: null,
+        invalidLines: null,
+      };
+      try {
+        keyframes[topic] = parseJsonText(result.raw);
+      } catch {
+        // Best effort; store raw text if JSON parsing fails.
+        keyframes[topic] = stripBom(result.raw);
+      }
+    }),
+  );
+
   all.sort((a, b) => a.dateTime.getTime() - b.dateTime.getTime());
   const lines = all.map((p) =>
     JSON.stringify({ type: p.type, json: p.json, dateTime: p.dateTime }),
@@ -213,6 +350,11 @@ export async function downloadSession(opts: {
     'utf-8',
   );
   await fs.writeFile(
+    path.join(dir, 'keyframes.json'),
+    JSON.stringify(keyframes, null, 2),
+    'utf-8',
+  );
+  await fs.writeFile(
     path.join(dir, 'download.json'),
     JSON.stringify(manifest, null, 2),
     'utf-8',
@@ -221,14 +363,12 @@ export async function downloadSession(opts: {
   return { dir, lineCount: lines.length };
 }
 
-async function fetchStreamWithMeta(
-  prefix: string,
-  topic: string,
+async function fetchUrlWithMeta(
+  url: string,
 ): Promise<
   | { ok: true; raw: string; statusCode: number; bytes: number }
   | { ok: false; error: string; statusCode?: number }
 > {
-  const url = `${prefix}${topic}.jsonStream`;
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
   try {
@@ -250,7 +390,7 @@ async function fetchStreamWithMeta(
     if (isAbortError(error)) {
       return {
         ok: false,
-        error: `Timed out downloading ${topic} after ${FETCH_TIMEOUT_MS}ms`,
+        error: `Timed out downloading ${url} after ${FETCH_TIMEOUT_MS}ms`,
       };
     }
     return {
@@ -265,8 +405,9 @@ async function fetchStreamWithMeta(
 function parseFirstLine(raw: string): { json: any; offsetMs: number } {
   const line = raw.split('\n').find((x) => x.trim().length > 0);
   if (!line) throw new Error('Stream missing data');
-  const offsetMs = parseOffsetMs(line.slice(0, 12));
-  const json = JSON.parse(line.slice(12));
+  const cleaned = stripBom(line);
+  const offsetMs = parseOffsetMs(cleaned.slice(0, 12));
+  const json = JSON.parse(cleaned.slice(12));
   return { json, offsetMs };
 }
 
@@ -280,13 +421,38 @@ function extractStartUtc(heartbeat: { json: any; offsetMs: number }): Date {
   return new Date(utcMs - heartbeat.offsetMs);
 }
 
+function stripBom(value: string) {
+  return value.replace(/^\uFEFF/, '');
+}
+
+function parseJsonText(raw: string): unknown {
+  return JSON.parse(stripBom(raw));
+}
+
+function isSessionIndexPayload(value: unknown): value is SessionIndexPayload {
+  if (!value || typeof value !== 'object') return false;
+  return value !== null && 'Feeds' in (value as any) && typeof (value as any).Feeds === 'object';
+}
+
+function extractFeeds(payload: SessionIndexPayload): FeedDef[] {
+  const feedsRaw = payload.Feeds ?? {};
+  if (!feedsRaw || typeof feedsRaw !== 'object') return [];
+  const out: FeedDef[] = [];
+  for (const [name, raw] of Object.entries(feedsRaw)) {
+    const keyFramePath = typeof raw?.KeyFramePath === 'string' ? raw.KeyFramePath : null;
+    const streamPath = typeof raw?.StreamPath === 'string' ? raw.StreamPath : null;
+    out.push({ name, keyFramePath, streamPath });
+  }
+  return out;
+}
+
 function isAbortError(error: unknown): boolean {
   return error instanceof DOMException
     ? error.name === 'AbortError'
     : error instanceof Error && error.name === 'AbortError';
 }
 
-async function safeWriteManifest(dir: string, manifest: DownloadManifestV1) {
+async function safeWriteManifest(dir: string, manifest: unknown) {
   try {
     await fs.mkdir(dir, { recursive: true });
     await fs.writeFile(
