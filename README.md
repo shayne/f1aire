@@ -4,7 +4,18 @@ Terminal F1 AI race engineer chat agent.
 
 Pick a season/Grand Prix/session, download the official live timing feeds, then chat with an “engineer” that answers using the loaded session data (pace deltas, stints/tyres, gaps, safety car phases, undercut windows, etc.). The agent can also run sandboxed Python (Pyodide) for custom calculations.
 
-## Setup
+## Quickstart (recommended)
+
+Run the latest published version (no clone required):
+
+```bash
+npx -y f1aire@latest
+```
+
+Requires Node `>= 24.13.0`.
+Set `OPENAI_API_KEY` (see Configuration) or paste it in-app when prompted.
+
+## Development (from source)
 
 1) Install Node via mise (see `mise.toml`):
 
