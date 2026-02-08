@@ -16,6 +16,18 @@ describe('parseJsonStreamLines', () => {
     expect(points[1].json.bar).toBe(2);
   });
 
+  it('handles UTF-8 BOM on the first line', () => {
+    const start = new Date('2024-01-01T00:00:00.000Z');
+    const bomSample = [
+      '\uFEFF00:00:01.000{"foo":1}',
+      '00:00:02.500{"bar":2}',
+    ].join('\n');
+    const points = parseJsonStreamLines('TimingData', bomSample, start);
+    expect(points).toHaveLength(2);
+    expect(points[0].dateTime.toISOString()).toBe('2024-01-01T00:00:01.000Z');
+    expect(points[0].json.foo).toBe(1);
+  });
+
   it('parses CRLF line endings', () => {
     const start = new Date('2024-01-01T00:00:00.000Z');
     const crlfSample = [

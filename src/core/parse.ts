@@ -24,7 +24,8 @@ export function parseJsonStreamLines(
   const offsetRegex = /^\d{2}:\d{2}:\d{2}\.\d{3}/;
   const { onInvalidLine } = options;
   return raw.split(/\r?\n/).reduce<RawTimingDataPoint[]>((points, line) => {
-    const trimmedLine = line.trimEnd();
+    // jsonStream files are sometimes UTF-8 BOM prefixed.
+    const trimmedLine = line.replace(/^\uFEFF/, '').trimEnd();
     if (trimmedLine.trim().length === 0) {
       return points;
     }
