@@ -9,7 +9,7 @@ type TopicView = {
 };
 
 export type SessionStore = {
-  raw: { subscribe: any; live: RawPoint[] };
+  raw: { subscribe: any; live: RawPoint[]; download: any | null };
   topic: (name: string) => TopicView;
 };
 
@@ -17,6 +17,14 @@ export async function loadSessionStore(dir: string): Promise<SessionStore> {
   const subscribeRaw = JSON.parse(
     await fs.readFile(path.join(dir, 'subscribe.json'), 'utf-8'),
   );
+  let downloadRaw: any | null = null;
+  try {
+    downloadRaw = JSON.parse(
+      await fs.readFile(path.join(dir, 'download.json'), 'utf-8'),
+    );
+  } catch {
+    downloadRaw = null;
+  }
   const liveLines = (await fs.readFile(path.join(dir, 'live.jsonl'), 'utf-8'))
     .split(/\r?\n/)
     .filter((line) => line.trim().length > 0)
@@ -36,7 +44,7 @@ export async function loadSessionStore(dir: string): Promise<SessionStore> {
   }
 
   return {
-    raw: { subscribe: subscribeRaw, live: liveLines },
+    raw: { subscribe: subscribeRaw, live: liveLines, download: downloadRaw },
     topic: (name: string) => {
       const arr = byTopic.get(name) ?? [];
       return {

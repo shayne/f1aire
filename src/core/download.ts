@@ -2,51 +2,37 @@ import path from 'node:path';
 import { promises as fs } from 'node:fs';
 import type { Meeting } from './types.js';
 import { parseJsonStreamLines, parseOffsetMs } from './parse.js';
-
-const RACE_TOPICS = [
-  'Heartbeat',
-  'CarData.z',
-  'Position.z',
-  'ExtrapolatedClock',
-  'TopThree',
-  'TimingStats',
-  'TimingAppData',
-  'WeatherData',
-  'TrackStatus',
-  'DriverList',
-  'RaceControlMessages',
-  'SessionData',
-  'LapCount',
-  'TimingData',
-  'ChampionshipPrediction',
-  'TeamRadio',
-  'PitLaneTimeCollection',
-  'PitStopSeries',
-  'PitStop',
-];
-
-const NON_RACE_TOPICS = [
-  'Heartbeat',
-  'CarData.z',
-  'Position.z',
-  'ExtrapolatedClock',
-  'TopThree',
-  'TimingStats',
-  'TimingAppData',
-  'WeatherData',
-  'TrackStatus',
-  'DriverList',
-  'RaceControlMessages',
-  'SessionData',
-  'TimingData',
-  'TeamRadio',
-  'PitLaneTimeCollection',
-  'PitStopSeries',
-  'PitStop',
-];
+import { getStreamTopicsForSessionType } from './topic-registry.js';
 
 const USER_AGENT = `f1aire/0.1.0`;
 const FETCH_TIMEOUT_MS = 10_000;
+
+type DownloadTopicResult = {
+  ok: boolean;
+  statusCode: number | null;
+  error: string | null;
+  bytes: number | null;
+  points: number | null;
+  invalidLines: number | null;
+};
+
+type DownloadManifestV1 = {
+  version: 1;
+  createdAt: string;
+  userAgent: string;
+  year: number;
+  meeting: { key: number; name: string; location: string };
+  session: { key: number; name: string; type: string; path: string };
+  prefix: string;
+  startUtc: string;
+  heartbeat: { utc: string; offsetMs: number };
+  required: {
+    SessionInfo: DownloadTopicResult;
+    Heartbeat: DownloadTopicResult;
+  };
+  topicsAttempted: string[];
+  topics: Record<string, DownloadTopicResult>;
+};
 
 export async function downloadSession(opts: {
   year: number;
@@ -85,22 +71,135 @@ export async function downloadSession(opts: {
     ? normalizedPath
     : `${normalizedPath}/`;
   const prefix = `https://livetiming.formula1.com/static/${pathWithSlash}`;
-  const sessionInfoRaw = await fetchStream(prefix, 'SessionInfo');
-  const heartbeatRaw = await fetchStream(prefix, 'Heartbeat');
+  const manifest: DownloadManifestV1 = {
+    version: 1,
+    createdAt: new Date().toISOString(),
+    userAgent: USER_AGENT,
+    year: opts.year,
+    meeting: { key: opts.meeting.Key, name: opts.meeting.Name, location: opts.meeting.Location },
+    session: { key: session.Key, name: session.Name, type: session.Type, path: session.Path },
+    prefix,
+    startUtc: '',
+    heartbeat: { utc: '', offsetMs: 0 },
+    required: {
+      SessionInfo: {
+        ok: false,
+        statusCode: null,
+        error: null,
+        bytes: null,
+        points: null,
+        invalidLines: null,
+      },
+      Heartbeat: {
+        ok: false,
+        statusCode: null,
+        error: null,
+        bytes: null,
+        points: null,
+        invalidLines: null,
+      },
+    },
+    topicsAttempted: [],
+    topics: {},
+  };
 
-  const sessionInfo = parseFirstLine(sessionInfoRaw);
-  const heartbeat = parseFirstLine(heartbeatRaw);
+  const sessionInfoFetch = await fetchStreamWithMeta(prefix, 'SessionInfo');
+  if (!sessionInfoFetch.ok) {
+    manifest.required.SessionInfo = {
+      ok: false,
+      statusCode: sessionInfoFetch.statusCode ?? null,
+      error: sessionInfoFetch.error,
+      bytes: null,
+      points: null,
+      invalidLines: null,
+    };
+    await safeWriteManifest(dir, manifest);
+    throw new Error(
+      sessionInfoFetch.statusCode
+        ? `Failed to download SessionInfo: ${sessionInfoFetch.statusCode}`
+        : `Failed to download SessionInfo: ${sessionInfoFetch.error}`,
+    );
+  }
+  manifest.required.SessionInfo = {
+    ok: true,
+    statusCode: sessionInfoFetch.statusCode,
+    error: null,
+    bytes: sessionInfoFetch.bytes,
+    points: null,
+    invalidLines: null,
+  };
+
+  const heartbeatFetch = await fetchStreamWithMeta(prefix, 'Heartbeat');
+  if (!heartbeatFetch.ok) {
+    manifest.required.Heartbeat = {
+      ok: false,
+      statusCode: heartbeatFetch.statusCode ?? null,
+      error: heartbeatFetch.error,
+      bytes: null,
+      points: null,
+      invalidLines: null,
+    };
+    await safeWriteManifest(dir, manifest);
+    throw new Error(
+      heartbeatFetch.statusCode
+        ? `Failed to download Heartbeat: ${heartbeatFetch.statusCode}`
+        : `Failed to download Heartbeat: ${heartbeatFetch.error}`,
+    );
+  }
+  manifest.required.Heartbeat = {
+    ok: true,
+    statusCode: heartbeatFetch.statusCode,
+    error: null,
+    bytes: heartbeatFetch.bytes,
+    points: null,
+    invalidLines: null,
+  };
+
+  const sessionInfo = parseFirstLine(sessionInfoFetch.raw);
+  const heartbeat = parseFirstLine(heartbeatFetch.raw);
   const startUtc = extractStartUtc(heartbeat);
-  const topics = session.Type === 'Race' ? RACE_TOPICS : NON_RACE_TOPICS;
+  manifest.startUtc = startUtc.toISOString();
+  manifest.heartbeat = {
+    utc: String(
+      heartbeat.json.Utc ?? heartbeat.json.UtcTime ?? heartbeat.json.utc ?? '',
+    ),
+    offsetMs: heartbeat.offsetMs,
+  };
 
-  const all = (
-    await Promise.all(
-      topics.map(async (topic) => {
-        const raw = await fetchStream(prefix, topic);
-        return parseJsonStreamLines(topic, raw, startUtc);
-      }),
-    )
-  ).flat();
+  const topics = getStreamTopicsForSessionType(session.Type);
+  manifest.topicsAttempted = topics;
+
+  const all = (await Promise.all(
+    topics.map(async (topic) => {
+      const result = await fetchStreamWithMeta(prefix, topic);
+      if (!result.ok) {
+        manifest.topics[topic] = {
+          ok: false,
+          statusCode: result.statusCode ?? null,
+          error: result.error,
+          bytes: null,
+          points: null,
+          invalidLines: null,
+        };
+        return [];
+      }
+      let invalidLines = 0;
+      const points = parseJsonStreamLines(topic, result.raw, startUtc, {
+        onInvalidLine: () => {
+          invalidLines += 1;
+        },
+      });
+      manifest.topics[topic] = {
+        ok: true,
+        statusCode: result.statusCode,
+        error: null,
+        bytes: result.bytes,
+        points: points.length,
+        invalidLines,
+      };
+      return points;
+    }),
+  )).flat();
 
   all.sort((a, b) => a.dateTime.getTime() - b.dateTime.getTime());
   const lines = all.map((p) =>
@@ -113,11 +212,22 @@ export async function downloadSession(opts: {
     JSON.stringify({ SessionInfo: sessionInfo.json, Heartbeat: heartbeat.json }),
     'utf-8',
   );
+  await fs.writeFile(
+    path.join(dir, 'download.json'),
+    JSON.stringify(manifest, null, 2),
+    'utf-8',
+  );
 
   return { dir, lineCount: lines.length };
 }
 
-async function fetchStream(prefix: string, topic: string): Promise<string> {
+async function fetchStreamWithMeta(
+  prefix: string,
+  topic: string,
+): Promise<
+  | { ok: true; raw: string; statusCode: number; bytes: number }
+  | { ok: false; error: string; statusCode?: number }
+> {
   const url = `${prefix}${topic}.jsonStream`;
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
@@ -126,15 +236,27 @@ async function fetchStream(prefix: string, topic: string): Promise<string> {
       headers: { 'User-Agent': USER_AGENT },
       signal: controller.signal,
     });
-    if (!res.ok) throw new Error(`Failed to download ${topic}: ${res.status}`);
-    return await res.text();
+    if (!res.ok) {
+      return { ok: false, error: `HTTP ${res.status}`, statusCode: res.status };
+    }
+    const raw = await res.text();
+    return {
+      ok: true,
+      raw,
+      statusCode: res.status,
+      bytes: Buffer.byteLength(raw, 'utf-8'),
+    };
   } catch (error) {
     if (isAbortError(error)) {
-      throw new Error(
-        `Timed out downloading ${topic} after ${FETCH_TIMEOUT_MS}ms`,
-      );
+      return {
+        ok: false,
+        error: `Timed out downloading ${topic} after ${FETCH_TIMEOUT_MS}ms`,
+      };
     }
-    throw error;
+    return {
+      ok: false,
+      error: error instanceof Error ? error.message : String(error),
+    };
   } finally {
     clearTimeout(timeoutId);
   }
@@ -162,6 +284,19 @@ function isAbortError(error: unknown): boolean {
   return error instanceof DOMException
     ? error.name === 'AbortError'
     : error instanceof Error && error.name === 'AbortError';
+}
+
+async function safeWriteManifest(dir: string, manifest: DownloadManifestV1) {
+  try {
+    await fs.mkdir(dir, { recursive: true });
+    await fs.writeFile(
+      path.join(dir, 'download.json'),
+      JSON.stringify(manifest, null, 2),
+      'utf-8',
+    );
+  } catch {
+    // Best effort only.
+  }
 }
 
 async function fileExists(file: string): Promise<boolean> {

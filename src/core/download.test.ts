@@ -40,8 +40,48 @@ describe('downloadSession', () => {
 
     const livePath = path.join(dir, '2024_Testville_Race', 'live.jsonl');
     const subscribePath = path.join(dir, '2024_Testville_Race', 'subscribe.json');
+    const manifestPath = path.join(dir, '2024_Testville_Race', 'download.json');
     expect(readFileSync(livePath, 'utf-8').length).toBeGreaterThan(0);
     expect(readFileSync(subscribePath, 'utf-8')).toContain('SessionInfo');
+    const manifest = JSON.parse(readFileSync(manifestPath, 'utf-8'));
+    expect(manifest).toMatchObject({
+      version: 1,
+      required: {
+        SessionInfo: { ok: true },
+        Heartbeat: { ok: true },
+      },
+    });
+    expect(Array.isArray(manifest.topicsAttempted)).toBe(true);
+  });
+
+  it('continues when optional topics are missing and records manifest failures', async () => {
+    const dir = mkdtempSync(path.join(tmpdir(), 'f1aire-'));
+    const fetchMock = vi.fn(async (url: string) => {
+      if (url.endsWith('SessionInfo.jsonStream')) {
+        return new Response('00:00:00.000{"SessionInfo":1}\n');
+      }
+      if (url.endsWith('Heartbeat.jsonStream')) {
+        return new Response('00:00:05.000{"Utc":"2024-01-01T00:00:10.000Z"}\n');
+      }
+      if (url.endsWith('PitStopSeries.jsonStream')) {
+        return new Response('not found', { status: 404 });
+      }
+      return new Response('00:00:02.000{"Lines":{}}\n');
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(
+      downloadSession({
+        year: 2024,
+        meeting,
+        sessionKey: 10,
+        dataRoot: dir,
+      }),
+    ).resolves.toBeTruthy();
+
+    const manifestPath = path.join(dir, '2024_Testville_Race', 'download.json');
+    const manifest = JSON.parse(readFileSync(manifestPath, 'utf-8'));
+    expect(manifest.topics.PitStopSeries).toMatchObject({ ok: false, statusCode: 404 });
   });
 
   it('reuses existing data when allowExisting is true', async () => {

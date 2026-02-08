@@ -26,6 +26,7 @@ import { createAnalysisContext } from '../core/analysis.js';
 import { buildAnalysisIndex } from '../core/analysis-index.js';
 import { shapeOf, shapeOfMany } from '../core/inspect.js';
 import type { TimeCursor } from '../core/time-cursor.js';
+import { getDataBookIndex, getDataBookTopic } from './data-book/data-book.js';
 
 const MAX_PYTHON_VARS_BYTES = 8 * 1024;
 const ASYNCIO_RUN_PATTERNS = [
@@ -186,12 +187,419 @@ export function makeTools({
     return entries[entries.length - 1];
   };
 
+  const canonicalizeTopicName = (value: string) => {
+    const trimmed = value.trim();
+    if (trimmed.endsWith('.z')) return trimmed.slice(0, -2);
+    return trimmed;
+  };
+
+  const pickKnownKeys = (value: unknown, keys: string[]) => {
+    if (!isPlainObject(value)) return null;
+    const out: Record<string, unknown> = {};
+    for (const key of keys) {
+      if (key in (value as any)) out[key] = (value as any)[key];
+    }
+    return out;
+  };
+
+  const pickLastIndexedValues = (value: unknown, limit: number) => {
+    if (!isPlainObject(value)) return null;
+    const keys = Object.keys(value).sort((a, b) => Number(a) - Number(b));
+    const out: Record<string, unknown> = {};
+    for (const key of keys.slice(-limit)) {
+      out[key] = (value as any)[key];
+    }
+    return out;
+  };
+
+  const pickTimingLine = (snapshot: unknown) => {
+    if (!isPlainObject(snapshot)) return null;
+    const allowed = [
+      'Line',
+      'Position',
+      'NumberOfLaps',
+      'GapToLeader',
+      'IntervalToPositionAhead',
+      'LastLapTime',
+      'BestLapTime',
+      'Sectors',
+      'Speeds',
+      'InPit',
+      'PitOut',
+      'PitIn',
+      'IsPitLap',
+      'Retired',
+      'Stopped',
+      'Status',
+      'KnockedOut',
+      'SessionPart',
+    ];
+    const out: Record<string, unknown> = {};
+    for (const key of allowed) {
+      if (key in (snapshot as any)) out[key] = (snapshot as any)[key];
+    }
+    return out;
+  };
+
+  const resolveExampleDriverNumber = (explicit?: string | number) => {
+    if (explicit !== undefined) return String(explicit);
+    const lines = (processors.timingData?.state as any)?.Lines;
+    if (isPlainObject(lines)) {
+      let best: { num: string; pos: number } | null = null;
+      for (const [num, line] of Object.entries(lines)) {
+        const rawPos = (line as any)?.Line ?? (line as any)?.Position ?? 999;
+        const pos = Number(rawPos);
+        const normalized = Number.isFinite(pos) ? pos : 999;
+        if (!best || normalized < best.pos) best = { num, pos: normalized };
+      }
+      if (best) return best.num;
+      const firstKey = Object.keys(lines)[0];
+      if (firstKey) return firstKey;
+    }
+    return null;
+  };
+
+  const buildTopicExample = (canonicalTopic: string, driverNumber?: string | number) => {
+    const topic = canonicalizeTopicName(canonicalTopic);
+    const resolvedDriver = resolveExampleDriverNumber(driverNumber);
+    const resolved = resolveCurrentCursor();
+    const asOf = {
+      source: resolved.source,
+      lap: resolved.lap,
+      dateTime: resolved.dateTime,
+    };
+
+    if (topic === 'TimingData') {
+      const state = processors.timingData?.state as any;
+      const lines = state?.Lines;
+      if (!isPlainObject(lines)) return null;
+      let leader: string | null = null;
+      let leaderPos = 999;
+      for (const [num, line] of Object.entries(lines)) {
+        const raw = (line as any)?.Line ?? (line as any)?.Position ?? 999;
+        const pos = Number(raw);
+        const normalized = Number.isFinite(pos) ? pos : 999;
+        if (normalized < leaderPos) {
+          leaderPos = normalized;
+          leader = num;
+        }
+      }
+      const leaderSnap = leader ? lines[leader] : null;
+      const driver = resolvedDriver && resolvedDriver in lines ? resolvedDriver : leader;
+      const driverSnap = driver ? lines[driver] : null;
+      return {
+        asOf,
+        leader: leader
+          ? { driverNumber: leader, driverName: getDriverName(leader), snapshot: pickTimingLine(leaderSnap) }
+          : null,
+        driver: driver
+          ? { driverNumber: driver, driverName: getDriverName(driver), snapshot: pickTimingLine(driverSnap) }
+          : null,
+      };
+    }
+
+    if (topic === 'TrackStatus') {
+      const current = processors.trackStatus?.state ?? null;
+      const history = processors.trackStatus?.history ?? [];
+      return {
+        asOf,
+        current: current ? pickKnownKeys(current, ['Status', 'Message']) ?? current : null,
+        recent: history.slice(-6).map((entry) => ({
+          at: entry.at,
+          status: entry.status,
+          message: entry.message,
+        })),
+      };
+    }
+
+    if (topic === 'RaceControlMessages') {
+      const state = processors.raceControlMessages?.state as any;
+      const messages = state?.Messages;
+      return {
+        asOf,
+        count: isPlainObject(messages) ? Object.keys(messages).length : null,
+        recent: pickLastIndexedValues(messages, 8),
+      };
+    }
+
+    if (topic === 'TeamRadio') {
+      const state = processors.teamRadio?.state as any;
+      const captures = state?.Captures;
+      const recent = pickLastIndexedValues(captures, 5);
+      if (recent && isPlainObject(recent)) {
+        for (const key of Object.keys(recent)) {
+          const value = (recent as any)[key];
+          (recent as any)[key] = pickKnownKeys(value, ['Utc', 'RacingNumber', 'Path']) ?? value;
+        }
+      }
+      return { asOf, count: isPlainObject(captures) ? Object.keys(captures).length : null, recent };
+    }
+
+    if (topic === 'CarData') {
+      const entry = getLatestCarEntry();
+      if (!entry) return null;
+      const cars = (entry as any)?.Cars ?? {};
+      if (!isPlainObject(cars)) return null;
+      if (resolvedDriver && resolvedDriver in cars) {
+        const car = (cars as any)[resolvedDriver];
+        const channels = (car as any)?.Channels ?? null;
+        return {
+          asOf,
+          utc: (entry as any)?.Utc ?? null,
+          driverNumber: resolvedDriver,
+          driverName: getDriverName(resolvedDriver),
+          channels: decodeCarChannels(channels),
+        };
+      }
+      const first = Object.keys(cars)[0];
+      if (!first) return { asOf, utc: (entry as any)?.Utc ?? null, sample: null };
+      const car = (cars as any)[first];
+      return {
+        asOf,
+        utc: (entry as any)?.Utc ?? null,
+        driverNumber: first,
+        driverName: getDriverName(first),
+        channels: decodeCarChannels((car as any)?.Channels ?? null),
+      };
+    }
+
+    if (topic === 'Position') {
+      const state = processors.position?.state as any;
+      const batches = Array.isArray(state?.Position) ? (state.Position as any[]) : [];
+      if (!batches.length) return null;
+      const latest = batches[batches.length - 1];
+      const entries = latest?.Entries ?? {};
+      if (!isPlainObject(entries)) return null;
+      const key = resolvedDriver && resolvedDriver in entries ? resolvedDriver : Object.keys(entries)[0];
+      const sample = key ? entries[key] : null;
+      return {
+        asOf,
+        timestamp: latest?.Timestamp ?? null,
+        driverNumber: key ?? null,
+        driverName: key ? getDriverName(key) : null,
+        entry: sample ? pickKnownKeys(sample, ['Status', 'X', 'Y', 'Z']) ?? sample : null,
+      };
+    }
+
+    if (topic === 'TimingAppData') {
+      const state = processors.timingAppData?.state as any;
+      const lines = state?.Lines ?? {};
+      if (!isPlainObject(lines)) return null;
+      const key = resolvedDriver && resolvedDriver in lines ? resolvedDriver : Object.keys(lines)[0];
+      if (!key) return null;
+      const line = lines[key];
+      return {
+        asOf,
+        driverNumber: key,
+        driverName: getDriverName(key),
+        gridPos: (line as any)?.GridPos ?? null,
+        stints: (line as any)?.Stints ?? null,
+      };
+    }
+
+    if (topic === 'WeatherData') {
+      const state = processors.weatherData?.state ?? null;
+      if (!state) return null;
+      const preferred = pickKnownKeys(state, [
+        'AirTemp',
+        'TrackTemp',
+        'Humidity',
+        'Pressure',
+        'WindSpeed',
+        'WindDirection',
+        'Rainfall',
+      ]);
+      return { asOf, weather: preferred ?? state };
+    }
+
+    if (topic === 'ExtrapolatedClock') {
+      const state = processors.extrapolatedClock?.state ?? null;
+      if (!state) return null;
+      return { asOf, clock: pickKnownKeys(state, ['Utc', 'Remaining', 'Extrapolating']) ?? state };
+    }
+
+    if (topic === 'SessionInfo') {
+      const state = processors.sessionInfo?.state ?? null;
+      if (!state) return null;
+      return { asOf, sessionInfo: pickKnownKeys(state, ['Name', 'Type', 'Path', 'Meeting', 'Circuit']) ?? state };
+    }
+
+    if (topic === 'SessionData') {
+      const state = processors.sessionData?.state ?? null;
+      if (!state) return null;
+      return {
+        asOf,
+        sessionData: pickKnownKeys(state, ['Series', 'StatusSeries']) ?? state,
+      };
+    }
+
+    if (topic === 'TopThree') {
+      const state = processors.topThree?.state as any;
+      if (!state) return null;
+      const lines = Array.isArray(state?.Lines) ? state.Lines.slice(0, 3) : state?.Lines ?? null;
+      return { asOf, withheld: state?.Withheld ?? null, lines };
+    }
+
+    if (topic === 'TimingStats') {
+      const state = processors.timingStats?.state as any;
+      if (!state) return null;
+      const lines = state?.Lines ?? null;
+      if (resolvedDriver && isPlainObject(lines) && resolvedDriver in lines) {
+        return { asOf, driverNumber: resolvedDriver, driverName: getDriverName(resolvedDriver), stats: lines[resolvedDriver] };
+      }
+      return { asOf, keys: isPlainObject(lines) ? Object.keys(lines).slice(0, 10) : null };
+    }
+
+    if (topic === 'LapCount') {
+      const state = processors.lapCount?.state ?? null;
+      if (!state) return null;
+      return { asOf, lapCount: pickKnownKeys(state, ['CurrentLap', 'TotalLaps']) ?? state };
+    }
+
+    if (topic === 'ChampionshipPrediction') {
+      const state = processors.championshipPrediction?.state as any;
+      if (!state) return null;
+      const drivers = state?.Drivers;
+      if (isPlainObject(drivers)) {
+        const list = Object.values(drivers)
+          .filter((x) => isPlainObject(x))
+          .map((x) => x as any)
+          .sort((a, b) => Number(a?.PredictedPosition ?? 999) - Number(b?.PredictedPosition ?? 999))
+          .slice(0, 6)
+          .map((d) => pickKnownKeys(d, ['RacingNumber', 'CurrentPosition', 'PredictedPosition', 'CurrentPoints', 'PredictedPoints']) ?? d);
+        return { asOf, drivers: list };
+      }
+      return { asOf, keys: state ? Object.keys(state).filter((k) => k !== '_kf').slice(0, 10) : null };
+    }
+
+    if (topic === 'PitLaneTimeCollection') {
+      const state = processors.pitLaneTimeCollection?.state as any;
+      if (!state) return null;
+      const pitTimes = state?.PitTimes;
+      if (!isPlainObject(pitTimes)) return { asOf, pitTimes: null };
+      const key = resolvedDriver && resolvedDriver in pitTimes ? resolvedDriver : Object.keys(pitTimes)[0];
+      const entry = key ? pitTimes[key] : null;
+      return { asOf, driverNumber: key ?? null, driverName: key ? getDriverName(key) : null, pitTime: entry };
+    }
+
+    if (topic === 'PitStopSeries') {
+      const state = processors.pitStopSeries?.state as any;
+      if (!state) return null;
+      const pitTimes = state?.PitTimes;
+      if (!isPlainObject(pitTimes)) return { asOf, pitTimes: null };
+      const key = resolvedDriver && resolvedDriver in pitTimes ? resolvedDriver : Object.keys(pitTimes)[0];
+      const driverStops = key ? pitTimes[key] : null;
+      return { asOf, driverNumber: key ?? null, driverName: key ? getDriverName(key) : null, stops: pickLastIndexedValues(driverStops, 3) ?? driverStops };
+    }
+
+    if (topic === 'PitStop') {
+      const state = processors.pitStop?.state ?? null;
+      if (!state) return null;
+      return { asOf, pitStop: state };
+    }
+
+    // Fallback: show a small slice of the latest normalized point if available.
+    const latest = getNormalizedLatest(topic);
+    if (!latest) return null;
+    const json = latest.json;
+    if (!isPlainObject(json)) return { asOf, value: json };
+    return { asOf, value: pickKnownKeys(json, Object.keys(json).filter((k) => k !== '_kf').slice(0, 12)) ?? json };
+  };
+
   const tools = {
     get_latest: tool({
       description:
         'Get latest snapshot for a topic (normalized RawPoint; .z topics are decompressed)',
       inputSchema: z.object({ topic: z.string() }),
       execute: async ({ topic }) => getNormalizedLatest(topic),
+    }),
+    get_data_book_index: tool({
+      description:
+        'List known live timing topics with definitions and recommended tools. Use this to quickly orient to what data exists and what it means.',
+      inputSchema: z.object({}),
+      execute: async () => getDataBookIndex(),
+    }),
+    get_topic_reference: tool({
+      description:
+        'Get the DataBook reference for a topic (purpose, semantics, key fields, pitfalls) and an optional small session-backed example snippet.',
+      inputSchema: z.object({
+        topic: z.string(),
+        driverNumber: z.union([z.string(), z.number()]).optional(),
+        includeExample: z.boolean().optional(),
+      }),
+      execute: async ({ topic, driverNumber, includeExample }) => {
+        const entry = getDataBookTopic(topic);
+        const canonical = entry ? entry.topic : canonicalizeTopicName(topic);
+
+        // Determine whether we have data loaded for this topic.
+        const presentByProcessor = (() => {
+          switch (canonical) {
+            case 'SessionInfo':
+              return processors.sessionInfo?.state != null;
+            case 'Heartbeat':
+              return processors.heartbeat?.state != null;
+            case 'DriverList':
+              return processors.driverList?.state != null;
+            case 'TimingData':
+              return processors.timingData?.state != null;
+            case 'TimingAppData':
+              return processors.timingAppData?.state != null;
+            case 'TimingStats':
+              return processors.timingStats?.state != null;
+            case 'TrackStatus':
+              return processors.trackStatus?.state != null;
+            case 'LapCount':
+              return processors.lapCount?.state != null;
+            case 'WeatherData':
+              return processors.weatherData?.state != null;
+            case 'SessionData':
+              return processors.sessionData?.state != null;
+            case 'ExtrapolatedClock':
+              return processors.extrapolatedClock?.state != null;
+            case 'TopThree':
+              return processors.topThree?.state != null;
+            case 'RaceControlMessages':
+              return processors.raceControlMessages?.state != null;
+            case 'TeamRadio':
+              return processors.teamRadio?.state != null;
+            case 'ChampionshipPrediction':
+              return processors.championshipPrediction?.state != null;
+            case 'PitStopSeries':
+              return processors.pitStopSeries?.state != null;
+            case 'PitStop':
+              return processors.pitStop?.state != null;
+            case 'PitLaneTimeCollection':
+              return processors.pitLaneTimeCollection?.state != null;
+            case 'CarData':
+              return processors.carData?.state != null;
+            case 'Position':
+              return processors.position?.state != null;
+            default:
+              return null;
+          }
+        })();
+
+        const present =
+          presentByProcessor === null
+            ? getNormalizedLatest(canonical) !== null
+            : presentByProcessor;
+
+        return {
+          requested: topic,
+          canonicalTopic: canonical,
+          found: Boolean(entry),
+          present,
+          reference: entry,
+          example:
+            includeExample === false ? null : buildTopicExample(canonical, driverNumber),
+        };
+      },
+    }),
+    get_download_manifest: tool({
+      description:
+        'Get the download manifest for this session (topics attempted, per-topic success/failure). Useful to prove coverage and explain missing topics.',
+      inputSchema: z.object({}),
+      execute: async () => (store.raw as any)?.download ?? null,
     }),
     get_driver_list: tool({
       description: 'Get latest DriverList',

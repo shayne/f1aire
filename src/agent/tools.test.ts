@@ -43,12 +43,45 @@ describe('tools', () => {
       onTimeCursorChange: () => {},
     });
 
+    expect(tools).toHaveProperty('get_data_book_index');
+    expect(tools).toHaveProperty('get_topic_reference');
+    expect(tools).toHaveProperty('get_download_manifest');
     expect(tools).toHaveProperty('get_stint_pace');
     expect(tools).toHaveProperty('compare_drivers');
     expect(tools).toHaveProperty('get_undercut_window');
     expect(tools).toHaveProperty('simulate_rejoin');
     expect(tools).toHaveProperty('get_position_changes');
     expect(tools).toHaveProperty('set_time_cursor');
+  });
+
+  it('get_data_book_index returns entries', async () => {
+    const tools = makeTools({
+      store,
+      processors,
+      timeCursor: { latest: true },
+      onTimeCursorChange: () => {},
+    });
+
+    const index = await tools.get_data_book_index.execute({} as any);
+    expect(Array.isArray(index)).toBe(true);
+    expect(index.find((x: any) => x?.topic === 'TimingData')).toBeTruthy();
+  });
+
+  it('get_topic_reference returns DataBook info for known topics', async () => {
+    const tools = makeTools({
+      store,
+      processors,
+      timeCursor: { latest: true },
+      onTimeCursorChange: () => {},
+    });
+
+    const result = await tools.get_topic_reference.execute({ topic: 'TimingData' } as any);
+    expect(result).toMatchObject({
+      found: true,
+      canonicalTopic: 'TimingData',
+      present: true,
+    });
+    expect(result.reference).toMatchObject({ topic: 'TimingData' });
   });
 
   it('run_py schema can be converted to JSON schema', () => {
