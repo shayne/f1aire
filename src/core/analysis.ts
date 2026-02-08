@@ -14,6 +14,7 @@ import {
 } from './analysis-utils.js';
 import { normalizePoint } from './processors/normalize.js';
 import { isPlainObject } from './processors/merge.js';
+import { getTopicDefinition } from './topic-registry.js';
 
 type TrackStatusProcessorLike = {
   state?: unknown | null;
@@ -175,18 +176,28 @@ export function createAnalysisContext(opts: {
     const counts = new Map<string, number>();
     const first = new Map<string, Date>();
     const last = new Map<string, Date>();
+    const streamNames = new Map<string, Set<string>>();
     for (const point of store.raw.live as RawPoint[]) {
-      const count = counts.get(point.type) ?? 0;
-      counts.set(point.type, count + 1);
-      if (!first.has(point.type)) first.set(point.type, point.dateTime);
-      last.set(point.type, point.dateTime);
+      const def = getTopicDefinition(point.type);
+      const topic = def?.topic ?? (point.type.endsWith('.z') ? point.type.slice(0, -2) : point.type);
+      const count = counts.get(topic) ?? 0;
+      counts.set(topic, count + 1);
+      const streams = streamNames.get(topic) ?? new Set<string>();
+      streams.add(point.type);
+      streamNames.set(topic, streams);
+      if (!first.has(topic)) first.set(topic, point.dateTime);
+      const currentLast = last.get(topic);
+      if (!currentLast || point.dateTime > currentLast) last.set(topic, point.dateTime);
     }
-    return Array.from(counts.entries()).map(([type, count]) => ({
-      type,
-      count,
-      first: first.get(type) ?? null,
-      last: last.get(type) ?? null,
-    }));
+    return Array.from(counts.entries())
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([topic, count]) => ({
+        topic,
+        streamNames: Array.from(streamNames.get(topic) ?? []).sort(),
+        count,
+        first: first.get(topic) ?? null,
+        last: last.get(topic) ?? null,
+      }));
   };
 
   const getLapTable = (options: LapTableOptions = {}) => {

@@ -765,7 +765,7 @@ export function makeTools({
     }),
     get_data_catalog: tool({
       description:
-        'Get a catalog of available topics with counts and time ranges.',
+        'Get a catalog of available topics with counts and time ranges. Topic names are canonicalized (e.g. CarData instead of CarData.z).',
       inputSchema: z.object({}),
       execute: async () => analysis.getTopicStats(),
     }),
