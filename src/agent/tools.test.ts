@@ -50,6 +50,8 @@ describe('tools', () => {
     expect(tools).toHaveProperty('compare_drivers');
     expect(tools).toHaveProperty('get_undercut_window');
     expect(tools).toHaveProperty('simulate_rejoin');
+    expect(tools).toHaveProperty('get_drs_state');
+    expect(tools).toHaveProperty('get_drs_usage');
     expect(tools).toHaveProperty('get_drs_trains');
     expect(tools).toHaveProperty('get_sc_vsc_deltas');
     expect(tools).toHaveProperty('get_pit_loss_estimate');

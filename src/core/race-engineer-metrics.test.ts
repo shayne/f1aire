@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { LapRecord } from './analysis-index.js';
 import {
   classifyTrackPhase,
+  classifyDrsChannel45,
   computeGapTrainsForLap,
   computePitLaneTimeStats,
   computeScVscDeltas,
@@ -39,6 +40,19 @@ describe('classifyTrackPhase', () => {
     expect(classifyTrackPhase(null, 'Virtual Safety Car')).toBe('vsc');
     expect(classifyTrackPhase(null, 'Safety Car Deployed')).toBe('sc');
     expect(classifyTrackPhase(null, 'AllClear')).toBe('green');
+  });
+});
+
+describe('classifyDrsChannel45', () => {
+  it('classifies common DRS codes', () => {
+    expect(classifyDrsChannel45(0)).toEqual({ raw: 0, state: 'off' });
+    expect(classifyDrsChannel45(1)).toEqual({ raw: 1, state: 'off' });
+    expect(classifyDrsChannel45(8)).toEqual({ raw: 8, state: 'eligible' });
+    expect(classifyDrsChannel45(10)).toEqual({ raw: 10, state: 'on' });
+    expect(classifyDrsChannel45(12)).toEqual({ raw: 12, state: 'on' });
+    expect(classifyDrsChannel45(14)).toEqual({ raw: 14, state: 'on' });
+    expect(classifyDrsChannel45(2).state).toBe('unknown');
+    expect(classifyDrsChannel45(null).raw).toBeNull();
   });
 });
 
@@ -207,4 +221,3 @@ describe('computePitLaneTimeStats', () => {
     expect(stats.byDriver.find((d) => d.driverNumber === '1')?.pitLaneTimeMs).toBe(21_500);
   });
 });
-

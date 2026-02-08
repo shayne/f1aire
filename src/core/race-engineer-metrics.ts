@@ -2,6 +2,7 @@ import type { LapRecord } from './analysis-index.js';
 import { isPlainObject } from './processors/merge.js';
 
 export type TrackPhase = 'green' | 'yellow' | 'sc' | 'vsc' | 'red' | 'unknown';
+export type DrsState = 'off' | 'eligible' | 'on' | 'unknown';
 
 export type PhasePeriod = {
   phase: TrackPhase;
@@ -170,6 +171,22 @@ export function classifyTrackPhase(status: unknown, message: unknown): TrackPhas
   if (messageText.includes('yellow')) return 'yellow';
 
   return 'unknown';
+}
+
+export function classifyDrsChannel45(value: unknown): { raw: number | null; state: DrsState } {
+  const rawNum =
+    typeof value === 'number'
+      ? value
+      : value === null || value === undefined
+        ? null
+        : Number(value);
+  const raw =
+    rawNum !== null && Number.isFinite(rawNum) ? Math.trunc(rawNum) : null;
+  if (raw === null) return { raw: null, state: 'unknown' };
+  if (raw === 0 || raw === 1) return { raw, state: 'off' };
+  if (raw === 8) return { raw, state: 'eligible' };
+  if (raw === 10 || raw === 12 || raw === 14) return { raw, state: 'on' };
+  return { raw, state: 'unknown' };
 }
 
 export function computePhasePeriods(laps: Array<{ lap: number; phase: TrackPhase }>): PhasePeriod[] {
@@ -547,4 +564,3 @@ export function computePitLaneTimeStats(opts: {
     note: 'PitLaneTimeCollection.Duration is pit lane traversal time only (not full pit loss including in/out lap time).',
   };
 }
-

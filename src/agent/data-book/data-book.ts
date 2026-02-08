@@ -338,7 +338,7 @@ export const DATA_BOOK_TOPICS: DataBookTopic[] = [
       'DRS is an encoded integer; treat it as “off/eligible/on-ish” unless you have a confirmed mapping.',
     ],
     relatedTopics: ['Position', 'TimingData'],
-    bestTools: ['get_car_telemetry', 'get_car_data', 'inspect_topic'],
+    bestTools: ['get_drs_state', 'get_drs_usage', 'get_car_telemetry', 'get_car_data', 'inspect_topic'],
   },
   {
     topic: 'Position',

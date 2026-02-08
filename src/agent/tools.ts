@@ -26,6 +26,7 @@ import { createAnalysisContext } from '../core/analysis.js';
 import { buildAnalysisIndex } from '../core/analysis-index.js';
 import { shapeOf, shapeOfMany } from '../core/inspect.js';
 import {
+  classifyDrsChannel45,
   computeGapTrainsForLap,
   computePitLaneTimeStats,
   computeScVscDeltas,
@@ -740,6 +741,153 @@ export function makeTools({
           all[num] = decodeCarChannels(channels);
         }
         return { utc: (entry as any)?.Utc ?? null, drivers: all };
+      },
+    }),
+    get_drs_state: tool({
+      description:
+        'Get latest per-driver DRS state from CarData channel 45. Returns a conservative classification (off/eligible/on/unknown).',
+      inputSchema: z.object({ driverNumber: z.union([z.string(), z.number()]).optional() }),
+      execute: async ({ driverNumber }) => {
+        const entry = getLatestCarEntry();
+        if (!entry) return null;
+        const cars = (entry as any)?.Cars ?? {};
+        if (!isPlainObject(cars)) return null;
+
+        const classify = (channels: unknown) => {
+          const drs = decodeCarChannels(channels)?.drs ?? null;
+          return classifyDrsChannel45(drs);
+        };
+
+        const utc = (entry as any)?.Utc ?? null;
+        const note =
+          'CarData channel 45 is an encoded DRS integer. This tool uses a conservative mapping: 0/1=off, 8=eligible, 10/12/14=on; everything else=unknown.';
+
+        if (driverNumber !== undefined) {
+          const num = String(driverNumber);
+          const car = (cars as any)[num];
+          const channels = (car as any)?.Channels ?? null;
+          const drs = classify(channels);
+          return {
+            utc,
+            driverNumber: num,
+            driverName: getDriverName(num),
+            drs,
+            note,
+          };
+        }
+
+        const drivers: Record<string, unknown> = {};
+        const counts: Record<string, number> = { off: 0, eligible: 0, on: 0, unknown: 0 };
+        for (const [num, car] of Object.entries(cars)) {
+          const channels = (car as any)?.Channels ?? null;
+          const drs = classify(channels);
+          counts[drs.state] = (counts[drs.state] ?? 0) + 1;
+          drivers[num] = { driverName: getDriverName(num), drs };
+        }
+        return { utc, counts, drivers, note };
+      },
+    }),
+    get_drs_usage: tool({
+      description:
+        'Summarize DRS state transitions for a driver by scanning CarData over a time/lap window. Uses CarData channel 45 conservative mapping.',
+      inputSchema: z.object({
+        driverNumber: z.union([z.string(), z.number()]),
+        startLap: z.number().optional(),
+        endLap: z.number().optional(),
+        fromIso: z.string().optional(),
+        toIso: z.string().optional(),
+        limit: z.number().optional(),
+        sampleEvery: z.number().optional(),
+      }),
+      execute: async ({
+        driverNumber,
+        startLap,
+        endLap,
+        fromIso,
+        toIso,
+        limit,
+        sampleEvery,
+      }) => {
+        const driver = String(driverNumber);
+        const resolved = resolveCurrentCursor();
+
+        const parseDate = (value?: string) => {
+          if (!value) return null;
+          const dt = new Date(value);
+          return Number.isFinite(dt.getTime()) ? dt : null;
+        };
+
+        const startDt =
+          parseDate(fromIso)
+          ?? (typeof startLap === 'number'
+            ? analysisIndex.resolveAsOf({ lap: startLap }).dateTime
+            : null);
+        const endDt =
+          parseDate(toIso)
+          ?? (typeof endLap === 'number'
+            ? analysisIndex.resolveAsOf({ lap: endLap }).dateTime
+            : resolved.dateTime);
+
+        const resolvedLimit = typeof limit === 'number' && limit > 0 ? Math.floor(limit) : 800;
+        const resolvedSampleEvery =
+          typeof sampleEvery === 'number' && sampleEvery > 1 ? Math.floor(sampleEvery) : 1;
+
+        const timeline = analysis.getTopicTimeline('CarData', {
+          from: startDt ?? undefined,
+          to: endDt ?? undefined,
+          limit: resolvedLimit,
+        });
+
+        let prev: string | null = null;
+        const transitions: Array<{
+          utc: string | null;
+          lap: number | null;
+          raw: number | null;
+          state: string;
+        }> = [];
+        const counts: Record<string, number> = { off: 0, eligible: 0, on: 0, unknown: 0 };
+        let samples = 0;
+        let last: { utc: string | null; raw: number | null; state: string } | null = null;
+
+        for (let i = 0; i < timeline.length; i += resolvedSampleEvery) {
+          const point = timeline[i];
+          const json = (point as any)?.json;
+          const entries = Array.isArray(json?.Entries) ? (json.Entries as any[]) : [];
+          for (const entry of entries) {
+            const cars = entry?.Cars ?? null;
+            const car = cars && typeof cars === 'object' ? cars[driver] : null;
+            const raw = car?.Channels?.['45'] ?? null;
+            const drs = classifyDrsChannel45(raw);
+            counts[drs.state] = (counts[drs.state] ?? 0) + 1;
+            samples += 1;
+            last = { utc: entry?.Utc ?? null, raw: drs.raw, state: drs.state };
+            if (prev === drs.state) continue;
+            prev = drs.state;
+            const iso = entry?.Utc ?? (point as any)?.dateTime?.toISOString?.() ?? null;
+            const lap =
+              typeof iso === 'string'
+                ? analysisIndex.resolveAsOf({ iso }).lap
+                : null;
+            transitions.push({ utc: iso, lap, raw: drs.raw, state: drs.state });
+          }
+        }
+
+        return {
+          driverNumber: driver,
+          driverName: getDriverName(driver),
+          fromIso: startDt?.toISOString?.() ?? null,
+          toIso: endDt?.toISOString?.() ?? null,
+          startLap: typeof startLap === 'number' ? startLap : null,
+          endLap: typeof endLap === 'number' ? endLap : null,
+          limit: resolvedLimit,
+          sampleEvery: resolvedSampleEvery,
+          samples,
+          counts,
+          transitions,
+          last,
+          note:
+            'CarData channel 45 codes are not formally documented. This tool uses a conservative mapping: 0/1=off, 8=eligible, 10/12/14=on; others=unknown.',
+        };
       },
     }),
     get_lap_table: tool({

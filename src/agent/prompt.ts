@@ -21,6 +21,7 @@ Tools:
 - get_race_control_messages, get_team_radio, get_championship_prediction
 - get_pit_stop_series, get_pit_lane_times, get_pit_stop
 - get_car_data, get_car_telemetry, get_position, get_heartbeat
+- get_drs_state, get_drs_usage
 - get_clean_lap_pace
 - get_drs_trains (traffic/DRS trains by lap)
 - get_sc_vsc_deltas (neutralization lap-time deltas vs green)
