@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Box, Text, useStdout } from 'ink';
+import { Box, Text, useInput, useStdout } from 'ink';
 import TextInput from 'ink-text-input';
 import type { ChatMessage } from '../chat-state.js';
 import type { Summary as SummaryData } from '../../core/summary.js';
@@ -24,6 +24,41 @@ function padTerminalLines(text: string, width: number): string {
     .join('\n');
 }
 
+function wrapAnsiLine(text: string, width: number): string[] {
+  if (width <= 0) return [text];
+  const visible = text.replace(ANSI_SGR_REGEX, '');
+  if (visible.length <= width) return [text];
+  const chunks: string[] = [];
+  let current = '';
+  let visibleCount = 0;
+  for (let i = 0; i < text.length; ) {
+    if (text[i] === '\u001b') {
+      const match = /^\u001b\[[0-9;]*m/.exec(text.slice(i));
+      if (match) {
+        current += match[0];
+        i += match[0].length;
+        continue;
+      }
+    }
+    current += text[i];
+    i += 1;
+    visibleCount += 1;
+    if (visibleCount >= width) {
+      chunks.push(current);
+      current = '';
+      visibleCount = 0;
+    }
+  }
+  if (current.length > 0) chunks.push(current);
+  return chunks.length ? chunks : [''];
+}
+
+function wrapAnsiText(text: string, width: number): string[] {
+  return text
+    .split('\n')
+    .flatMap((line) => wrapAnsiLine(line, width));
+}
+
 function Spinner({ active }: { active: boolean }) {
   const [index, setIndex] = useState(0);
   useEffect(() => {
@@ -38,21 +73,10 @@ function Spinner({ active }: { active: boolean }) {
   return <Text color={theme.muted}>{SPINNER_FRAMES[index]}</Text>;
 }
 
-const MessageBlock = React.memo(function MessageBlock({
-  role,
-  content,
-}: ChatMessage) {
-  const label = role === 'assistant' ? 'Engineer' : 'You';
-  const color = role === 'assistant' ? theme.assistant : theme.user;
-  return (
-    <Box flexDirection="column" marginBottom={1}>
-      <Text color={color}>{label}</Text>
-      <Box paddingLeft={2}>
-        <Text>{content}</Text>
-      </Box>
-    </Box>
-  );
-});
+type ConversationRow = {
+  key: string;
+  node: React.ReactNode;
+};
 
 function StatRow({ label, value }: { label: string; value: string }) {
   return (
@@ -74,19 +98,13 @@ function activityColor(entry: string) {
 }
 
 type ConversationPanelProps = {
-  visibleMessages: ChatMessage[];
-  isStreaming: boolean;
-  status: string | null;
-  streamingText: string;
+  visibleRows: ConversationRow[];
   height?: number;
   onRender?: () => void;
 };
 
 const ConversationPanel = React.memo(function ConversationPanel({
-  visibleMessages,
-  isStreaming,
-  status,
-  streamingText,
+  visibleRows,
   height,
   onRender,
 }: ConversationPanelProps) {
@@ -104,27 +122,10 @@ const ConversationPanel = React.memo(function ConversationPanel({
           : { flexGrow: 1 }
       }
     >
-      <Box flexDirection="column" gap={1}>
-        {visibleMessages.map((m, i) => (
-          <MessageBlock key={i} role={m.role} content={m.content} />
+      <Box flexDirection="column">
+        {visibleRows.map((row) => (
+          <Box key={row.key}>{row.node}</Box>
         ))}
-        {isStreaming && status && !streamingText ? (
-          <Box flexDirection="column" marginBottom={1}>
-            <Text color={theme.assistant}>Engineer</Text>
-            <Box gap={1} paddingLeft={2}>
-              <Spinner active={true} />
-              <Text color={theme.muted}>{status}</Text>
-            </Box>
-          </Box>
-        ) : null}
-        {streamingText ? (
-          <Box flexDirection="column" marginBottom={1}>
-            <Text color={theme.assistant}>Engineer</Text>
-            <Box paddingLeft={2}>
-              <Text>{streamingText}</Text>
-            </Box>
-          </Box>
-        ) : null}
       </Box>
     </Panel>
   );
@@ -206,13 +207,6 @@ export function EngineerChat({
   const leftPaneWidth = Math.max(20, columns - (rightWidth ?? 0) - gutter);
   const contentWidth = Math.max(12, leftPaneWidth - 6);
   const messageContentWidth = Math.max(10, contentWidth - 2);
-  const renderedStreamingText = useMemo(() => {
-    if (!streamingText) return '';
-    return padTerminalLines(
-      renderMarkdownToTerminal(streamingText, messageContentWidth),
-      messageContentWidth,
-    );
-  }, [streamingText, messageContentWidth]);
 
   useEffect(() => {
     onRender?.();
@@ -224,11 +218,13 @@ export function EngineerChat({
   const availableForConversation = rows - inputPanelHeight - gapBetweenPanels;
   const conversationPanelHeight = Math.max(availableForConversation, 0);
 
-  const pendingHeight = useMemo(() => {
-    return isStreaming && status && !renderedStreamingText ? 3 : 0;
-  }, [isStreaming, status, renderedStreamingText]);
+  const [scrollOffsetLines, setScrollOffsetLines] = useState(0);
 
-  const visibleMessages = useMemo(() => {
+  const availableMessageLines = useMemo(() => {
+    return Math.max(conversationPanelHeight - panelOverhead, 1);
+  }, [conversationPanelHeight]);
+
+  const conversationRows = useMemo(() => {
     const wrapPlainTextLine = (line: string, width: number) => {
       if (width <= 0) return [line];
       if (line.length <= width) return [line];
@@ -239,44 +235,127 @@ export function EngineerChat({
       return parts;
     };
 
-    const renderMessageContent = (message: ChatMessage) => {
+    const renderMessageLines = (message: ChatMessage) => {
       if (message.role === 'assistant') {
-        return padTerminalLines(
-          renderMarkdownToTerminal(message.content, messageContentWidth),
+        const rendered = renderMarkdownToTerminal(
+          message.content,
           messageContentWidth,
         );
+        const wrapped = wrapAnsiText(rendered, messageContentWidth);
+        return padTerminalLines(wrapped.join('\n'), messageContentWidth).split('\n');
       }
       const lines = message.content
         .split('\n')
         .flatMap((line) => wrapPlainTextLine(line, messageContentWidth));
-      return padTerminalLines(lines.join('\n'), messageContentWidth);
+      return padTerminalLines(lines.join('\n'), messageContentWidth).split('\n');
     };
 
-    const getMessageHeight = (message: ChatMessage) => {
-      const rendered = renderMessageContent(message);
-      const lineCount = Math.max(1, rendered.split('\n').length);
-      // label + content + bottom margin
-      return 1 + lineCount + 1;
-    };
-
-    const availableMessageLines = Math.max(
-      conversationPanelHeight - panelOverhead,
-      1,
-    );
-
-    let remaining = Math.max(availableMessageLines - pendingHeight, 0);
-    const visible: ChatMessage[] = [];
-    for (let i = messages.length - 1; i >= 0; i -= 1) {
-      const height = getMessageHeight(messages[i]);
-      if (height > remaining && visible.length > 0) break;
-      remaining -= height;
-      visible.push({
-        ...messages[i],
-        content: renderMessageContent(messages[i]),
+    const rows: ConversationRow[] = [];
+    const pushMessage = (message: ChatMessage, indexKey: string) => {
+      const label = message.role === 'assistant' ? 'Engineer' : 'You';
+      const color = message.role === 'assistant' ? theme.assistant : theme.user;
+      rows.push({
+        key: `${indexKey}-label`,
+        node: (
+          <Text color={color} wrap="truncate-end">
+            {label}
+          </Text>
+        ),
       });
+      const lines = renderMessageLines(message);
+      for (let i = 0; i < lines.length; i += 1) {
+        rows.push({
+          key: `${indexKey}-line-${i}`,
+          node: (
+            <Text wrap="truncate-end">
+              {`  ${lines[i] ?? ''}`}
+            </Text>
+          ),
+        });
+      }
+      rows.push({
+        key: `${indexKey}-spacer`,
+        node: <Text wrap="truncate-end"> </Text>,
+      });
+    };
+
+    for (let i = 0; i < messages.length; i += 1) {
+      pushMessage(messages[i], `m-${i}`);
     }
-    return visible.reverse();
-  }, [messages, conversationPanelHeight, messageContentWidth, pendingHeight]);
+
+    if (isStreaming) {
+      if (streamingText) {
+        pushMessage({ role: 'assistant', content: streamingText }, 'stream');
+      } else if (status) {
+        rows.push({
+          key: `pending-label`,
+          node: (
+            <Text color={theme.assistant} wrap="truncate-end">
+              Engineer
+            </Text>
+          ),
+        });
+        rows.push({
+          key: `pending-status`,
+          node: (
+            <Box gap={1}>
+              <Spinner active={true} />
+              <Text color={theme.muted} wrap="truncate-end">
+                {status}
+              </Text>
+            </Box>
+          ),
+        });
+        rows.push({
+          key: `pending-spacer`,
+          node: <Text wrap="truncate-end"> </Text>,
+        });
+      }
+    }
+
+    return rows;
+  }, [messages, isStreaming, status, streamingText, messageContentWidth]);
+
+  const maxScrollLines = useMemo(() => {
+    return Math.max(conversationRows.length - availableMessageLines, 0);
+  }, [conversationRows.length, availableMessageLines]);
+
+  const effectiveScrollOffsetLines = Math.min(scrollOffsetLines, maxScrollLines);
+
+  const visibleRows = useMemo(() => {
+    const start = Math.max(
+      conversationRows.length - availableMessageLines - effectiveScrollOffsetLines,
+      0,
+    );
+    const end = start + availableMessageLines;
+    return conversationRows.slice(start, end);
+  }, [
+    conversationRows,
+    availableMessageLines,
+    effectiveScrollOffsetLines,
+  ]);
+
+  const scrollStep = Math.max(1, Math.floor(availableMessageLines * 0.7));
+
+  useInput((_, key) => {
+    if (key.pageUp) {
+      setScrollOffsetLines((current) =>
+        Math.min(current + scrollStep, maxScrollLines),
+      );
+      return;
+    }
+    if (key.pageDown) {
+      setScrollOffsetLines((current) => Math.max(current - scrollStep, 0));
+      return;
+    }
+    if (key.home) {
+      setScrollOffsetLines(maxScrollLines);
+      return;
+    }
+    if (key.end) {
+      setScrollOffsetLines(0);
+    }
+  });
 
   const activityEntries = useMemo(() => {
     return activity.length ? activity : status ? [status] : ['Idle'];
@@ -331,10 +410,7 @@ export function EngineerChat({
         height={rows}
       >
         <ConversationPanel
-          visibleMessages={visibleMessages}
-          isStreaming={isStreaming}
-          status={status}
-          streamingText={renderedStreamingText}
+          visibleRows={visibleRows}
           height={conversationPanelHeight}
           onRender={onConversationRender}
         />

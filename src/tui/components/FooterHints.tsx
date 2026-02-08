@@ -6,7 +6,7 @@ export function FooterHints({ screen }: { screen: string }): React.JSX.Element {
   if (screen === 'engineer') {
     return (
       <Text color={theme.muted}>
-        enter send · esc back · ctrl+c quit
+        enter send · pgup/pgdn scroll · esc back · ctrl+c quit
       </Text>
     );
   }
