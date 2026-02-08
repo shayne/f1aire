@@ -166,11 +166,18 @@ export async function downloadSession(opts: {
       const parsed = parseJsonText(sessionIndexFetch.raw) as SessionIndexPayload;
       if (isSessionIndexPayload(parsed)) {
         feeds = extractFeeds(parsed);
-        for (const feed of feeds) {
-          manifest.sessionIndex.feeds[feed.name] = {
-            keyFramePath: feed.keyFramePath,
-            streamPath: feed.streamPath,
-          };
+        if (feeds.length === 0) {
+          feeds = null;
+          manifest.sessionIndex.ok = false;
+          manifest.sessionIndex.error = 'Session Index.json contained no feeds';
+        }
+        if (feeds) {
+          for (const feed of feeds) {
+            manifest.sessionIndex.feeds[feed.name] = {
+              keyFramePath: feed.keyFramePath,
+              streamPath: feed.streamPath,
+            };
+          }
         }
       } else {
         manifest.sessionIndex.ok = false;
@@ -431,7 +438,13 @@ function parseJsonText(raw: string): unknown {
 
 function isSessionIndexPayload(value: unknown): value is SessionIndexPayload {
   if (!value || typeof value !== 'object') return false;
-  return value !== null && 'Feeds' in (value as any) && typeof (value as any).Feeds === 'object';
+  const feeds = (value as any).Feeds;
+  return (
+    'Feeds' in (value as any)
+    && typeof feeds === 'object'
+    && feeds !== null
+    && !Array.isArray(feeds)
+  );
 }
 
 function extractFeeds(payload: SessionIndexPayload): FeedDef[] {
