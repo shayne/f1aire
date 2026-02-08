@@ -346,14 +346,6 @@ export function EngineerChat({
     }
     if (key.pageDown) {
       setScrollOffsetLines((current) => Math.max(current - scrollStep, 0));
-      return;
-    }
-    if (key.home) {
-      setScrollOffsetLines(maxScrollLines);
-      return;
-    }
-    if (key.end) {
-      setScrollOffsetLines(0);
     }
   });
 

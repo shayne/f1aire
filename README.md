@@ -58,7 +58,7 @@ You can also paste/store the API key in-app (Settings on the season/meeting/sess
 ## Usage
 
 - Navigation: Enter selects, `b`/Backspace/Esc goes back, `q` quits.
-- Engineer chat: Enter sends, PgUp/PgDn scroll, Home/End jump, Esc back, Ctrl+C quits.
+- Engineer chat: Enter sends, PgUp/PgDn scroll, Esc back, Ctrl+C quits.
 
 ## AI Race Engineer
 
