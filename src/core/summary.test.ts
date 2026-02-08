@@ -72,6 +72,40 @@ describe('summarizeFromLines', () => {
 
     expect(summary.winner?.number).toBe('1');
   });
+
+  it('merges incremental TimingData patches when deriving the winner', () => {
+    const raw = [
+      JSON.stringify({
+        type: 'DriverList',
+        json: { '4': { FullName: 'Lando NORRIS' }, '6': { FullName: 'Isack HADJAR' } },
+        dateTime: '2024-01-01T00:00:00.000Z',
+      }),
+      JSON.stringify({
+        type: 'TimingData',
+        json: {
+          Lines: {
+            '4': { Position: '1', BestLapTime: { Value: '1:30.000' } },
+            '6': { Position: '2', BestLapTime: { Value: '1:31.000' } },
+          },
+        },
+        dateTime: '2024-01-01T00:00:10.000Z',
+      }),
+      // Late patch does not include the leader, but does include a trailing position update.
+      JSON.stringify({
+        type: 'TimingData',
+        json: {
+          Lines: {
+            '6': { Position: '19' },
+          },
+        },
+        dateTime: '2024-01-01T00:01:00.000Z',
+      }),
+    ].join('\n');
+
+    const summary = summarizeFromLines(raw);
+
+    expect(summary.winner?.number).toBe('4');
+  });
 });
 
 describe('parseLapTimeMs', () => {

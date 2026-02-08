@@ -15,9 +15,10 @@ type BestLap = { num: string; timeMs: number; time: string };
 
 export function summarizeFromLines(raw: string): Summary {
   const driverNames = new Map<string, string>();
-  let latestTiming: TimingLines = {};
   let totalLaps: number | null = null;
-  let bestLap: BestLap | null = null;
+  // TimingData is a jsonStream of incremental patches; keep a merged state of only the
+  // fields we need for a lightweight summary (Position and BestLapTime.Value).
+  const timingState: TimingLines = {};
 
   for (const line of raw.split('\n').filter((value) => value.trim().length > 0)) {
     let entry: { type: string; json: any } | null = null;
@@ -35,13 +36,24 @@ export function summarizeFromLines(raw: string): Summary {
       }
     }
     if (entry.type === 'TimingData') {
-      latestTiming = (entry.json?.Lines as TimingLines) ?? latestTiming;
-      for (const [num, driver] of Object.entries(latestTiming)) {
-        const time = driver.BestLapTime?.Value;
-        if (!time) continue;
-        const ms = parseLapTimeMs(time);
-        if (ms !== null && (!bestLap || ms < bestLap.timeMs)) {
-          bestLap = { num, timeMs: ms, time };
+      const patchLines = entry.json?.Lines as Record<string, unknown> | undefined;
+      if (patchLines && typeof patchLines === 'object') {
+        for (const [num, patch] of Object.entries(patchLines)) {
+          if (!patch || typeof patch !== 'object') continue;
+          const patchDriver = patch as any;
+          const current = timingState[num] ?? {};
+          const next: TimingEntry = { ...current };
+
+          if (typeof patchDriver.Position === 'string') {
+            next.Position = patchDriver.Position;
+          }
+
+          const bestLapValue = patchDriver?.BestLapTime?.Value;
+          if (typeof bestLapValue === 'string' && bestLapValue.trim().length > 0) {
+            next.BestLapTime = { ...(next.BestLapTime ?? {}), Value: bestLapValue };
+          }
+
+          timingState[num] = next;
         }
       }
     }
@@ -51,11 +63,25 @@ export function summarizeFromLines(raw: string): Summary {
     }
   }
 
-  const winnerNum = Object.entries(latestTiming)
-    .sort(
-      (a, b) => parsePositionValue(a[1].Position) - parsePositionValue(b[1].Position),
-    )
-    .map(([num]) => num)[0];
+  let winnerNum: string | null = null;
+  let winnerPos = 999;
+  for (const [num, driver] of Object.entries(timingState)) {
+    const pos = parsePositionValue(driver.Position);
+    if (pos < winnerPos) {
+      winnerPos = pos;
+      winnerNum = num;
+    }
+  }
+  if (winnerPos !== 1) winnerNum = null;
+
+  let bestLap: BestLap | null = null;
+  for (const [num, driver] of Object.entries(timingState)) {
+    const time = driver.BestLapTime?.Value;
+    if (typeof time !== 'string' || time.trim().length === 0) continue;
+    const ms = parseLapTimeMs(time);
+    if (ms === null) continue;
+    if (!bestLap || ms < bestLap.timeMs) bestLap = { num, timeMs: ms, time };
+  }
 
   return {
     winner: winnerNum
