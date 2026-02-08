@@ -1,0 +1,94 @@
+name: Publish
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build + test + pack
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup mise
+        uses: jdx/mise-action@v3
+        with:
+          install: true
+          cache: true
+
+      - name: Install deps
+        run: npm ci
+
+      - name: Test
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+      - name: Verify CLI entrypoint has a Node shebang
+        run: |
+          set -euo pipefail
+          head -n 1 dist/index.js | grep -q '^#!/usr/bin/env node$'
+
+      - name: Pack
+        id: pack
+        run: |
+          set -euo pipefail
+          tarball="$(npm pack --silent)"
+          echo "tarball=$tarball" >> "$GITHUB_OUTPUT"
+
+      - name: Upload npm tarball
+        uses: actions/upload-artifact@v4
+        with:
+          name: npm-tarball
+          path: ${{ steps.pack.outputs.tarball }}
+          if-no-files-found: error
+
+  publish-npm:
+    name: Publish npm package
+    runs-on: ubuntu-latest
+    needs: [build]
+    permissions:
+      contents: read
+      id-token: write
+    environment:
+      name: npm
+      url: https://www.npmjs.com/package/f1aire
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Verify tag matches package.json version
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF_NAME}"
+          pkg_version="$(node --input-type=module -e "import { readFileSync } from 'node:fs'; process.stdout.write(JSON.parse(readFileSync('package.json','utf8')).version)")"
+          if [ "$tag" != "v${pkg_version}" ]; then
+            echo "tag ($tag) does not match package.json version (v${pkg_version})" >&2
+            exit 1
+          fi
+
+      - name: Download npm tarball
+        uses: actions/download-artifact@v4
+        with:
+          name: npm-tarball
+          path: dist
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+
+      - name: Publish npm package (Trusted Publisher)
+        run: |
+          set -euo pipefail
+          tarball="$(ls -1 dist/*.tgz | head -n 1)"
+          npm publish "$tarball" --access public
+
