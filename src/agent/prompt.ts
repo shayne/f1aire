@@ -13,6 +13,7 @@ Tools:
 - get_latest(topic): normalized latest snapshot (decompresses .z topics).
 - get_data_book_index, get_topic_reference
 - get_download_manifest
+- get_keyframe(topic): keyframe snapshot JSON for a topic (Index.json KeyFramePath)
 - get_driver_list, get_timing_state, get_lap_history
 - get_timing_app_data, get_timing_stats
 - get_track_status, get_lap_count, get_weather

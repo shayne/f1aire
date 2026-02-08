@@ -24,6 +24,7 @@ describe('SessionStore', () => {
   it('loads raw files and exposes topic latest + timeline', async () => {
     const store = await loadSessionStore(base);
     expect(store.raw.subscribe.SessionInfo.Name).toBe('Test');
+    expect(store.raw.keyframes).toBeNull();
     expect(store.topic('DriverList').latest?.json).toHaveProperty('4');
     const timeline = store.topic('TimingData').timeline();
     expect(timeline.length).toBe(1);

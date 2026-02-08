@@ -607,6 +607,20 @@ export function makeTools({
       inputSchema: z.object({}),
       execute: async () => (store.raw as any)?.download ?? null,
     }),
+    get_keyframe: tool({
+      description:
+        'Get the downloaded keyframe JSON for a topic (snapshot from Index.json KeyFramePath). Useful when a stream is missing or to inspect the full snapshot shape.',
+      inputSchema: z.object({ topic: z.string() }),
+      execute: async ({ topic }) => {
+        const keyframes = (store.raw as any)?.keyframes;
+        if (!isPlainObject(keyframes)) return null;
+        if (topic in keyframes) return (keyframes as any)[topic];
+        if (!topic.endsWith('.z') && `${topic}.z` in keyframes) {
+          return (keyframes as any)[`${topic}.z`];
+        }
+        return null;
+      },
+    }),
     get_driver_list: tool({
       description: 'Get latest DriverList',
       inputSchema: z.object({}),

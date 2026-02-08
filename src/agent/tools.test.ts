@@ -46,6 +46,7 @@ describe('tools', () => {
     expect(tools).toHaveProperty('get_data_book_index');
     expect(tools).toHaveProperty('get_topic_reference');
     expect(tools).toHaveProperty('get_download_manifest');
+    expect(tools).toHaveProperty('get_keyframe');
     expect(tools).toHaveProperty('get_stint_pace');
     expect(tools).toHaveProperty('compare_drivers');
     expect(tools).toHaveProperty('get_undercut_window');
