@@ -71,4 +71,34 @@ describe('createEngineerLogger', () => {
       'utf-8',
     );
   });
+
+  it('logs pyodide runtime diagnostics', async () => {
+    const appendFile = vi.fn().mockResolvedValue(undefined);
+    const mkdir = vi.fn().mockResolvedValue(undefined);
+
+    const dataDir = path.join('/data');
+    const { logger } = createEngineerLogger({
+      dataDir,
+      appendFile,
+      mkdir,
+      now: () => new Date('2026-02-01T00:00:00.000Z'),
+    });
+
+    await logger({
+      type: 'pyodide-runtime',
+      phase: 'fatal-detected',
+      error: 'Pyodide already fatally failed and can no longer be used',
+    });
+
+    expect(appendFile).toHaveBeenCalledWith(
+      path.join(dataDir, 'logs', 'ai-engineer.log'),
+      expect.stringContaining('"type":"pyodide-runtime"'),
+      'utf-8',
+    );
+    expect(appendFile).toHaveBeenCalledWith(
+      path.join(dataDir, 'logs', 'ai-engineer.log'),
+      expect.stringContaining('"phase":"fatal-detected"'),
+      'utf-8',
+    );
+  });
 });

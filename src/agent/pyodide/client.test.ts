@@ -76,6 +76,7 @@ describe('createPythonClient', () => {
   it('recycles worker and retries when pyodide reports a fatal runtime failure', async () => {
     let workerCount = 0;
     const workers: FakeWorker[] = [];
+    const logger = vi.fn();
     const client = createPythonClient({
       workerFactory: () => {
         workerCount += 1;
@@ -100,6 +101,7 @@ describe('createPythonClient', () => {
         workers.push(worker);
         return worker as any;
       },
+      logger,
     });
 
     await client.init({ indexURL: '/tmp/pyodide' });
@@ -108,6 +110,11 @@ describe('createPythonClient', () => {
     expect(result).toEqual({ ok: true, value: { ok: 1 } });
     expect(workers).toHaveLength(2);
     expect(workers[0]?.terminate).toHaveBeenCalled();
+    const runtimeEvents = logger.mock.calls
+      .map((call) => call[0] as any)
+      .filter((event) => event?.type === 'pyodide-runtime');
+    expect(runtimeEvents.some((event) => event?.phase === 'fatal-detected')).toBe(true);
+    expect(runtimeEvents.some((event) => event?.phase === 'fatal-retry-result' && event?.ok === true)).toBe(true);
   });
 
   it('handles tool-call from worker and posts tool-result', async () => {

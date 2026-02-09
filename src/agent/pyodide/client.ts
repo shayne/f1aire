@@ -38,6 +38,19 @@ export function createPythonClient({
   toolHandler?: (name: string, args: unknown) => Promise<unknown>;
   logger?: (event: Record<string, unknown>) => void | Promise<void>;
 } = {}) {
+  const logEvent = (event: Record<string, unknown>) => {
+    if (!logger) return;
+    try {
+      const result = logger(event);
+      if (result && typeof (result as Promise<unknown>).catch === 'function') {
+        void (result as Promise<unknown>).catch(() => {});
+      }
+    }
+    catch {
+      // Logging must be best-effort.
+    }
+  };
+
   let worker: Worker | null = null;
   let workerCounter = 0;
   let currentWorkerId = 0;
@@ -73,6 +86,13 @@ export function createPythonClient({
   }
 
   async function recycleWorker(error: Error) {
+    const staleWorkerId = currentWorkerId;
+    logEvent({
+      type: 'pyodide-runtime',
+      phase: 'recycle-start',
+      workerId: staleWorkerId,
+      reason: error.message,
+    });
     failPending(error);
     if (initReject) {
       initReject(error);
@@ -88,8 +108,20 @@ export function createPythonClient({
       stale.removeAllListeners();
       try {
         await stale.terminate();
+        logEvent({
+          type: 'pyodide-runtime',
+          phase: 'recycle-complete',
+          workerId: staleWorkerId,
+          terminated: true,
+        });
       } catch {
         // Best-effort recycle.
+        logEvent({
+          type: 'pyodide-runtime',
+          phase: 'recycle-complete',
+          workerId: staleWorkerId,
+          terminated: false,
+        });
       }
     }
   }
@@ -336,6 +368,11 @@ export function createPythonClient({
       let result = await doRun();
       if (!result.ok && lastInitArgs) {
         if (isNotInitializedError(result.error)) {
+          logEvent({
+            type: 'pyodide-runtime',
+            phase: 'not-initialized-retry',
+            workerId: currentWorkerId,
+          });
           // If the worker accepted a run call without being initialized, force a re-init and retry once.
           initPromise = null;
           initReject = null;
@@ -344,6 +381,13 @@ export function createPythonClient({
           await api.init(lastInitArgs);
           result = await doRun();
         } else if (isFatalRuntimeError(result.error)) {
+          logEvent({
+            type: 'pyodide-runtime',
+            phase: 'fatal-detected',
+            workerId: currentWorkerId,
+            error: String(result.error ?? ''),
+            codeBytes: Buffer.byteLength(code, 'utf-8'),
+          });
           // Pyodide can enter an unrecoverable state while the worker stays alive.
           // Recycle the worker process and retry once.
           await recycleWorker(
@@ -351,6 +395,13 @@ export function createPythonClient({
           );
           await api.init(lastInitArgs);
           result = await doRun();
+          logEvent({
+            type: 'pyodide-runtime',
+            phase: 'fatal-retry-result',
+            workerId: currentWorkerId,
+            ok: Boolean(result.ok),
+            error: result.ok ? undefined : String(result.error ?? ''),
+          });
         }
       }
       return { ok: result.ok, value: result.value, error: result.error };

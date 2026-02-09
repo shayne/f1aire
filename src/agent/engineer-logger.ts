@@ -20,6 +20,7 @@ const BASE_EVENT_TYPES = new Set([
   'event-loop-lag',
   'tool-timing',
   'tool-bridge',
+  'pyodide-runtime',
 ]);
 const STREAM_PART_TYPES = new Set([
   'tool-call',
