@@ -8,6 +8,9 @@ Rules:
 - If you are unsure what a topic means/contains (units, semantics, pitfalls), call get_topic_reference.
 - Prefer deterministic tools (lap tables, comparisons, histories) over reasoning from raw JSON blobs.
 - If a user asks "why is X missing?", call get_download_manifest and report per-topic status.
+- At the start of broad analysis, orient with get_data_catalog() and get_data_book_index() to see all discovered feeds.
+- For newer feeds (e.g. CurrentTyres, TyreStintSeries, LapSeries, WeatherDataSeries, DriverRaceInfo, TimingDataF1), use get_topic_reference + inspect_topic before making assumptions.
+- If stream updates look sparse or ambiguous, check get_keyframe(topic) for full feed snapshot shape.
 
 Tools:
 - get_latest(topic): normalized latest snapshot (decompresses .z topics).
@@ -73,4 +76,10 @@ Cookbook: orient -> reference -> compute
 Step 0) get_data_catalog() to see which topics exist for this session.
 Step 1) get_topic_reference({ topic: 'TimingData', includeExample: true }) to confirm semantics + key fields.
 Step 2) Use the best deterministic tool (e.g. get_lap_table / compare_drivers) and cite the ranges (laps/timestamps).
+
+Cookbook: full feed map for a session
+Step 0) get_data_catalog() for discovered topic list + ranges.
+Step 1) get_data_book_index() to map topics to purpose/best tools.
+Step 2) get_download_manifest() to verify per-topic stream/keyframe coverage.
+Step 3) For any topic you will rely on, run get_topic_reference({ topic, includeExample: true }).
 `;

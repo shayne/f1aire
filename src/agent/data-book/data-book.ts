@@ -463,6 +463,333 @@ export const DATA_BOOK_TOPICS: DataBookTopic[] = [
     relatedTopics: ['PitStopSeries', 'PitLaneTimeCollection'],
     bestTools: ['get_pit_stop', 'inspect_topic'],
   },
+  {
+    topic: 'ArchiveStatus',
+    aliases: ['ArchiveStatus'],
+    availability: 'all-sessions',
+    semantics: 'replace',
+    purpose:
+      'Archive lifecycle marker for the session feed (e.g. Generating/Complete). Useful to explain why some files are still incomplete.',
+    engineerUse: [
+      'Confirm whether the archive has finished processing before trusting “final” post-session summaries.',
+      'Explain missing late-session assets while status is still generating.',
+    ],
+    normalization: ['_kf is stripped during normalization when present.'],
+    keyFields: [
+      { path: 'Status', description: 'Archive generation state (e.g. Generating, Complete).' },
+    ],
+    pitfalls: [
+      'Status reflects archive build state, not sporting result status.',
+    ],
+    relatedTopics: ['SessionStatus', 'SessionInfo'],
+    bestTools: ['get_latest', 'get_download_manifest', 'get_keyframe'],
+  },
+  {
+    topic: 'SessionStatus',
+    aliases: ['SessionStatus'],
+    availability: 'all-sessions',
+    semantics: 'replace',
+    purpose:
+      'High-level session lifecycle state (e.g. Inactive, Started, Finished, Ends). Use this as a quick gate for “is session running or complete?”.',
+    engineerUse: [
+      'State gating: avoid assuming race conditions if status is inactive.',
+      'Mark boundaries for pre-session, active running, and post-session analysis.',
+    ],
+    normalization: ['_kf is stripped during normalization when present.'],
+    keyFields: [
+      { path: 'Status', description: 'Session lifecycle status string.' },
+    ],
+    pitfalls: ['Status vocabulary can vary by season/session type; do not hardcode a single enum.'],
+    relatedTopics: ['SessionInfo', 'TrackStatus', 'ArchiveStatus'],
+    bestTools: ['get_latest', 'get_topic_timeline', 'get_keyframe'],
+  },
+  {
+    topic: 'ContentStreams',
+    aliases: ['ContentStreams'],
+    availability: 'all-sessions',
+    semantics: 'patch',
+    purpose:
+      'Metadata for interactive/broadcast content endpoints (commentary and related stream URIs/languages). Useful for discovering auxiliary content assets.',
+    engineerUse: [
+      'Discover available stream metadata (language, URI, path).',
+      'Explain whether additional commentary/content channels exist for the session.',
+    ],
+    normalization: ['Streams can appear as arrays and later as indexed patches; inspect shape when needed.'],
+    keyFields: [
+      { path: 'Streams.<id>.Type', description: 'Content stream type.' },
+      { path: 'Streams.<id>.Language', description: 'Language code for the stream.' },
+      { path: 'Streams.<id>.Uri', description: 'Source URI for the stream.' },
+      { path: 'Streams.<id>.Path', description: 'Relative path when provided.' },
+    ],
+    pitfalls: [
+      'These are metadata links; they are not direct sporting telemetry.',
+      'Shape can alternate between array snapshots and keyed patches.',
+    ],
+    relatedTopics: ['AudioStreams', 'TeamRadio', 'SessionInfo'],
+    bestTools: ['get_latest', 'get_keyframe', 'inspect_topic'],
+  },
+  {
+    topic: 'AudioStreams',
+    aliases: ['AudioStreams'],
+    availability: 'all-sessions',
+    semantics: 'patch',
+    purpose:
+      'Audio channel metadata (language/name/URI/path). Useful for listing available live audio feeds.',
+    engineerUse: [
+      'Confirm available audio channels by language.',
+      'Locate stream URLs and paths for external playback systems.',
+    ],
+    normalization: ['Streams can be delivered as array snapshots.'],
+    keyFields: [
+      { path: 'Streams.<id>.Name', description: 'Audio channel display name.' },
+      { path: 'Streams.<id>.Language', description: 'Language code.' },
+      { path: 'Streams.<id>.Uri', description: 'HLS/stream URI.' },
+      { path: 'Streams.<id>.Path', description: 'Relative stream path.' },
+    ],
+    pitfalls: [
+      'No transcript or semantic event annotations; treat as transport metadata only.',
+    ],
+    relatedTopics: ['ContentStreams', 'TeamRadio'],
+    bestTools: ['get_latest', 'get_keyframe', 'inspect_topic'],
+  },
+  {
+    topic: 'TyreStintSeries',
+    aliases: ['TyreStintSeries'],
+    availability: 'all-sessions',
+    semantics: 'patch',
+    purpose:
+      'Per-driver tyre stint timeline (compound/newness/start/total laps). Useful for reconstructing strategy history directly from feed-native stint records.',
+    engineerUse: [
+      'Build stint chronology without relying only on TimingAppData snapshots.',
+      'Cross-check pit strategy narratives and tyre age changes.',
+    ],
+    normalization: ['Stints may be arrays or indexed dictionaries by driver/stop.'],
+    keyFields: [
+      { path: 'Stints.<driver>.<stint>.Compound', description: 'Tyre compound for the stint.' },
+      { path: 'Stints.<driver>.<stint>.New', description: 'Whether set is marked new.' },
+      { path: 'Stints.<driver>.<stint>.StartLaps', description: 'Lap offset where stint started.' },
+      { path: 'Stints.<driver>.<stint>.TotalLaps', description: 'Total laps completed in stint.' },
+    ],
+    pitfalls: [
+      'New/TyresNotChanged can appear as strings; cast carefully.',
+      'Updates can be sparse and non-monotonic during red-flag/restart edge cases.',
+    ],
+    relatedTopics: ['CurrentTyres', 'TimingAppData', 'PitStopSeries'],
+    bestTools: ['get_latest', 'get_keyframe', 'inspect_topic', 'get_lap_table'],
+  },
+  {
+    topic: 'CurrentTyres',
+    aliases: ['CurrentTyres'],
+    availability: 'all-sessions',
+    semantics: 'patch',
+    purpose:
+      'Current tyre state per driver (compound/new flag). Best quick snapshot for “who is on what tyre right now?”.',
+    engineerUse: [
+      'Answer immediate tyre compound questions at the current cursor.',
+      'Detect fresh tyre changes after pit stops.',
+    ],
+    normalization: ['Patch stream keyed by driver number.'],
+    keyFields: [
+      { path: 'Tyres.<driver>.Compound', description: 'Current tyre compound.' },
+      { path: 'Tyres.<driver>.New', description: 'Whether current set is new (when available).' },
+    ],
+    pitfalls: [
+      'Not a full stint history; use TyreStintSeries or TimingAppData for historical context.',
+    ],
+    relatedTopics: ['TyreStintSeries', 'TimingAppData', 'TimingData'],
+    bestTools: ['get_latest', 'get_topic_timeline', 'inspect_topic'],
+  },
+  {
+    topic: 'LapSeries',
+    aliases: ['LapSeries'],
+    availability: 'all-sessions',
+    semantics: 'patch',
+    purpose:
+      'Driver lap-position series (per-lap position arrays/deltas). Useful for quick reconstruction of position progression lap by lap.',
+    engineerUse: [
+      'Summarize position evolution by lap for a driver.',
+      'Cross-check overtake/position change narratives against timing-derived order.',
+    ],
+    normalization: ['Payload can start as full arrays and continue as incremental keyed patches.'],
+    keyFields: [
+      { path: '<driver>.RacingNumber', description: 'Driver racing number.' },
+      { path: '<driver>.LapPosition', description: 'Lap-by-lap position sequence or indexed patch.' },
+    ],
+    pitfalls: [
+      'LapPosition may switch representation (array vs indexed object) across updates.',
+    ],
+    relatedTopics: ['TimingData', 'Position', 'OvertakeSeries'],
+    bestTools: ['get_latest', 'get_topic_timeline', 'get_keyframe', 'inspect_topic'],
+  },
+  {
+    topic: 'WeatherDataSeries',
+    aliases: ['WeatherDataSeries'],
+    availability: 'all-sessions',
+    semantics: 'patch',
+    purpose:
+      'Timestamped weather timeline (series of weather snapshots). Better for weather trend analysis than single-point WeatherData.',
+    engineerUse: [
+      'Trend analysis: rain onset, track temp drift, wind shifts over session time.',
+      'Correlate evolving conditions with pace changes and tyre behavior.',
+    ],
+    normalization: ['Series may start as array and continue with indexed patch updates.'],
+    keyFields: [
+      { path: 'Series.<idx>.Timestamp', description: 'Weather sample timestamp.' },
+      { path: 'Series.<idx>.Weather.AirTemp', description: 'Air temperature.' },
+      { path: 'Series.<idx>.Weather.TrackTemp', description: 'Track temperature.' },
+      { path: 'Series.<idx>.Weather.Rainfall', description: 'Rainfall indicator/value.' },
+      { path: 'Series.<idx>.Weather.WindSpeed', description: 'Wind speed.' },
+    ],
+    pitfalls: [
+      'Units can vary and values are often strings.',
+      'Timeline intervals are approximate and can have gaps.',
+    ],
+    relatedTopics: ['WeatherData', 'TimingData', 'TrackStatus'],
+    bestTools: ['get_latest', 'get_topic_timeline', 'get_keyframe', 'inspect_topic'],
+  },
+  {
+    topic: 'TimingDataF1',
+    aliases: ['TimingDataF1'],
+    availability: 'all-sessions',
+    semantics: 'patch',
+    purpose:
+      'Alternate timing feed variant used by F1 clients. Similar to TimingData but with differences in field naming/shape for positions and gaps.',
+    engineerUse: [
+      'Fallback timing source when TimingData fields are sparse/missing.',
+      'Cross-check gaps/intervals against TimingData before concluding anomalies.',
+    ],
+    normalization: ['Patch stream; requires state merge across updates.'],
+    keyFields: [
+      { path: 'Lines.<driver>.Position|Line', description: 'Position/ranking fields.' },
+      { path: 'Lines.<driver>.GapToLeader', description: 'Gap to session leader.' },
+      { path: 'Lines.<driver>.IntervalToPositionAhead.Value', description: 'Interval to car ahead.' },
+      { path: 'Lines.<driver>.NumberOfLaps', description: 'Current lap number.' },
+      { path: 'Lines.<driver>.Sectors.<idx>.Value', description: 'Sector values when present.' },
+    ],
+    pitfalls: [
+      'Do not assume identical schema to TimingData.',
+      'Like TimingData, this is incremental patch data and not full snapshots per line.',
+    ],
+    relatedTopics: ['TimingData', 'TimingStats', 'DriverRaceInfo'],
+    bestTools: ['get_latest', 'get_keyframe', 'inspect_topic', 'get_topic_timeline'],
+  },
+  {
+    topic: 'TlaRcm',
+    aliases: ['TlaRcm'],
+    availability: 'all-sessions',
+    semantics: 'replace',
+    purpose:
+      'Ticker-style race control text messages (short alerts such as DRS state, pit exit, chequered flag). Useful for concise event narration.',
+    engineerUse: [
+      'Build concise session event timeline using short official message phrases.',
+      'Cross-reference control messages against track status changes.',
+    ],
+    normalization: ['Each update is typically a single Timestamp+Message payload.'],
+    keyFields: [
+      { path: 'Timestamp', description: 'Message timestamp (often local/event format).' },
+      { path: 'Message', description: 'Short message text.' },
+    ],
+    pitfalls: [
+      'Timestamp format can differ from UTC ISO fields in other feeds.',
+      'This is not a full replacement for detailed RaceControlMessages categories.',
+    ],
+    relatedTopics: ['RaceControlMessages', 'TrackStatus', 'SessionStatus'],
+    bestTools: ['get_latest', 'get_topic_timeline', 'get_keyframe'],
+  },
+  {
+    topic: 'DriverTracker',
+    aliases: ['DriverTracker'],
+    availability: 'all-sessions',
+    semantics: 'patch',
+    purpose:
+      'Broadcast-style compact driver board (position/lap state/diffs) as ordered lines. Useful for quick headline ranking summaries.',
+    engineerUse: [
+      'Quickly list ordered runner board without reconstructing map keys.',
+      'Compare broadcast board state with TimingData for validation.',
+    ],
+    normalization: ['Lines can arrive as an array snapshot then indexed patches.'],
+    keyFields: [
+      { path: 'Withheld', description: 'Whether board is withheld.' },
+      { path: 'Lines.<idx>.RacingNumber', description: 'Driver at board index.' },
+      { path: 'Lines.<idx>.Position', description: 'Displayed position.' },
+      { path: 'Lines.<idx>.DiffToAhead|DiffToLeader', description: 'Displayed interval strings.' },
+    ],
+    pitfalls: [
+      'Line index is display order and can differ from driver-number keyed maps.',
+      'Not all detailed timing fields are present.',
+    ],
+    relatedTopics: ['TopThree', 'TimingData', 'DriverList'],
+    bestTools: ['get_latest', 'get_topic_timeline', 'get_keyframe', 'inspect_topic'],
+  },
+  {
+    topic: 'DriverRaceInfo',
+    aliases: ['DriverRaceInfo'],
+    availability: 'race-only',
+    semantics: 'patch',
+    purpose:
+      'Race-focused per-driver status feed (position/gap/interval/pit stop count/catching flags). Useful for race narrative state at a glance.',
+    engineerUse: [
+      'Fast race context: who is catching whom, pit stop counts, and interval board.',
+      'Support live strategy narrative without rebuilding from raw sectors.',
+    ],
+    normalization: ['Patch stream keyed by racing number.'],
+    keyFields: [
+      { path: '<driver>.Position', description: 'Current classified position.' },
+      { path: '<driver>.Gap', description: 'Gap string to leader context.' },
+      { path: '<driver>.Interval', description: 'Interval string to car ahead.' },
+      { path: '<driver>.PitStops', description: 'Current pit stop count.' },
+      { path: '<driver>.Catching', description: 'Flag/indicator for catching state.' },
+      { path: '<driver>.OvertakeState', description: 'Overtake state indicator.' },
+    ],
+    pitfalls: [
+      'Gap/Interval are strings and can be lap-based or formatted text.',
+      'Indicator fields are encoded integers/flags; inspect before deriving strict booleans.',
+    ],
+    relatedTopics: ['TimingData', 'TimingDataF1', 'OvertakeSeries'],
+    bestTools: ['get_latest', 'get_topic_timeline', 'inspect_topic', 'get_keyframe'],
+  },
+  {
+    topic: 'OvertakeSeries',
+    aliases: ['OvertakeSeries'],
+    availability: 'race-only',
+    semantics: 'patch',
+    purpose:
+      'Per-driver overtake event series with timestamps and counts. Useful for summarizing overtaking intensity and race dynamics.',
+    engineerUse: [
+      'Identify where overtakes concentrated (by driver and timing).',
+      'Support race recap with overtaking activity evidence.',
+    ],
+    normalization: ['Overtakes keyed by driver with arrays of timestamped count entries.'],
+    keyFields: [
+      { path: 'Overtakes.<driver>[].Timestamp', description: 'Timestamp of overtake-series event.' },
+      { path: 'Overtakes.<driver>[].count', description: 'Count/metric value for the event entry.' },
+    ],
+    pitfalls: [
+      'The count field semantics can vary by season/feed implementation.',
+      'Not every positional change is guaranteed to appear as an overtake event.',
+    ],
+    relatedTopics: ['LapSeries', 'DriverRaceInfo', 'TimingData'],
+    bestTools: ['get_latest', 'get_keyframe', 'inspect_topic', 'get_topic_timeline'],
+  },
+  {
+    topic: 'SPFeed',
+    aliases: ['SPFeed'],
+    availability: 'all-sessions',
+    semantics: 'replace',
+    purpose:
+      'Legacy/season-specific supplemental feed observed in older sessions. Use as exploratory data only unless explicitly validated for current season.',
+    engineerUse: [
+      'Inspect for legacy historical datasets where this feed exists.',
+    ],
+    normalization: ['No stable schema guarantee; treat as opaque payload.'],
+    keyFields: [{ path: '*', description: 'Schema varies by season; inspect topic before use.' }],
+    pitfalls: [
+      'Often absent in modern seasons.',
+      'Semantics are not stable enough for deterministic strategy calculations without inspection.',
+    ],
+    relatedTopics: ['SessionInfo'],
+    bestTools: ['get_latest', 'inspect_topic', 'get_keyframe'],
+  },
 ];
 
 export function getDataBookIndex() {
