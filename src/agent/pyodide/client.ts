@@ -72,6 +72,38 @@ export function createPythonClient({
     }
   }
 
+  async function recycleWorker(error: Error) {
+    failPending(error);
+    if (initReject) {
+      initReject(error);
+      initReject = null;
+    }
+    initPromise = null;
+    initWorkerId = null;
+    initializedWorkerId = null;
+    const stale = worker;
+    worker = null;
+    currentWorkerId = 0;
+    if (stale) {
+      stale.removeAllListeners();
+      try {
+        await stale.terminate();
+      } catch {
+        // Best-effort recycle.
+      }
+    }
+  }
+
+  function isNotInitializedError(error: unknown): boolean {
+    return /pyodide is not initialized/i.test(String(error ?? ''));
+  }
+
+  function isFatalRuntimeError(error: unknown): boolean {
+    const message = String(error ?? '');
+    return /(pyodide.*fatally\s+failed|pyodide.*fatal\s+error|already\s+fatally\s+failed\s+and\s+can\s+no\s+longer\s+be\s+used)/i
+      .test(message);
+  }
+
   function safePostMessage(target: Worker, message: WorkerMessage) {
     try {
       target.postMessage(message);
@@ -302,14 +334,24 @@ export function createPythonClient({
         });
       };
       let result = await doRun();
-      if (!result.ok && /pyodide is not initialized/i.test(String(result.error ?? '')) && lastInitArgs) {
-        // If the worker accepted a run call without being initialized, force a re-init and retry once.
-        initPromise = null;
-        initReject = null;
-        initWorkerId = null;
-        initializedWorkerId = null;
-        await api.init(lastInitArgs);
-        result = await doRun();
+      if (!result.ok && lastInitArgs) {
+        if (isNotInitializedError(result.error)) {
+          // If the worker accepted a run call without being initialized, force a re-init and retry once.
+          initPromise = null;
+          initReject = null;
+          initWorkerId = null;
+          initializedWorkerId = null;
+          await api.init(lastInitArgs);
+          result = await doRun();
+        } else if (isFatalRuntimeError(result.error)) {
+          // Pyodide can enter an unrecoverable state while the worker stays alive.
+          // Recycle the worker process and retry once.
+          await recycleWorker(
+            new Error('pyodide runtime reported a fatal failure; recycling worker'),
+          );
+          await api.init(lastInitArgs);
+          result = await doRun();
+        }
       }
       return { ok: result.ok, value: result.value, error: result.error };
     },

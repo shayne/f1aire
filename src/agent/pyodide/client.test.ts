@@ -73,6 +73,43 @@ describe('createPythonClient', () => {
     expect(messageTypes).toContain('run');
   });
 
+  it('recycles worker and retries when pyodide reports a fatal runtime failure', async () => {
+    let workerCount = 0;
+    const workers: FakeWorker[] = [];
+    const client = createPythonClient({
+      workerFactory: () => {
+        workerCount += 1;
+        const worker = new FakeWorker();
+        if (workerCount === 1) {
+          worker.postMessage = vi.fn((msg) => {
+            if (msg.type === 'init') {
+              worker.inited = true;
+              worker.emit('message', { type: 'init-result', ok: true });
+              return;
+            }
+            if (msg.type === 'run') {
+              worker.emit('message', {
+                type: 'run-result',
+                id: msg.id,
+                ok: false,
+                error: 'Pyodide already fatally failed and can no longer be used',
+              });
+            }
+          });
+        }
+        workers.push(worker);
+        return worker as any;
+      },
+    });
+
+    await client.init({ indexURL: '/tmp/pyodide' });
+    const result = await client.run({ code: '1+1' });
+
+    expect(result).toEqual({ ok: true, value: { ok: 1 } });
+    expect(workers).toHaveLength(2);
+    expect(workers[0]?.terminate).toHaveBeenCalled();
+  });
+
   it('handles tool-call from worker and posts tool-result', async () => {
     const worker = new FakeWorker();
     const toolHandler = vi.fn().mockResolvedValue({ ok: 1 });
