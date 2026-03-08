@@ -1,5 +1,6 @@
 .worktrees/
 .tmp/
+.codex-loop/
 node_modules/
 .dist/
 dist/

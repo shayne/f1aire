@@ -71,6 +71,39 @@ export function renderLoopPrompt(options: {
   ].join('\n');
 }
 
+export function requireMainBranchAndCleanTree(options: {
+  branch: string;
+  isDirty: boolean;
+}) {
+  if (options.branch !== 'main') {
+    throw new Error(`This loop only runs on main. Current branch: ${options.branch}`);
+  }
+  if (options.isDirty) {
+    throw new Error('This loop requires a clean working tree before it starts.');
+  }
+}
+
+export function buildIterationPaths(repoRoot: string, iteration: number) {
+  const label = String(iteration).padStart(3, '0');
+  const iterationDir = path.join(repoRoot, '.codex-loop', `iteration-${label}`);
+  return {
+    iterationDir,
+    promptPath: path.join(iterationDir, 'prompt.txt'),
+    eventsPath: path.join(iterationDir, 'events.jsonl'),
+    finalOutputPath: path.join(iterationDir, 'final.json'),
+  };
+}
+
+export function shouldStopForMaxIterations(options: {
+  iteration: number;
+  maxIterations: number | null;
+}) {
+  if (options.maxIterations === null) {
+    return false;
+  }
+  return options.iteration >= options.maxIterations;
+}
+
 export function validateLoopResult(value: unknown): LoopResult {
   if (typeof value !== 'object' || value === null) {
     throw new Error('Loop result must be an object.');

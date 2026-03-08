@@ -2,9 +2,12 @@ import { describe, expect, test } from 'vitest';
 
 import {
   buildCodexExecCommand,
+  buildIterationPaths,
   determineNextAction,
   getDefaultSchemaPath,
+  requireMainBranchAndCleanTree,
   renderLoopPrompt,
+  shouldStopForMaxIterations,
   validateLoopResult,
 } from './codex-loop.ts';
 
@@ -125,5 +128,55 @@ describe('determineNextAction', () => {
     );
 
     expect(action).toBe('stop');
+  });
+});
+
+describe('requireMainBranchAndCleanTree', () => {
+  test('rejects work outside main', () => {
+    expect(() =>
+      requireMainBranchAndCleanTree({
+        branch: 'feature/codex-loop',
+        isDirty: false,
+      }),
+    ).toThrow(/main/i);
+  });
+
+  test('rejects a dirty tree', () => {
+    expect(() =>
+      requireMainBranchAndCleanTree({
+        branch: 'main',
+        isDirty: true,
+      }),
+    ).toThrow(/clean/i);
+  });
+});
+
+describe('buildIterationPaths', () => {
+  test('builds per-iteration artifact paths under .codex-loop', () => {
+    const paths = buildIterationPaths('/Users/shayne/code/f1aire', 4);
+
+    expect(paths.iterationDir).toBe(
+      '/Users/shayne/code/f1aire/.codex-loop/iteration-004',
+    );
+    expect(paths.finalOutputPath).toBe(
+      '/Users/shayne/code/f1aire/.codex-loop/iteration-004/final.json',
+    );
+    expect(paths.eventsPath).toBe(
+      '/Users/shayne/code/f1aire/.codex-loop/iteration-004/events.jsonl',
+    );
+  });
+});
+
+describe('shouldStopForMaxIterations', () => {
+  test('stops when the max iteration cap is reached', () => {
+    expect(shouldStopForMaxIterations({ iteration: 3, maxIterations: 3 })).toBe(
+      true,
+    );
+  });
+
+  test('continues when below the iteration cap', () => {
+    expect(shouldStopForMaxIterations({ iteration: 2, maxIterations: 3 })).toBe(
+      false,
+    );
   });
 });
