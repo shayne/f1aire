@@ -243,6 +243,29 @@ export function getTyreStintRecords(opts: {
   return records;
 }
 
+export function getTyreStintRecordForLap(opts: {
+  tyreStintSeriesState?: unknown;
+  timingAppDataState?: unknown;
+  timingDataState?: unknown;
+  driverNumber: string | number;
+  lap: number;
+}): TyreStintRecord | null {
+  const lap = toNormalizedLap(opts.lap);
+  if (lap === null) {
+    return null;
+  }
+
+  const records = getTyreStintRecords({
+    tyreStintSeriesState: opts.tyreStintSeriesState,
+    timingAppDataState: opts.timingAppDataState,
+    timingDataState: opts.timingDataState,
+    driverNumber: opts.driverNumber,
+    asOfLap: lap,
+  });
+
+  return records.at(-1) ?? null;
+}
+
 export function getCurrentTyreRecords(opts: {
   currentTyresState?: unknown;
   tyreStintSeriesState?: unknown;
@@ -314,6 +337,28 @@ function toNormalizedLap(value: number | undefined): number | null {
   return Math.max(1, Math.trunc(value));
 }
 
+function projectTyreStintRecordAsOf(
+  record: TyreStintRecord,
+  asOfLap: number,
+): TyreStintRecord {
+  const effectiveTotalLaps =
+    record.totalLaps !== null
+      ? Math.min(record.totalLaps, asOfLap)
+      : record.startLaps !== null
+        ? asOfLap
+        : null;
+
+  return {
+    ...record,
+    totalLaps:
+      record.totalLaps !== null ? effectiveTotalLaps : record.totalLaps,
+    lapsOnTyre:
+      record.startLaps !== null && effectiveTotalLaps !== null
+        ? Math.max(0, effectiveTotalLaps - record.startLaps)
+        : record.lapsOnTyre,
+  };
+}
+
 function projectTyreStintsAsOf(
   records: TyreStintRecord[],
   opts: { asOfLap?: number },
@@ -338,5 +383,6 @@ function projectTyreStintsAsOf(
         record.startLaps === null ? null : Math.max(1, record.startLaps + 1);
       return startLap === null ? true : startLap <= asOfLap;
     })
+    .map((record) => projectTyreStintRecordAsOf(record, asOfLap))
     .slice();
 }

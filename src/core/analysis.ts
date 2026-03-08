@@ -15,17 +15,25 @@ import {
 import { normalizePoint } from './processors/normalize.js';
 import { isPlainObject } from './processors/merge.js';
 import { getTopicDefinition } from './topic-registry.js';
+import { getTyreStintRecordForLap, getTyreStintRecords } from './tyre-state.js';
 
 type TrackStatusProcessorLike = {
   state?: unknown | null;
-  history?: Array<{ at: Date; value: unknown; status: string | null; message: string | null }>;
+  history?: Array<{
+    at: Date;
+    value: unknown;
+    status: string | null;
+    message: string | null;
+  }>;
   getAt?: (dateTime: Date) => unknown | null;
 };
 
 type TimingDataProcessorLike = {
   state?: unknown | null;
   driversByLap?: Map<number, Map<string, unknown>>;
-  getLapHistory?: (driverNumber: string) => Array<{ lap: number; snapshot: unknown }>;
+  getLapHistory?: (
+    driverNumber: string,
+  ) => Array<{ lap: number; snapshot: unknown }>;
   getLapSnapshot?: (driverNumber: string, lap: number) => unknown | null;
   getLapNumbers?: () => number[];
 };
@@ -37,11 +45,16 @@ type DriverListProcessorLike = {
 
 type TimingAppProcessorLike = { state?: unknown | null };
 
+type ExtraTopicProcessorLike = { state?: unknown | null };
+
 type ProcessorsLike = {
   timingData?: TimingDataProcessorLike;
   driverList?: DriverListProcessorLike;
   timingAppData?: TimingAppProcessorLike;
   trackStatus?: TrackStatusProcessorLike;
+  extraTopics?: {
+    TyreStintSeries?: ExtraTopicProcessorLike;
+  };
 };
 
 type LapTableOptions = {
@@ -78,24 +91,30 @@ function getDriverName(processors: ProcessorsLike, driverNumber: string) {
   return processors.driverList?.getName?.(driverNumber) ?? null;
 }
 
-function getTrackStatusAt(processors: ProcessorsLike, dateTime: Date | undefined) {
+function getTrackStatusAt(
+  processors: ProcessorsLike,
+  dateTime: Date | undefined,
+) {
   if (!dateTime) return processors.trackStatus?.state ?? null;
-  return processors.trackStatus?.getAt?.(dateTime) ?? processors.trackStatus?.state ?? null;
+  return (
+    processors.trackStatus?.getAt?.(dateTime) ??
+    processors.trackStatus?.state ??
+    null
+  );
 }
 
-function getStintsForDriver(processors: ProcessorsLike, driverNumber: string) {
-  const app = processors.timingAppData?.state as any;
-  const lines = app?.Lines ?? {};
-  const line = lines?.[driverNumber];
-  if (!line) return null;
-  const stints = line.Stints ?? {};
-  if (Array.isArray(stints)) return stints;
-  if (isPlainObject(stints)) {
-    return Object.keys(stints)
-      .sort((a, b) => Number(a) - Number(b))
-      .map((key) => (stints as any)[key]);
-  }
-  return null;
+function getStintsForDriver(
+  processors: ProcessorsLike,
+  driverNumber: string,
+  asOfLap?: number,
+) {
+  return getTyreStintRecords({
+    tyreStintSeriesState: processors.extraTopics?.TyreStintSeries?.state,
+    timingAppDataState: processors.timingAppData?.state,
+    timingDataState: processors.timingData?.state,
+    driverNumber,
+    asOfLap,
+  });
 }
 
 function getStintForLap(
@@ -103,18 +122,13 @@ function getStintForLap(
   driverNumber: string,
   lap: number,
 ) {
-  const stints = getStintsForDriver(processors, driverNumber);
-  if (!stints) return null;
-  for (const stint of stints) {
-    const start = Number((stint as any)?.StartLaps ?? 0);
-    const total = Number((stint as any)?.TotalLaps ?? 0);
-    if (!Number.isFinite(start) || !Number.isFinite(total)) continue;
-    if (total <= 0) continue;
-    const startLap = start + 1;
-    const endLap = start + total;
-    if (lap >= startLap && lap <= endLap) return stint;
-  }
-  return stints.length > 0 ? stints[stints.length - 1] : null;
+  return getTyreStintRecordForLap({
+    tyreStintSeriesState: processors.extraTopics?.TyreStintSeries?.state,
+    timingAppDataState: processors.timingAppData?.state,
+    timingDataState: processors.timingData?.state,
+    driverNumber,
+    lap,
+  });
 }
 
 function extractSpeeds(snapshot: unknown) {
@@ -147,10 +161,10 @@ export function createAnalysisContext(opts: {
       out.push({
         number: num,
         name:
-          (data as any)?.FullName
-          ?? (data as any)?.BroadcastName
-          ?? (data as any)?.Tla
-          ?? num,
+          (data as any)?.FullName ??
+          (data as any)?.BroadcastName ??
+          (data as any)?.Tla ??
+          num,
         team: (data as any)?.TeamName ?? null,
         teamColour: (data as any)?.TeamColour ?? null,
         data,
@@ -163,9 +177,15 @@ export function createAnalysisContext(opts: {
     const needle = name.toLowerCase();
     for (const [num, data] of driverMap.entries()) {
       const full = String((data as any)?.FullName ?? '').toLowerCase();
-      const broadcast = String((data as any)?.BroadcastName ?? '').toLowerCase();
+      const broadcast = String(
+        (data as any)?.BroadcastName ?? '',
+      ).toLowerCase();
       const tla = String((data as any)?.Tla ?? '').toLowerCase();
-      if (full.includes(needle) || broadcast.includes(needle) || tla === needle) {
+      if (
+        full.includes(needle) ||
+        broadcast.includes(needle) ||
+        tla === needle
+      ) {
         return num;
       }
     }
@@ -179,7 +199,9 @@ export function createAnalysisContext(opts: {
     const streamNames = new Map<string, Set<string>>();
     for (const point of store.raw.live as RawPoint[]) {
       const def = getTopicDefinition(point.type);
-      const topic = def?.topic ?? (point.type.endsWith('.z') ? point.type.slice(0, -2) : point.type);
+      const topic =
+        def?.topic ??
+        (point.type.endsWith('.z') ? point.type.slice(0, -2) : point.type);
       const count = counts.get(topic) ?? 0;
       counts.set(topic, count + 1);
       const streams = streamNames.get(topic) ?? new Set<string>();
@@ -187,7 +209,8 @@ export function createAnalysisContext(opts: {
       streamNames.set(topic, streams);
       if (!first.has(topic)) first.set(topic, point.dateTime);
       const currentLast = last.get(topic);
-      if (!currentLast || point.dateTime > currentLast) last.set(topic, point.dateTime);
+      if (!currentLast || point.dateTime > currentLast)
+        last.set(topic, point.dateTime);
     }
     return Array.from(counts.entries())
       .sort(([a], [b]) => a.localeCompare(b))
@@ -208,9 +231,11 @@ export function createAnalysisContext(opts: {
     let laps = lapNumbers;
     const startLap = options.startLap;
     const endLap = options.endLap;
-    if (typeof startLap === 'number') laps = laps.filter((lap) => lap >= startLap);
+    if (typeof startLap === 'number')
+      laps = laps.filter((lap) => lap >= startLap);
     if (typeof endLap === 'number') laps = laps.filter((lap) => lap <= endLap);
-    if (typeof options.limit === 'number' && options.limit > 0) laps = laps.slice(-options.limit);
+    if (typeof options.limit === 'number' && options.limit > 0)
+      laps = laps.slice(-options.limit);
     const driverFilter = options.driverNumbers
       ? new Set(options.driverNumbers.map(normalizeDriverNumber))
       : null;
@@ -235,7 +260,10 @@ export function createAnalysisContext(opts: {
         const dt = (snapshot as any)?.__dateTime as Date | undefined;
         const track = includeTrack ? getTrackStatusAt(processors, dt) : null;
         if (requireGreen && track) {
-          if (!trackStatusIsGreen((track as any)?.Status, (track as any)?.Message)) continue;
+          if (
+            !trackStatusIsGreen((track as any)?.Status, (track as any)?.Message)
+          )
+            continue;
         }
 
         const sectorsMs = includeSectors
@@ -246,19 +274,27 @@ export function createAnalysisContext(opts: {
           : null;
         const lapTimeMs = extractLapTimeMs(snapshot, { preferPrevious: true });
         const speeds = includeSpeeds ? extractSpeeds(snapshot) : null;
-        const stint = includeStints ? getStintForLap(processors, driverNumber, lap) : null;
+        const stint = includeStints
+          ? getStintForLap(processors, driverNumber, lap)
+          : null;
 
         const gapToLeader = (snapshot as any)?.GapToLeader ?? null;
-        const intervalToAhead = (snapshot as any)?.IntervalToPositionAhead?.Value ?? null;
+        const intervalToAhead =
+          (snapshot as any)?.IntervalToPositionAhead?.Value ?? null;
         const gapSeconds = includeGaps ? parseGapSeconds(gapToLeader) : null;
-        const intervalSeconds = includeGaps ? parseIntervalSeconds(intervalToAhead) : null;
-        const smartGap = includeGaps ? smartGapToLeaderSeconds(linesObj, driverNumber) : null;
+        const intervalSeconds = includeGaps
+          ? parseIntervalSeconds(intervalToAhead)
+          : null;
+        const smartGap = includeGaps
+          ? smartGapToLeaderSeconds(linesObj, driverNumber)
+          : null;
 
         rows.push({
           lap,
           driverNumber,
           driverName: getDriverName(processors, driverNumber),
-          position: (snapshot as any)?.Line ?? (snapshot as any)?.Position ?? null,
+          position:
+            (snapshot as any)?.Line ?? (snapshot as any)?.Position ?? null,
           lapTimeMs,
           sectorsMs,
           segmentStatuses,
@@ -279,14 +315,19 @@ export function createAnalysisContext(opts: {
           inPit: includePitFlags ? Boolean((snapshot as any)?.InPit) : null,
           pitOut: includePitFlags ? Boolean((snapshot as any)?.PitOut) : null,
           pitIn: includePitFlags ? Boolean((snapshot as any)?.PitIn) : null,
-          isCleanLap: includePitFlags ? isCleanLap(snapshot, track, true) : null,
+          isCleanLap: includePitFlags
+            ? isCleanLap(snapshot, track, true)
+            : null,
         });
       }
     }
     return rows;
   };
 
-  const getTopicTimeline = (topic: string, options?: { limit?: number; from?: Date; to?: Date }) => {
+  const getTopicTimeline = (
+    topic: string,
+    options?: { limit?: number; from?: Date; to?: Date },
+  ) => {
     const view = store.topic(topic);
     let timeline = view.timeline(options?.from, options?.to);
     if (!timeline.length && !topic.endsWith('.z')) {
@@ -300,7 +341,9 @@ export function createAnalysisContext(opts: {
   };
 
   const getLatestCarTelemetry = (driverNumber?: string) => {
-    const entry = (processors as any)?.carData?.state?.Entries?.slice?.(-1)?.[0];
+    const entry = (processors as any)?.carData?.state?.Entries?.slice?.(
+      -1,
+    )?.[0];
     if (!entry) return null;
     const cars = entry?.Cars ?? {};
     if (!isPlainObject(cars)) return null;
@@ -324,9 +367,12 @@ export function createAnalysisContext(opts: {
     getDrivers,
     getDriverName: (num: string) => getDriverName(processors, num),
     getDriverNumberByName,
-    getStintsForDriver: (num: string) => getStintsForDriver(processors, num),
-    getStintForLap: (num: string, lap: number) => getStintForLap(processors, num, lap),
-    getTrackStatusAt: (dateTime: Date | undefined) => getTrackStatusAt(processors, dateTime),
+    getStintsForDriver: (num: string, asOfLap?: number) =>
+      getStintsForDriver(processors, num, asOfLap),
+    getStintForLap: (num: string, lap: number) =>
+      getStintForLap(processors, num, lap),
+    getTrackStatusAt: (dateTime: Date | undefined) =>
+      getTrackStatusAt(processors, dateTime),
     getLapTable,
     getTopicStats,
     getTopicTimeline,

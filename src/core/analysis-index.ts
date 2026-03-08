@@ -5,8 +5,17 @@ import {
   smartGapToLeaderSeconds,
   getOrderedLines,
 } from './analysis-utils.js';
-import { classifyTraffic, DEFAULT_TRAFFIC_THRESHOLDS, type TrafficLabel } from './traffic.js';
-import { resolveTimeCursor, type TimeCursor, type ResolvedCursor } from './time-cursor.js';
+import {
+  classifyTraffic,
+  DEFAULT_TRAFFIC_THRESHOLDS,
+  type TrafficLabel,
+} from './traffic.js';
+import {
+  resolveTimeCursor,
+  type TimeCursor,
+  type ResolvedCursor,
+} from './time-cursor.js';
+import { getTyreStintRecordForLap } from './tyre-state.js';
 
 export type LapRecord = {
   lap: number;
@@ -17,12 +26,24 @@ export type LapRecord = {
   intervalToAheadSec: number | null;
   position: number | null;
   traffic: TrafficLabel;
-  trackStatus: { status: string | null; message: string | null; isGreen: boolean | null } | null;
+  trackStatus: {
+    status: string | null;
+    message: string | null;
+    isGreen: boolean | null;
+  } | null;
   flags: { pit: boolean; pitIn: boolean; pitOut: boolean; inPit: boolean };
-  stint: { compound: string | null; age: number | null; stint: number | null } | null;
+  stint: {
+    compound: string | null;
+    age: number | null;
+    stint: number | null;
+  } | null;
 };
 
-export type PitEvent = { driverNumber: string; lap: number; type: 'pit' | 'pit-in' | 'pit-out' };
+export type PitEvent = {
+  driverNumber: string;
+  lap: number;
+  type: 'pit' | 'pit-in' | 'pit-out';
+};
 export type PositionChange = {
   driverNumber: string;
   lap: number;
@@ -82,28 +103,11 @@ export type AnalysisIndex = {
     driverB: string;
     pitLossMs: number | null;
   }) => UndercutWindow;
-  simulateRejoin: (opts: { driver: string; pitLossMs: number; asOfLap: number }) => RejoinProjection;
-};
-
-const getStintForLap = (timingAppData: any, driverNumber: string, lap: number) => {
-  const lines = timingAppData?.Lines ?? {};
-  const line = lines?.[driverNumber];
-  const stints = line?.Stints ?? null;
-  if (!stints) return null;
-  const items: any[] = Array.isArray(stints)
-    ? stints
-    : Object.keys(stints)
-        .sort((a, b) => Number(a) - Number(b))
-        .map((key) => stints[key]);
-  for (const stint of items) {
-    const start = Number(stint?.StartLaps ?? 0);
-    const total = Number(stint?.TotalLaps ?? 0);
-    if (!Number.isFinite(start) || !Number.isFinite(total)) continue;
-    const startLap = start + 1;
-    const endLap = start + total;
-    if (lap >= startLap && lap <= endLap) return stint;
-  }
-  return items.length ? items[items.length - 1] : null;
+  simulateRejoin: (opts: {
+    driver: string;
+    pitLossMs: number;
+    asOfLap: number;
+  }) => RejoinProjection;
 };
 
 export function buildAnalysisIndex({
@@ -130,7 +134,9 @@ export function buildAnalysisIndex({
       const driverNumber = orderedLines[i]?.[0];
       if (!driverNumber) continue;
       const following = orderedLines[i + 1]?.[1];
-      const gapBehindSec = parseIntervalSeconds(following?.IntervalToPositionAhead?.Value);
+      const gapBehindSec = parseIntervalSeconds(
+        following?.IntervalToPositionAhead?.Value,
+      );
       gapBehindByDriver.set(driverNumber, gapBehindSec);
     }
     for (const [driverNumber, snapshot] of lapDrivers.entries()) {
@@ -150,8 +156,11 @@ export function buildAnalysisIndex({
         (snapshot as any)?.IntervalToPositionAhead?.Value,
       );
 
-      const positionRaw = (snapshot as any)?.Position ?? (snapshot as any)?.Line;
-      const position = Number.isFinite(Number(positionRaw)) ? Number(positionRaw) : null;
+      const positionRaw =
+        (snapshot as any)?.Position ?? (snapshot as any)?.Line;
+      const position = Number.isFinite(Number(positionRaw))
+        ? Number(positionRaw)
+        : null;
 
       const flags = {
         pit: Boolean((snapshot as any)?.IsPitLap),
@@ -160,12 +169,18 @@ export function buildAnalysisIndex({
         inPit: Boolean((snapshot as any)?.InPit),
       };
 
-      const stint = getStintForLap(timingApp, driverNumber, lap);
+      const stint = getTyreStintRecordForLap({
+        tyreStintSeriesState: processors.extraTopics?.TyreStintSeries?.state,
+        timingAppDataState: timingApp,
+        timingDataState: timing?.state,
+        driverNumber,
+        lap,
+      });
       const stintInfo = stint
         ? {
-            compound: stint?.Compound ? String(stint.Compound) : null,
-            age: Number.isFinite(Number(stint?.TyreAge)) ? Number(stint.TyreAge) : null,
-            stint: Number.isFinite(Number(stint?.Stint)) ? Number(stint.Stint) : null,
+            compound: stint.compound,
+            age: stint.lapsOnTyre,
+            stint: stint.stint,
           }
         : null;
 
@@ -186,9 +201,7 @@ export function buildAnalysisIndex({
         intervalToAheadSec,
         position,
         traffic,
-        trackStatus: track
-          ? { status, message, isGreen }
-          : null,
+        trackStatus: track ? { status, message, isGreen } : null,
         flags,
         stint: stintInfo,
       };
@@ -207,10 +220,12 @@ export function buildAnalysisIndex({
 
   for (const [driverNumber, records] of byDriver.entries()) {
     for (const record of records) {
-      if (record.flags.pitIn) pitEvents.push({ driverNumber, lap: record.lap, type: 'pit-in' });
+      if (record.flags.pitIn)
+        pitEvents.push({ driverNumber, lap: record.lap, type: 'pit-in' });
       else if (record.flags.pitOut)
         pitEvents.push({ driverNumber, lap: record.lap, type: 'pit-out' });
-      else if (record.flags.pit) pitEvents.push({ driverNumber, lap: record.lap, type: 'pit' });
+      else if (record.flags.pit)
+        pitEvents.push({ driverNumber, lap: record.lap, type: 'pit' });
     }
   }
 
@@ -234,7 +249,11 @@ export function buildAnalysisIndex({
     }
   }
 
-  const getDriverLaps = (driverNumber: string, startLap?: number, endLap?: number) => {
+  const getDriverLaps = (
+    driverNumber: string,
+    startLap?: number,
+    endLap?: number,
+  ) => {
     const records = byDriver.get(driverNumber) ?? [];
     return records.filter((r) => {
       if (typeof startLap === 'number' && r.lap < startLap) return false;
@@ -255,13 +274,20 @@ export function buildAnalysisIndex({
     const records = getDriverLaps(driverNumber, startLap, endLap);
     const times = records.map((r) => r.lapTimeMs ?? 0);
     if (!records.length) {
-      return { driverNumber, samples: 0, avgLapMs: null, slopeMsPerLap: null, laps: [] };
+      return {
+        driverNumber,
+        samples: 0,
+        avgLapMs: null,
+        slopeMsPerLap: null,
+        laps: [],
+      };
     }
     const avg = times.reduce((a, b) => a + b, 0) / times.length;
     const first = records[0];
     const last = records[records.length - 1];
     const lapDelta = last.lap - first.lap;
-    const slope = lapDelta > 0 ? (times[times.length - 1] - times[0]) / lapDelta : 0;
+    const slope =
+      lapDelta > 0 ? (times[times.length - 1] - times[0]) / lapDelta : 0;
     return {
       driverNumber,
       samples: records.length,
@@ -291,7 +317,9 @@ export function buildAnalysisIndex({
         const bLap = b.find((x) => x.lap === r.lap);
         return { lap: r.lap, deltaMs: (r.a ?? 0) - (bLap?.lapTimeMs ?? 0) };
       });
-    const avgDelta = laps.length ? laps.reduce((sum, row) => sum + row.deltaMs, 0) / laps.length : null;
+    const avgDelta = laps.length
+      ? laps.reduce((sum, row) => sum + row.deltaMs, 0) / laps.length
+      : null;
     return {
       driverA,
       driverB,
@@ -312,7 +340,11 @@ export function buildAnalysisIndex({
     const comparison = compareDrivers({ driverA, driverB });
     const avgDelta = comparison.summary?.avgDeltaMs ?? null;
     if (avgDelta == null || pitLossMs == null) {
-      return { avgDeltaMs: avgDelta, lapsToCover: null, pitLossMs: pitLossMs ?? null };
+      return {
+        avgDeltaMs: avgDelta,
+        lapsToCover: null,
+        pitLossMs: pitLossMs ?? null,
+      };
     }
     if (avgDelta >= 0) {
       return { avgDeltaMs: avgDelta, lapsToCover: null, pitLossMs };
@@ -332,7 +364,8 @@ export function buildAnalysisIndex({
   }): RejoinProjection => {
     const snap = byLap.get(asOfLap)?.get(driver);
     const gapToLeader = snap?.gapToLeaderSec ?? null;
-    const projectedGap = gapToLeader === null ? null : gapToLeader + pitLossMs / 1000;
+    const projectedGap =
+      gapToLeader === null ? null : gapToLeader + pitLossMs / 1000;
     return {
       driverNumber: driver,
       asOfLap,

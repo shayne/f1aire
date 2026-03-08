@@ -108,8 +108,16 @@ describe('buildAnalysisIndex', () => {
         type: 'TimingData',
         json: {
           Lines: {
-            '1': { NumberOfLaps: 1, Position: '1', LapTime: { Value: '1:30.000' } },
-            '2': { NumberOfLaps: 1, Position: '2', LapTime: { Value: '1:31.000' } },
+            '1': {
+              NumberOfLaps: 1,
+              Position: '1',
+              LapTime: { Value: '1:30.000' },
+            },
+            '2': {
+              NumberOfLaps: 1,
+              Position: '2',
+              LapTime: { Value: '1:31.000' },
+            },
           },
         },
         dateTime: new Date('2024-01-01T00:01:00Z'),
@@ -118,8 +126,17 @@ describe('buildAnalysisIndex', () => {
         type: 'TimingData',
         json: {
           Lines: {
-            '1': { NumberOfLaps: 2, Position: '2', LapTime: { Value: '1:32.000' }, PitIn: true },
-            '2': { NumberOfLaps: 2, Position: '1', LapTime: { Value: '1:30.500' } },
+            '1': {
+              NumberOfLaps: 2,
+              Position: '2',
+              LapTime: { Value: '1:32.000' },
+              PitIn: true,
+            },
+            '2': {
+              NumberOfLaps: 2,
+              Position: '1',
+              LapTime: { Value: '1:30.500' },
+            },
           },
         },
         dateTime: new Date('2024-01-01T00:02:00Z'),
@@ -140,8 +157,16 @@ describe('buildAnalysisIndex', () => {
         type: 'TimingData',
         json: {
           Lines: {
-            '1': { NumberOfLaps: 1, Position: '1', LapTime: { Value: '1:30.000' } },
-            '2': { NumberOfLaps: 1, Position: '2', LapTime: { Value: '1:31.000' } },
+            '1': {
+              NumberOfLaps: 1,
+              Position: '1',
+              LapTime: { Value: '1:30.000' },
+            },
+            '2': {
+              NumberOfLaps: 1,
+              Position: '2',
+              LapTime: { Value: '1:31.000' },
+            },
           },
         },
         dateTime: new Date('2024-01-01T00:01:00Z'),
@@ -150,8 +175,16 @@ describe('buildAnalysisIndex', () => {
         type: 'TimingData',
         json: {
           Lines: {
-            '1': { NumberOfLaps: 2, Position: '1', LapTime: { Value: '1:31.000' } },
-            '2': { NumberOfLaps: 2, Position: '2', LapTime: { Value: '1:31.000' } },
+            '1': {
+              NumberOfLaps: 2,
+              Position: '1',
+              LapTime: { Value: '1:31.000' },
+            },
+            '2': {
+              NumberOfLaps: 2,
+              Position: '2',
+              LapTime: { Value: '1:31.000' },
+            },
           },
         },
         dateTime: new Date('2024-01-01T00:02:00Z'),
@@ -175,7 +208,11 @@ describe('buildAnalysisIndex', () => {
         type: 'TimingData',
         json: {
           Lines: {
-            '1': { NumberOfLaps: 1, Position: '1', LapTime: { Value: '1:30.000' } },
+            '1': {
+              NumberOfLaps: 1,
+              Position: '1',
+              LapTime: { Value: '1:30.000' },
+            },
           },
         },
         dateTime: new Date('2024-01-01T00:01:00Z'),
@@ -184,7 +221,11 @@ describe('buildAnalysisIndex', () => {
         type: 'TimingData',
         json: {
           Lines: {
-            '1': { NumberOfLaps: 3, Position: '1', LapTime: { Value: '1:40.000' } },
+            '1': {
+              NumberOfLaps: 3,
+              Position: '1',
+              LapTime: { Value: '1:40.000' },
+            },
           },
         },
         dateTime: new Date('2024-01-01T00:03:00Z'),
@@ -205,7 +246,11 @@ describe('buildAnalysisIndex', () => {
         type: 'TimingData',
         json: {
           Lines: {
-            '1': { NumberOfLaps: 1, Position: '1', LapTime: { Value: '1:30.000' } },
+            '1': {
+              NumberOfLaps: 1,
+              Position: '1',
+              LapTime: { Value: '1:30.000' },
+            },
           },
         },
         dateTime: new Date('2024-01-01T00:01:00Z'),
@@ -214,7 +259,11 @@ describe('buildAnalysisIndex', () => {
         type: 'TimingData',
         json: {
           Lines: {
-            '2': { NumberOfLaps: 2, Position: '2', LapTime: { Value: '1:31.000' } },
+            '2': {
+              NumberOfLaps: 2,
+              Position: '2',
+              LapTime: { Value: '1:31.000' },
+            },
           },
         },
         dateTime: new Date('2024-01-01T00:02:00Z'),
@@ -236,8 +285,18 @@ describe('buildAnalysisIndex', () => {
         type: 'TimingData',
         json: {
           Lines: {
-            '1': { NumberOfLaps: 1, Position: '1', LapTime: { Value: '1:30.000' }, GapToLeader: '0' },
-            '2': { NumberOfLaps: 1, Position: '2', LapTime: { Value: '1:31.000' }, GapToLeader: '+1.0' },
+            '1': {
+              NumberOfLaps: 1,
+              Position: '1',
+              LapTime: { Value: '1:30.000' },
+              GapToLeader: '0',
+            },
+            '2': {
+              NumberOfLaps: 1,
+              Position: '2',
+              LapTime: { Value: '1:31.000' },
+              GapToLeader: '+1.0',
+            },
           },
         },
         dateTime: new Date('2024-01-01T00:01:00Z'),
@@ -246,8 +305,18 @@ describe('buildAnalysisIndex', () => {
         type: 'TimingData',
         json: {
           Lines: {
-            '1': { NumberOfLaps: 2, Position: '1', LapTime: { Value: '1:30.000' }, GapToLeader: '0' },
-            '2': { NumberOfLaps: 2, Position: '2', LapTime: { Value: '1:31.000' }, GapToLeader: '+1.2' },
+            '1': {
+              NumberOfLaps: 2,
+              Position: '1',
+              LapTime: { Value: '1:30.000' },
+              GapToLeader: '0',
+            },
+            '2': {
+              NumberOfLaps: 2,
+              Position: '2',
+              LapTime: { Value: '1:31.000' },
+              GapToLeader: '+1.2',
+            },
           },
         },
         dateTime: new Date('2024-01-01T00:02:00Z'),
@@ -258,17 +327,78 @@ describe('buildAnalysisIndex', () => {
 
     const index = buildAnalysisIndex({ processors: timing.processors });
 
-    const window = index.getUndercutWindow({ driverA: '1', driverB: '2', pitLossMs: 20_000 });
+    const window = index.getUndercutWindow({
+      driverA: '1',
+      driverB: '2',
+      pitLossMs: 20_000,
+    });
     expect(window.lapsToCover).toBe(20);
 
-    const rejoin = index.simulateRejoin({ driver: '2', pitLossMs: 20_000, asOfLap: 2 });
+    const rejoin = index.simulateRejoin({
+      driver: '2',
+      pitLossMs: 20_000,
+      asOfLap: 2,
+    });
     expect(rejoin.lossMs).toBe(20_000);
     expect(rejoin.projectedGapToLeaderSec).toBe(21.2);
 
-    const noGain = index.getUndercutWindow({ driverA: '2', driverB: '1', pitLossMs: 20_000 });
+    const noGain = index.getUndercutWindow({
+      driverA: '2',
+      driverB: '1',
+      pitLossMs: 20_000,
+    });
     expect(noGain.lapsToCover).toBeNull();
 
-    const zeroLoss = index.getUndercutWindow({ driverA: '1', driverB: '2', pitLossMs: 0 });
+    const zeroLoss = index.getUndercutWindow({
+      driverA: '1',
+      driverB: '2',
+      pitLossMs: 0,
+    });
     expect(zeroLoss.lapsToCover).toBe(0);
+  });
+
+  it('derives stint age from active replay stint context', () => {
+    const timing = new TimingService();
+
+    timing.enqueue({
+      type: 'TimingData',
+      json: {
+        Lines: {
+          '4': {
+            NumberOfLaps: 12,
+            Position: '1',
+            LapTime: { Value: '1:30.000' },
+            GapToLeader: '0',
+          },
+        },
+      },
+      dateTime: new Date('2024-01-01T00:12:00Z'),
+    });
+    timing.enqueue({
+      type: 'TimingAppData',
+      json: {
+        Lines: {
+          '4': {
+            Stints: {
+              '0': {
+                Compound: 'MEDIUM',
+                New: 'true',
+                StartLaps: 0,
+                TotalLaps: 20,
+              },
+            },
+          },
+        },
+      },
+      dateTime: new Date('2024-01-01T00:12:01Z'),
+    });
+
+    const index = buildAnalysisIndex({ processors: timing.processors });
+
+    expect(index.byDriver.get('4')?.[0]?.stint).toEqual({
+      compound: 'MEDIUM',
+      age: 12,
+      stint: 0,
+    });
   });
 });

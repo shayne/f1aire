@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { getCurrentTyreRecords, getTyreStintRecords } from './tyre-state.js';
+import {
+  getCurrentTyreRecords,
+  getTyreStintRecordForLap,
+  getTyreStintRecords,
+} from './tyre-state.js';
 
 describe('tyre-state', () => {
   it('prefers TyreStintSeries over TimingAppData and keeps timing order', () => {
@@ -221,5 +225,65 @@ describe('tyre-state', () => {
         source: 'TyreStintSeries',
       },
     ]);
+  });
+
+  it('projects active TimingAppData fallback stints to the requested replay lap', () => {
+    const timingAppDataState = {
+      Lines: {
+        '4': {
+          Stints: {
+            '0': {
+              Compound: 'MEDIUM',
+              New: 'true',
+              StartLaps: 0,
+              TotalLaps: 20,
+            },
+          },
+        },
+      },
+    };
+
+    expect(
+      getTyreStintRecords({
+        asOfLap: 12,
+        timingAppDataState,
+        timingDataState: { Lines: { '4': { Line: 1 } } },
+      }),
+    ).toEqual([
+      {
+        driverNumber: '4',
+        stint: 0,
+        compound: 'MEDIUM',
+        isNew: true,
+        tyresNotChanged: null,
+        startLaps: 0,
+        totalLaps: 12,
+        lapsOnTyre: 12,
+        lapTime: null,
+        lapNumber: null,
+        source: 'TimingAppData',
+      },
+    ]);
+
+    expect(
+      getTyreStintRecordForLap({
+        lap: 12,
+        driverNumber: '4',
+        timingAppDataState,
+        timingDataState: { Lines: { '4': { Line: 1 } } },
+      }),
+    ).toEqual({
+      driverNumber: '4',
+      stint: 0,
+      compound: 'MEDIUM',
+      isNew: true,
+      tyresNotChanged: null,
+      startLaps: 0,
+      totalLaps: 12,
+      lapsOnTyre: 12,
+      lapTime: null,
+      lapNumber: null,
+      source: 'TimingAppData',
+    });
   });
 });
