@@ -34,8 +34,8 @@ export function buildCodexExecCommand(options: {
   outputPath: string;
   search: boolean;
 }) {
-  const args = [
-    'exec',
+  const args = options.search ? ['--search', 'exec'] : ['exec'];
+  args.push(
     '--dangerously-bypass-approvals-and-sandbox',
     '--json',
     '--output-schema',
@@ -44,11 +44,7 @@ export function buildCodexExecCommand(options: {
     options.outputPath,
     '--cd',
     options.cwd,
-  ];
-
-  if (options.search) {
-    args.push('--search');
-  }
+  );
 
   args.push('-');
 

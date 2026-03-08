@@ -28,6 +28,17 @@ describe('buildCodexExecCommand', () => {
       '/Users/shayne/code/f1aire/scripts/codex-loop-output.schema.json',
     );
   });
+
+  test('places live web search before the exec subcommand', () => {
+    const command = buildCodexExecCommand({
+      cwd: '/Users/shayne/code/f1aire',
+      schemaPath: getDefaultSchemaPath('/Users/shayne/code/f1aire'),
+      outputPath: '/tmp/final.json',
+      search: true,
+    });
+
+    expect(command.args.slice(0, 2)).toEqual(['--search', 'exec']);
+  });
 });
 
 describe('renderLoopPrompt', () => {
