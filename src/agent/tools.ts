@@ -60,6 +60,11 @@ import {
   getDriverRaceInfoRows,
 } from '../core/driver-race-info.js';
 import {
+  getOvertakeSeriesRecords,
+  summarizeOvertakeSeries,
+  type OvertakeSeriesRecord,
+} from '../core/overtake-series.js';
+import {
   getRaceControlEvents,
   type RaceControlEvent,
 } from '../core/processors/race-control-messages.js';
@@ -326,6 +331,32 @@ export function makeTools({
     dateTime: event.dateTime ? event.dateTime.toISOString() : null,
   });
 
+  const getOvertakeSeriesContext = (record: OvertakeSeriesRecord) => {
+    const match = findLapRecordForDriverAt(record.driverNumber, record.dateTime);
+    if (!record.dateTime || !match) {
+      return null;
+    }
+
+    const { record: lapRecord, matchMode } = match;
+    return {
+      eventTime: record.dateTime.toISOString(),
+      matchedTimingTime: lapRecord.dateTime
+        ? lapRecord.dateTime.toISOString()
+        : null,
+      matchMode,
+      lap: lapRecord.lap,
+      position: lapRecord.position,
+      trackStatus: lapRecord.trackStatus,
+    };
+  };
+
+  const serializeOvertakeSeriesRecord = (record: OvertakeSeriesRecord) => ({
+    ...record,
+    driverName: getDriverName(record.driverNumber),
+    dateTime: record.dateTime ? record.dateTime.toISOString() : null,
+    timingContext: getOvertakeSeriesContext(record),
+  });
+
   const sortTimingSnapshots = (
     entries: Array<[string, unknown]>,
   ): Array<[string, unknown]> =>
@@ -580,6 +611,44 @@ export function makeTools({
       startLap: opts.startLap,
       endLap: effectiveEndLap,
     });
+
+    let records = allRecords;
+    if (opts.order === 'desc') {
+      records = [...records].reverse();
+    }
+    if (typeof opts.limit === 'number' && opts.limit > 0) {
+      records = records.slice(0, Math.floor(opts.limit));
+    }
+
+    return {
+      resolved,
+      total: allRecords.length,
+      allRecords,
+      records,
+    };
+  };
+
+  const listOvertakeSeries = (
+    opts: {
+      driverNumber?: string | number;
+      includeFuture?: boolean;
+      limit?: number;
+      order?: 'asc' | 'desc';
+    } = {},
+  ) => {
+    const resolved = resolveCurrentCursor();
+    let allRecords = getOvertakeSeriesRecords({
+      overtakeSeriesState: processors.extraTopics?.OvertakeSeries?.state,
+      driverNumber: opts.driverNumber,
+    });
+
+    if (!opts.includeFuture && resolved.dateTime) {
+      const cutoffMs = resolved.dateTime.getTime();
+      allRecords = allRecords.filter((record) => {
+        const recordMs = record.dateTime?.getTime();
+        return recordMs === undefined || recordMs === null || recordMs <= cutoffMs;
+      });
+    }
 
     let records = allRecords;
     if (opts.order === 'desc') {
@@ -1007,6 +1076,47 @@ export function makeTools({
         asOf,
         total: rows.length,
         rows: rows.slice(0, 8),
+      };
+    }
+
+    if (topic === 'OvertakeSeries') {
+      const { total, allRecords, records } = listOvertakeSeries({
+        driverNumber: resolvedDriver ?? undefined,
+        limit: 5,
+      });
+      if (!total) {
+        return null;
+      }
+
+      if (resolvedDriver) {
+        return {
+          asOf,
+          driverNumber: resolvedDriver,
+          driverName: getDriverName(resolvedDriver),
+          summary: summarizeOvertakeSeries(allRecords),
+          records: records.map(serializeOvertakeSeriesRecord),
+        };
+      }
+
+      const grouped = new Map<string, typeof allRecords>();
+      for (const record of allRecords) {
+        const entries = grouped.get(record.driverNumber) ?? [];
+        entries.push(record);
+        grouped.set(record.driverNumber, entries);
+      }
+
+      return {
+        asOf,
+        totalRecords: total,
+        totalDrivers: grouped.size,
+        drivers: Array.from(grouped.entries())
+          .map(([driverNumber, entries]) => ({
+            driverNumber,
+            driverName: getDriverName(driverNumber),
+            summary: summarizeOvertakeSeries(entries),
+          }))
+          .slice(0, 8),
+        records: records.map(serializeOvertakeSeriesRecord),
       };
     }
 
@@ -1688,6 +1798,71 @@ export function makeTools({
             }),
           ),
           records: records.map(serializeLapSeriesRecord),
+        };
+      },
+    }),
+    get_overtake_series: tool({
+      description:
+        'Get deterministic OvertakeSeries records, filtered to the current analysis cursor unless includeFuture is true. Exposes the raw feed count metric plus matched lap/position context when timing data is available.',
+      inputSchema: z.object({
+        driverNumber: z.union([z.string(), z.number()]).optional(),
+        includeFuture: z.boolean().optional(),
+        limit: z.number().int().positive().max(500).optional(),
+        order: z.enum(['asc', 'desc']).optional(),
+      }),
+      execute: async ({ driverNumber, includeFuture, limit, order }) => {
+        const { resolved, allRecords, records, total } = listOvertakeSeries({
+          driverNumber,
+          includeFuture,
+          limit,
+          order,
+        });
+
+        if (driverNumber !== undefined) {
+          const normalizedDriver = String(driverNumber);
+          return {
+            asOf: {
+              source: resolved.source,
+              lap: resolved.lap,
+              dateTime: resolved.dateTime,
+              includeFuture: Boolean(includeFuture),
+            },
+            driverNumber: normalizedDriver,
+            driverName: getDriverName(normalizedDriver),
+            total,
+            returned: records.length,
+            order: order ?? 'asc',
+            summary: summarizeOvertakeSeries(allRecords),
+            records: records.map(serializeOvertakeSeriesRecord),
+          };
+        }
+
+        const grouped = new Map<string, typeof allRecords>();
+        for (const record of allRecords) {
+          const entries = grouped.get(record.driverNumber) ?? [];
+          entries.push(record);
+          grouped.set(record.driverNumber, entries);
+        }
+
+        return {
+          asOf: {
+            source: resolved.source,
+            lap: resolved.lap,
+            dateTime: resolved.dateTime,
+            includeFuture: Boolean(includeFuture),
+          },
+          totalRecords: total,
+          returnedRecords: records.length,
+          totalDrivers: grouped.size,
+          order: order ?? 'asc',
+          drivers: Array.from(grouped.entries()).map(
+            ([normalizedDriver, entries]) => ({
+              driverNumber: normalizedDriver,
+              driverName: getDriverName(normalizedDriver),
+              summary: summarizeOvertakeSeries(entries),
+            }),
+          ),
+          records: records.map(serializeOvertakeSeriesRecord),
         };
       },
     }),

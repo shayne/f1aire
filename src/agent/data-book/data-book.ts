@@ -1139,6 +1139,7 @@ export const DATA_BOOK_TOPICS: DataBookTopic[] = [
     ],
     relatedTopics: ['LapSeries', 'DriverRaceInfo', 'TimingData'],
     bestTools: [
+      'get_overtake_series',
       'get_latest',
       'get_keyframe',
       'inspect_topic',

@@ -68,6 +68,7 @@ describe('tools', () => {
     expect(tools).toHaveProperty('get_race_control_events');
     expect(tools).toHaveProperty('get_driver_tracker');
     expect(tools).toHaveProperty('get_driver_race_info');
+    expect(tools).toHaveProperty('get_overtake_series');
     expect(tools).toHaveProperty('get_team_radio_events');
     expect(tools).toHaveProperty('play_team_radio');
     expect(tools).toHaveProperty('get_current_tyres');
@@ -1783,6 +1784,130 @@ describe('tools', () => {
     });
   });
 
+  it('get_overtake_series returns cursor-aware typed overtake records', async () => {
+    const tools = makeTools({
+      store,
+      processors: {
+        ...processors,
+        driverList: {
+          state: {},
+          getName: (driverNumber: string) =>
+            driverNumber === '4' ? 'Lando Norris' : 'Oscar Piastri',
+        },
+        timingData: {
+          state: { Lines: { '4': { Line: 2 }, '81': { Line: 1 } } },
+          bestLaps: new Map(),
+          getLapHistory: () => [],
+          getLapNumbers: () => [1, 2, 3],
+          driversByLap: new Map([
+            [
+              1,
+              new Map([
+                [
+                  '4',
+                  { __dateTime: new Date('2025-01-01T00:01:00Z'), Line: 2 },
+                ],
+              ]),
+            ],
+            [
+              2,
+              new Map([
+                [
+                  '4',
+                  { __dateTime: new Date('2025-01-01T00:02:00Z'), Line: 3 },
+                ],
+                [
+                  '81',
+                  { __dateTime: new Date('2025-01-01T00:02:00Z'), Line: 1 },
+                ],
+              ]),
+            ],
+            [
+              3,
+              new Map([
+                [
+                  '4',
+                  { __dateTime: new Date('2025-01-01T00:03:00Z'), Line: 1 },
+                ],
+              ]),
+            ],
+          ]),
+        },
+        extraTopics: {
+          OvertakeSeries: {
+            state: {
+              Overtakes: {
+                '4': {
+                  '1': {
+                    Timestamp: '2025-01-01T00:01:30Z',
+                    count: 1,
+                  },
+                  '2': {
+                    Timestamp: '2025-01-01T00:02:30Z',
+                    count: 2,
+                  },
+                },
+                '81': {
+                  '1': {
+                    Timestamp: '2025-01-01T00:03:30Z',
+                    count: 5,
+                  },
+                },
+              },
+            },
+          },
+        },
+      } as any,
+      timeCursor: { lap: 2 },
+      onTimeCursorChange: () => {},
+    });
+
+    await expect(
+      tools.get_overtake_series.execute({ driverNumber: '4' } as any),
+    ).resolves.toEqual({
+      asOf: {
+        source: 'lap',
+        lap: 2,
+        dateTime: new Date('2025-01-01T00:02:00Z'),
+        includeFuture: false,
+      },
+      driverNumber: '4',
+      driverName: 'Lando Norris',
+      total: 1,
+      returned: 1,
+      order: 'asc',
+      summary: {
+        driverNumber: '4',
+        totalEntries: 1,
+        firstTimestamp: '2025-01-01T00:01:30Z',
+        lastTimestamp: '2025-01-01T00:01:30Z',
+        latestCount: 1,
+        minCount: 1,
+        maxCount: 1,
+        changes: 0,
+      },
+      records: [
+        {
+          driverNumber: '4',
+          driverName: 'Lando Norris',
+          sequence: 1,
+          timestamp: '2025-01-01T00:01:30Z',
+          dateTime: '2025-01-01T00:01:30.000Z',
+          count: 1,
+          source: 'OvertakeSeries',
+          timingContext: {
+            eventTime: '2025-01-01T00:01:30.000Z',
+            matchedTimingTime: '2025-01-01T00:01:00.000Z',
+            matchMode: 'at-or-before',
+            lap: 1,
+            position: 2,
+            trackStatus: null,
+          },
+        },
+      ],
+    });
+  });
+
   it('get_topic_reference shows typed LapSeries examples', async () => {
     const tools = makeTools({
       store,
@@ -1890,6 +2015,102 @@ describe('tools', () => {
             lap: 3,
             position: 1,
             source: 'LapSeries',
+          },
+        ],
+      },
+    });
+  });
+
+  it('get_topic_reference shows typed OvertakeSeries examples', async () => {
+    const tools = makeTools({
+      store,
+      processors: {
+        ...processors,
+        driverList: {
+          state: {
+            '4': { FullName: 'Lando Norris' },
+          },
+          getName: (driverNumber: string) =>
+            driverNumber === '4' ? 'Lando Norris' : null,
+        },
+        timingData: {
+          state: { Lines: { '4': { Line: 1 } } },
+          bestLaps: new Map(),
+          getLapHistory: () => [],
+          getLapNumbers: () => [1, 2],
+          driversByLap: new Map([
+            [
+              1,
+              new Map([
+                [
+                  '4',
+                  { __dateTime: new Date('2025-01-01T00:01:00Z'), Line: 2 },
+                ],
+              ]),
+            ],
+            [
+              2,
+              new Map([
+                [
+                  '4',
+                  { __dateTime: new Date('2025-01-01T00:02:00Z'), Line: 1 },
+                ],
+              ]),
+            ],
+          ]),
+        },
+        extraTopics: {
+          OvertakeSeries: {
+            state: {
+              Overtakes: {
+                '4': {
+                  '1': {
+                    Timestamp: '2025-01-01T00:01:30Z',
+                    count: 1,
+                  },
+                  '2': {
+                    Timestamp: '2025-01-01T00:02:30Z',
+                    count: 2,
+                  },
+                },
+              },
+            },
+          },
+        },
+      } as any,
+      timeCursor: { latest: true },
+      onTimeCursorChange: () => {},
+    });
+
+    const result = await tools.get_topic_reference.execute({
+      topic: 'OvertakeSeries',
+      driverNumber: '4',
+      includeExample: true,
+    } as any);
+
+    expect(result).toMatchObject({
+      canonicalTopic: 'OvertakeSeries',
+      found: true,
+      present: true,
+      example: {
+        asOf: {
+          source: 'latest',
+          lap: 2,
+          dateTime: new Date('2025-01-01T00:02:00Z'),
+        },
+        driverNumber: '4',
+        driverName: 'Lando Norris',
+        summary: {
+          driverNumber: '4',
+          totalEntries: 1,
+          latestCount: 1,
+        },
+        records: [
+          {
+            driverNumber: '4',
+            driverName: 'Lando Norris',
+            count: 1,
+            source: 'OvertakeSeries',
           },
         ],
       },

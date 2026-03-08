@@ -35,6 +35,10 @@ describe('systemPrompt', () => {
     expect(systemPrompt).toContain('get_lap_series');
   });
 
+  it('mentions the overtake series tool for race-dynamics questions', () => {
+    expect(systemPrompt).toContain('get_overtake_series');
+  });
+
   it('mentions the driver tracker tool for board-state questions', () => {
     expect(systemPrompt).toContain('get_driver_tracker');
   });

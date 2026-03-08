@@ -51,6 +51,12 @@ describe('data-book', () => {
     );
   });
 
+  it('documents deterministic overtake-series tooling', () => {
+    expect(getDataBookTopic('OvertakeSeries')?.bestTools).toContain(
+      'get_overtake_series',
+    );
+  });
+
   it('documents deterministic stream metadata tooling', () => {
     expect(getDataBookTopic('AudioStreams')?.bestTools).toContain(
       'get_audio_streams',
