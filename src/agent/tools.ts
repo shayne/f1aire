@@ -49,6 +49,10 @@ import {
 import { getStreamMetadataRecords } from '../core/stream-metadata.js';
 import { getLapSeriesRecords, summarizeLapSeries } from '../core/lap-series.js';
 import {
+  buildDriverRaceInfoState,
+  getDriverRaceInfoRows,
+} from '../core/driver-race-info.js';
+import {
   getRaceControlEvents,
   type RaceControlEvent,
 } from '../core/processors/race-control-messages.js';
@@ -181,6 +185,13 @@ export function makeTools({
     };
     teamRadio?: { state?: unknown | null };
     championshipPrediction?: { state?: unknown | null };
+    driverRaceInfo?: {
+      state?: unknown | null;
+      getRows?: (opts?: {
+        driverListState?: Record<string, unknown> | null;
+        driverNumber?: string | number;
+      }) => unknown[];
+    };
     pitStopSeries?: { state?: unknown | null };
     pitStop?: { state?: unknown | null };
     pitLaneTimeCollection?: { state?: unknown | null };
@@ -233,6 +244,8 @@ export function makeTools({
         return processors.teamRadio?.state ?? null;
       case 'ChampionshipPrediction':
         return processors.championshipPrediction?.state ?? null;
+      case 'DriverRaceInfo':
+        return processors.driverRaceInfo?.state ?? null;
       case 'PitStopSeries':
         return processors.pitStopSeries?.state ?? null;
       case 'PitStop':
@@ -381,6 +394,39 @@ export function makeTools({
       : getRaceControlEvents(processors.raceControlMessages?.state, query);
     return { resolved, events };
   };
+
+  const listDriverRaceInfo = (
+    opts: {
+      driverNumber?: string | number;
+      includeFuture?: boolean;
+    } = {},
+  ) => {
+    const resolved = resolveCurrentCursor();
+    const subscribeState = normalizePoint({
+      type: 'DriverRaceInfo',
+      json: (store.raw.subscribe as any)?.DriverRaceInfo ?? {},
+      dateTime: resolved.dateTime ?? new Date(0),
+    }).json;
+    const timeline = analysis.getTopicTimeline('DriverRaceInfo', {
+      to: opts.includeFuture ? undefined : (resolved.dateTime ?? undefined),
+    });
+    const state = buildDriverRaceInfoState({
+      baseState: subscribeState,
+      timeline,
+    });
+
+    const rows = getDriverRaceInfoRows({
+      state,
+      driverListState: processors.driverList?.state ?? null,
+      driverNumber: opts.driverNumber,
+    });
+
+    return {
+      resolved,
+      rows,
+    };
+  };
+
   const getDefaultEndLap = () => {
     const resolved = resolveCurrentCursor();
     return typeof resolved.lap === 'number' ? resolved.lap : undefined;
@@ -852,6 +898,24 @@ export function makeTools({
         asOf,
         count: listRaceControlEvents().events.length,
         recent,
+      };
+    }
+
+    if (topic === 'DriverRaceInfo') {
+      const { rows } = listDriverRaceInfo({
+        driverNumber: resolvedDriver ?? undefined,
+      });
+      if (!rows.length) return null;
+      if (resolvedDriver) {
+        return {
+          asOf,
+          driver: rows[0],
+        };
+      }
+      return {
+        asOf,
+        total: rows.length,
+        rows: rows.slice(0, 8),
       };
     }
 
@@ -1712,6 +1776,30 @@ export function makeTools({
           }).events.length,
           returned: events.length,
           events: events.map(serializeRaceControlEvent),
+        };
+      },
+    }),
+    get_driver_race_info: tool({
+      description:
+        'Get deterministic DriverRaceInfo rows, filtered to the current analysis cursor unless includeFuture is true.',
+      inputSchema: z.object({
+        driverNumber: z.union([z.string(), z.number()]).optional(),
+        includeFuture: z.boolean().optional(),
+      }),
+      execute: async ({ driverNumber, includeFuture }) => {
+        const { resolved, rows } = listDriverRaceInfo({
+          driverNumber,
+          includeFuture,
+        });
+        return {
+          asOf: {
+            source: resolved.source,
+            lap: resolved.lap,
+            dateTime: resolved.dateTime,
+          },
+          includeFuture: Boolean(includeFuture),
+          total: rows.length,
+          rows,
         };
       },
     }),

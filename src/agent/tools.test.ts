@@ -66,6 +66,7 @@ describe('tools', () => {
     expect(tools).toHaveProperty('get_pit_loss_estimate');
     expect(tools).toHaveProperty('get_position_changes');
     expect(tools).toHaveProperty('get_race_control_events');
+    expect(tools).toHaveProperty('get_driver_race_info');
     expect(tools).toHaveProperty('get_team_radio_events');
     expect(tools).toHaveProperty('get_current_tyres');
     expect(tools).toHaveProperty('get_tyre_stints');
@@ -508,6 +509,168 @@ describe('tools', () => {
           windDirectionDeg: 85,
           windSpeed: 2.2,
           source: 'WeatherDataSeries',
+        },
+      ],
+    });
+  });
+
+  it('get_driver_race_info returns cursor-aware typed rows', async () => {
+    const tools = makeTools({
+      store: {
+        ...store,
+        topic: (topic: string) => {
+          if (topic === 'DriverRaceInfo') {
+            return {
+              latest: null,
+              timeline: (_from?: Date, to?: Date) => {
+                const points = [
+                  {
+                    type: 'DriverRaceInfo',
+                    json: {
+                      '81': {
+                        Position: '2',
+                        Gap: '+1.8',
+                        Interval: '+1.8',
+                        PitStops: 0,
+                      },
+                    },
+                    dateTime: new Date('2025-01-01T12:01:00Z'),
+                  },
+                  {
+                    type: 'DriverRaceInfo',
+                    json: {
+                      '4': {
+                        Position: '1',
+                        Gap: 'LEADER',
+                        Interval: 'LEADER',
+                        PitStops: 1,
+                      },
+                      '81': { Catching: true },
+                    },
+                    dateTime: new Date('2025-01-01T12:03:00Z'),
+                  },
+                ];
+
+                return points.filter((point) => !to || point.dateTime <= to);
+              },
+            };
+          }
+
+          return {
+            latest: null,
+            timeline: () => [],
+          };
+        },
+        raw: {
+          subscribe: {
+            DriverRaceInfo: {
+              '4': {
+                Position: '3',
+                Gap: '+6.0',
+                Interval: '+6.0',
+                PitStops: 0,
+              },
+            },
+          },
+          live: [],
+        },
+      } as any,
+      processors: {
+        ...processors,
+        driverList: {
+          state: {
+            '4': { FullName: 'Lando Norris' },
+            '81': { FullName: 'Oscar Piastri' },
+          },
+        },
+        timingData: {
+          ...processors.timingData,
+          getLapNumbers: () => [10, 11],
+          driversByLap: new Map([
+            [
+              10,
+              new Map([
+                ['4', { __dateTime: new Date('2025-01-01T12:00:00Z') }],
+              ]),
+            ],
+            [
+              11,
+              new Map([
+                ['4', { __dateTime: new Date('2025-01-01T12:02:00Z') }],
+              ]),
+            ],
+          ]),
+        },
+      } as any,
+      timeCursor: { lap: 11 },
+      onTimeCursorChange: () => {},
+    });
+
+    const result = await tools.get_driver_race_info.execute({} as any);
+
+    expect(result).toEqual({
+      asOf: {
+        source: 'lap',
+        lap: 11,
+        dateTime: new Date('2025-01-01T12:02:00Z'),
+      },
+      includeFuture: false,
+      total: 2,
+      rows: [
+        {
+          driverNumber: '81',
+          driverName: 'Oscar Piastri',
+          position: 2,
+          gap: '+1.8',
+          gapSeconds: 1.8,
+          interval: '+1.8',
+          intervalSeconds: 1.8,
+          pitStops: 0,
+          catching: null,
+          overtakeState: null,
+          raw: {
+            Position: '2',
+            Gap: '+1.8',
+            Interval: '+1.8',
+            PitStops: 0,
+          },
+        },
+        {
+          driverNumber: '4',
+          driverName: 'Lando Norris',
+          position: 3,
+          gap: '+6.0',
+          gapSeconds: 6,
+          interval: '+6.0',
+          intervalSeconds: 6,
+          pitStops: 0,
+          catching: null,
+          overtakeState: null,
+          raw: {
+            Position: '3',
+            Gap: '+6.0',
+            Interval: '+6.0',
+            PitStops: 0,
+          },
+        },
+      ],
+    });
+
+    const latest = await tools.get_driver_race_info.execute({
+      includeFuture: true,
+      driverNumber: '4',
+    } as any);
+
+    expect(latest).toMatchObject({
+      includeFuture: true,
+      total: 1,
+      rows: [
+        {
+          driverNumber: '4',
+          driverName: 'Lando Norris',
+          position: 1,
+          gap: 'LEADER',
+          pitStops: 1,
         },
       ],
     });

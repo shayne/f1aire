@@ -178,6 +178,74 @@ describe('TimingService', () => {
     });
   });
 
+  it('routes DriverRaceInfo through the dedicated processor with ordered rows', () => {
+    const service = new TimingService();
+
+    service.enqueue({
+      type: 'DriverList',
+      json: {
+        '4': { FullName: 'Lando Norris' },
+        '81': { FullName: 'Oscar Piastri' },
+      },
+      dateTime: new Date('2025-01-01T00:00:01Z'),
+    });
+    service.enqueue({
+      type: 'DriverRaceInfo',
+      json: {
+        '81': { Position: '2', Gap: '+2.0', Interval: '+2.0', PitStops: 0 },
+      },
+      dateTime: new Date('2025-01-01T00:00:02Z'),
+    });
+    service.enqueue({
+      type: 'DriverRaceInfo',
+      json: {
+        '4': {
+          Position: '1',
+          Gap: 'LEADER',
+          Interval: 'LEADER',
+          PitStops: 1,
+        },
+        '81': { Catching: 1 },
+      },
+      dateTime: new Date('2025-01-01T00:00:03Z'),
+    });
+
+    expect(service.processors.driverRaceInfo.state).toEqual({
+      '4': {
+        Position: '1',
+        Gap: 'LEADER',
+        Interval: 'LEADER',
+        PitStops: 1,
+      },
+      '81': {
+        Position: '2',
+        Gap: '+2.0',
+        Interval: '+2.0',
+        PitStops: 0,
+        Catching: 1,
+      },
+    });
+    expect(
+      service.processors.driverRaceInfo.getRows({
+        driverListState: service.processors.driverList.state,
+      }),
+    ).toMatchObject([
+      {
+        driverNumber: '4',
+        driverName: 'Lando Norris',
+        position: 1,
+        pitStops: 1,
+      },
+      {
+        driverNumber: '81',
+        driverName: 'Oscar Piastri',
+        position: 2,
+        gapSeconds: 2,
+        catching: 1,
+      },
+    ]);
+  });
+
   it('normalizes auxiliary array payloads before merging', () => {
     const service = new TimingService();
 
