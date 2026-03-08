@@ -67,6 +67,8 @@ describe('tools', () => {
     expect(tools).toHaveProperty('get_position_changes');
     expect(tools).toHaveProperty('get_race_control_events');
     expect(tools).toHaveProperty('get_team_radio_events');
+    expect(tools).toHaveProperty('get_lap_snapshot');
+    expect(tools).toHaveProperty('get_best_laps');
     expect(tools).toHaveProperty('download_team_radio');
     expect(tools).toHaveProperty('set_time_cursor');
   });
@@ -532,6 +534,192 @@ describe('tools', () => {
         },
       },
       dateTime: new Date('2025-01-01T00:00:02Z'),
+    });
+  });
+
+  it('get_lap_snapshot returns deterministic merged state for a lap', async () => {
+    const tools = makeTools({
+      store,
+      processors: {
+        ...processors,
+        driverList: {
+          state: {},
+          getName: (driverNumber: string) =>
+            driverNumber === '4' ? 'Lando Norris' : 'Oscar Piastri',
+        },
+        timingData: {
+          state: {},
+          bestLaps: new Map(),
+          getLapHistory: () => [],
+          getLapSnapshot: (driverNumber: string, lap: number) => {
+            if (lap === 12 && driverNumber === '4') {
+              return {
+                __dateTime: new Date('2025-01-01T00:00:12Z'),
+                Line: 1,
+                NumberOfLaps: 12,
+                BestLapTime: { Value: '1:30.100' },
+              };
+            }
+            return null;
+          },
+          driversByLap: new Map([
+            [
+              12,
+              new Map([
+                [
+                  '81',
+                  {
+                    __dateTime: new Date('2025-01-01T00:00:12Z'),
+                    Line: 2,
+                    NumberOfLaps: 12,
+                    BestLapTime: { Value: '1:30.200' },
+                  },
+                ],
+                [
+                  '4',
+                  {
+                    __dateTime: new Date('2025-01-01T00:00:12Z'),
+                    Line: 1,
+                    NumberOfLaps: 12,
+                    BestLapTime: { Value: '1:30.100' },
+                  },
+                ],
+              ]),
+            ],
+          ]),
+        },
+      } as any,
+      timeCursor: { latest: true },
+      onTimeCursorChange: () => {},
+    });
+
+    await expect(
+      tools.get_lap_snapshot.execute({ lap: 12 } as any),
+    ).resolves.toEqual({
+      lap: 12,
+      totalDrivers: 2,
+      drivers: [
+        {
+          driverNumber: '4',
+          driverName: 'Lando Norris',
+          snapshot: {
+            __dateTime: new Date('2025-01-01T00:00:12Z'),
+            Line: 1,
+            NumberOfLaps: 12,
+            BestLapTime: { Value: '1:30.100' },
+          },
+        },
+        {
+          driverNumber: '81',
+          driverName: 'Oscar Piastri',
+          snapshot: {
+            __dateTime: new Date('2025-01-01T00:00:12Z'),
+            Line: 2,
+            NumberOfLaps: 12,
+            BestLapTime: { Value: '1:30.200' },
+          },
+        },
+      ],
+    });
+
+    await expect(
+      tools.get_lap_snapshot.execute({ lap: 12, driverNumber: '4' } as any),
+    ).resolves.toEqual({
+      lap: 12,
+      driverNumber: '4',
+      driverName: 'Lando Norris',
+      snapshot: {
+        __dateTime: new Date('2025-01-01T00:00:12Z'),
+        Line: 1,
+        NumberOfLaps: 12,
+        BestLapTime: { Value: '1:30.100' },
+      },
+    });
+  });
+
+  it('get_best_laps returns sorted best-lap records with snapshots', async () => {
+    const tools = makeTools({
+      store,
+      processors: {
+        ...processors,
+        driverList: {
+          state: {},
+          getName: (driverNumber: string) =>
+            driverNumber === '4' ? 'Lando Norris' : 'Oscar Piastri',
+        },
+        timingData: {
+          state: {},
+          getLapHistory: () => [],
+          getBestLapSnapshot: (driverNumber: string) => {
+            if (driverNumber === '4') {
+              return {
+                time: '1:30.100',
+                timeMs: 90_100,
+                lap: 12,
+                snapshot: { Line: 1, NumberOfLaps: 12 },
+              };
+            }
+            return null;
+          },
+          bestLaps: new Map([
+            [
+              '81',
+              {
+                time: '1:30.200',
+                timeMs: 90_200,
+                lap: 12,
+                snapshot: { Line: 2, NumberOfLaps: 12 },
+              },
+            ],
+            [
+              '4',
+              {
+                time: '1:30.100',
+                timeMs: 90_100,
+                lap: 12,
+                snapshot: { Line: 1, NumberOfLaps: 12 },
+              },
+            ],
+          ]),
+        },
+      } as any,
+      timeCursor: { latest: true },
+      onTimeCursorChange: () => {},
+    });
+
+    await expect(
+      tools.get_best_laps.execute({ includeSnapshot: true } as any),
+    ).resolves.toEqual({
+      total: 2,
+      returned: 2,
+      bestLaps: [
+        {
+          driverNumber: '4',
+          driverName: 'Lando Norris',
+          time: '1:30.100',
+          timeMs: 90_100,
+          lap: 12,
+          snapshot: { Line: 1, NumberOfLaps: 12 },
+        },
+        {
+          driverNumber: '81',
+          driverName: 'Oscar Piastri',
+          time: '1:30.200',
+          timeMs: 90_200,
+          lap: 12,
+          snapshot: { Line: 2, NumberOfLaps: 12 },
+        },
+      ],
+    });
+
+    await expect(
+      tools.get_best_laps.execute({ driverNumber: '4' } as any),
+    ).resolves.toEqual({
+      driverNumber: '4',
+      driverName: 'Lando Norris',
+      time: '1:30.100',
+      timeMs: 90_100,
+      lap: 12,
     });
   });
 

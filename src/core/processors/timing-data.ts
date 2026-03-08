@@ -2,9 +2,17 @@ import type { Processor, RawPoint } from './types.js';
 import { parseLapTimeMs } from '../summary.js';
 import { mergeDeep } from './merge.js';
 
-type BestLap = { time: string; timeMs: number };
+type BestLap = {
+  time: string;
+  timeMs: number;
+  lap: number | null;
+  snapshot: TimingLine;
+};
 type TimingLine = Record<string, unknown>;
-type TimingState = { Lines?: Record<string, TimingLine> } & Record<string, unknown>;
+type TimingState = { Lines?: Record<string, TimingLine> } & Record<
+  string,
+  unknown
+>;
 type TimingPointType = 'TimingData' | 'TimingDataF1';
 
 const SUPPORTED_TIMING_TYPES = new Set<TimingPointType>([
@@ -31,6 +39,10 @@ export class TimingDataProcessor implements Processor<TimingState> {
 
   getLapSnapshot(driverNumber: string, lap: number) {
     return this.driversByLap.get(lap)?.get(driverNumber) ?? null;
+  }
+
+  getBestLapSnapshot(driverNumber: string) {
+    return this.bestLaps.get(driverNumber) ?? null;
   }
 
   getLapNumbers() {
@@ -80,12 +92,29 @@ export class TimingDataProcessor implements Processor<TimingState> {
         (snap as any).__dateTime = point.dateTime;
         lapDrivers.set(num, snap);
       }
+
       const time = driver?.BestLapTime?.Value;
-      if (!time) continue;
+      if (typeof time !== 'string' || time.trim().length === 0) {
+        this.bestLaps.delete(num);
+        continue;
+      }
+
       const ms = parseLapTimeMs(time);
       if (ms === null) continue;
       const current = this.bestLaps.get(num);
-      if (!current || ms < current.timeMs) this.bestLaps.set(num, { time, timeMs: ms });
+      if (!current || ms < current.timeMs) {
+        const bestLapSnapshot = structuredClone(merged) as TimingLine;
+        (bestLapSnapshot as any).__dateTime = point.dateTime;
+        this.bestLaps.set(num, {
+          time,
+          timeMs: ms,
+          lap:
+            typeof snapshotLap === 'number'
+              ? snapshotLap
+              : (this.currentLapByDriver.get(num) ?? null),
+          snapshot: bestLapSnapshot,
+        });
+      }
     }
   }
 }

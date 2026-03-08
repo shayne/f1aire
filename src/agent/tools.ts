@@ -121,6 +121,7 @@ export function makeTools({
         driverNumber: string,
       ) => Array<{ lap: number; snapshot: unknown }>;
       getLapSnapshot?: (driverNumber: string, lap: number) => unknown | null;
+      getBestLapSnapshot?: (driverNumber: string) => unknown | null;
       getLapNumbers?: () => number[];
     };
     timingAppData?: { state?: unknown | null };
@@ -282,15 +283,74 @@ export function makeTools({
     dateTime: event.dateTime ? event.dateTime.toISOString() : null,
   });
 
-  const listRaceControlEvents = (opts: {
-    includeFuture?: boolean;
-    category?: string;
-    flag?: string;
-    scope?: string;
-    driverNumber?: string | number;
-    search?: string;
-    limit?: number;
-  } = {}) => {
+  const sortTimingSnapshots = (
+    entries: Array<[string, unknown]>,
+  ): Array<[string, unknown]> =>
+    [...entries].sort(([leftNumber, left], [rightNumber, right]) => {
+      const leftPosition = Number(
+        (left as any)?.Position ?? (left as any)?.Line ?? Infinity,
+      );
+      const rightPosition = Number(
+        (right as any)?.Position ?? (right as any)?.Line ?? Infinity,
+      );
+      if (Number.isFinite(leftPosition) || Number.isFinite(rightPosition)) {
+        if (!Number.isFinite(leftPosition)) return 1;
+        if (!Number.isFinite(rightPosition)) return -1;
+        if (leftPosition !== rightPosition) return leftPosition - rightPosition;
+      }
+      return leftNumber.localeCompare(rightNumber);
+    });
+
+  const serializeBestLapRecord = (
+    driverNumber: string,
+    value: unknown,
+    options: { includeSnapshot?: boolean } = {},
+  ) => {
+    if (!isPlainObject(value)) {
+      return null;
+    }
+    const time =
+      typeof value.time === 'string' && value.time.trim().length > 0
+        ? value.time
+        : null;
+    const timeMs =
+      typeof value.timeMs === 'number' && Number.isFinite(value.timeMs)
+        ? value.timeMs
+        : null;
+    const lap =
+      typeof value.lap === 'number' && Number.isFinite(value.lap)
+        ? value.lap
+        : null;
+    if (!time || timeMs === null) {
+      return null;
+    }
+
+    const record: Record<string, unknown> = {
+      driverNumber,
+      driverName: getDriverName(driverNumber),
+      time,
+      timeMs,
+      lap,
+    };
+
+    if (options.includeSnapshot) {
+      record.snapshot = (value as any).snapshot ?? null;
+    }
+
+    return record;
+  };
+
+  const listRaceControlEvents = (
+    opts: {
+      includeFuture?: boolean;
+      category?: string;
+      flag?: string;
+      scope?: string;
+      driverNumber?: string | number;
+      search?: string;
+      limit?: number;
+    } = {},
+  ) => {
     const resolved = resolveCurrentCursor();
     const query = {
       before: opts.includeFuture ? null : resolved.dateTime,
@@ -934,6 +994,102 @@ export function makeTools({
         const history = processors.timingData?.getLapHistory?.(num) ?? [];
         if (typeof limit === 'number') return history.slice(-limit);
         return history;
+      },
+    }),
+    get_lap_snapshot: tool({
+      description:
+        'Get the merged TimingData snapshot for a specific lap. Useful for deterministic lap replay and cross-driver state checks.',
+      inputSchema: z.object({
+        lap: z.number().int().positive(),
+        driverNumber: z.union([z.string(), z.number()]).optional(),
+      }),
+      execute: async ({ lap, driverNumber }) => {
+        if (driverNumber !== undefined) {
+          const num = String(driverNumber);
+          const snapshot =
+            processors.timingData?.getLapSnapshot?.(num, lap) ??
+            processors.timingData?.driversByLap?.get(lap)?.get(num) ??
+            null;
+          if (!snapshot) {
+            return null;
+          }
+          return {
+            lap,
+            driverNumber: num,
+            driverName: getDriverName(num),
+            snapshot,
+          };
+        }
+
+        const lapDrivers = processors.timingData?.driversByLap?.get(lap);
+        if (!lapDrivers) {
+          return null;
+        }
+
+        const drivers = sortTimingSnapshots(
+          Array.from(lapDrivers.entries()),
+        ).map(([num, snapshot]) => ({
+          driverNumber: num,
+          driverName: getDriverName(num),
+          snapshot,
+        }));
+
+        return {
+          lap,
+          totalDrivers: drivers.length,
+          drivers,
+        };
+      },
+    }),
+    get_best_laps: tool({
+      description:
+        'Get best-lap records from the TimingData processor, with optional best-lap snapshots for deterministic replay.',
+      inputSchema: z.object({
+        driverNumber: z.union([z.string(), z.number()]).optional(),
+        limit: z.number().int().positive().max(100).optional(),
+        includeSnapshot: z.boolean().optional(),
+      }),
+      execute: async ({ driverNumber, limit, includeSnapshot }) => {
+        const requestedDriver =
+          driverNumber === undefined ? undefined : String(driverNumber);
+
+        if (requestedDriver !== undefined) {
+          const direct =
+            processors.timingData?.getBestLapSnapshot?.(requestedDriver) ??
+            processors.timingData?.bestLaps?.get(requestedDriver) ??
+            null;
+          return serializeBestLapRecord(requestedDriver, direct, {
+            includeSnapshot,
+          });
+        }
+
+        const laps = Array.from(
+          processors.timingData?.bestLaps?.entries() ?? [],
+        )
+          .map(([num, value]) =>
+            serializeBestLapRecord(num, value, { includeSnapshot }),
+          )
+          .filter(
+            (record): record is Record<string, unknown> => record !== null,
+          )
+          .sort((left, right) => {
+            const leftMs = Number(left.timeMs ?? Infinity);
+            const rightMs = Number(right.timeMs ?? Infinity);
+            if (leftMs !== rightMs) {
+              return leftMs - rightMs;
+            }
+            return String(left.driverNumber).localeCompare(
+              String(right.driverNumber),
+            );
+          });
+
+        const sliced = typeof limit === 'number' ? laps.slice(0, limit) : laps;
+
+        return {
+          total: laps.length,
+          returned: sliced.length,
+          bestLaps: sliced,
+        };
       },
     }),
     get_timing_app_data: tool({
