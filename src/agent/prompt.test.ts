@@ -29,4 +29,8 @@ describe('systemPrompt', () => {
     expect(systemPrompt).toContain('get_current_tyres');
     expect(systemPrompt).toContain('get_tyre_stints');
   });
+
+  it('mentions deterministic pit stop event tooling', () => {
+    expect(systemPrompt).toContain('get_pit_stop_events');
+  });
 });

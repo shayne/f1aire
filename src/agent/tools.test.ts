@@ -69,6 +69,7 @@ describe('tools', () => {
     expect(tools).toHaveProperty('get_team_radio_events');
     expect(tools).toHaveProperty('get_current_tyres');
     expect(tools).toHaveProperty('get_tyre_stints');
+    expect(tools).toHaveProperty('get_pit_stop_events');
     expect(tools).toHaveProperty('get_lap_snapshot');
     expect(tools).toHaveProperty('get_best_laps');
     expect(tools).toHaveProperty('download_team_radio');
@@ -939,6 +940,149 @@ describe('tools', () => {
               source: 'TimingAppData',
             },
           ],
+        },
+      ],
+    });
+  });
+
+  it('get_pit_stop_events returns cursor-aware pit stop events with tyre context', async () => {
+    const tools = makeTools({
+      store,
+      processors: {
+        ...processors,
+        driverList: {
+          state: {},
+          getName: (driverNumber: string) =>
+            driverNumber === '4' ? 'Lando Norris' : 'Oscar Piastri',
+        },
+        timingData: {
+          state: {
+            Lines: {
+              '4': { Position: '1' },
+              '81': { Position: '2' },
+            },
+          },
+          bestLaps: new Map(),
+          getLapHistory: () => [],
+          getLapNumbers: () => [12, 15],
+          driversByLap: new Map([
+            [
+              12,
+              new Map([
+                ['4', { __dateTime: new Date('2025-01-01T00:12:00Z'), Line: 1 }],
+                ['81', { __dateTime: new Date('2025-01-01T00:12:00Z'), Line: 2 }],
+              ]),
+            ],
+            [
+              15,
+              new Map([
+                ['4', { __dateTime: new Date('2025-01-01T00:15:00Z'), Line: 1 }],
+                ['81', { __dateTime: new Date('2025-01-01T00:15:00Z'), Line: 2 }],
+              ]),
+            ],
+          ]),
+        },
+        timingAppData: {
+          state: {
+            Lines: {
+              '4': {
+                Stints: {
+                  '1': {
+                    Compound: 'MEDIUM',
+                    New: 'true',
+                    StartLaps: 1,
+                    TotalLaps: 12,
+                    LapNumber: 12,
+                  },
+                  '2': {
+                    Compound: 'HARD',
+                    New: 'false',
+                    StartLaps: 12,
+                    TotalLaps: 20,
+                    LapNumber: 13,
+                  },
+                },
+              },
+            },
+          },
+        },
+        pitStopSeries: {
+          state: {
+            PitTimes: {
+              '4': {
+                '0': {
+                  Timestamp: '2025-01-01T00:12:30Z',
+                  PitStop: {
+                    RacingNumber: '4',
+                    Lap: '12',
+                    PitStopTime: '2.45',
+                    PitLaneTime: '22.10',
+                  },
+                },
+                '1': {
+                  Timestamp: '2025-01-01T00:15:30Z',
+                  PitStop: {
+                    RacingNumber: '4',
+                    Lap: '15',
+                    PitStopTime: '2.60',
+                    PitLaneTime: '22.80',
+                  },
+                },
+              },
+            },
+          },
+        },
+      } as any,
+      timeCursor: { lap: 12 },
+      onTimeCursorChange: () => {},
+    });
+
+    await expect(
+      tools.get_pit_stop_events.execute({ driverNumber: '4' } as any),
+    ).resolves.toEqual({
+      asOf: {
+        source: 'lap',
+        lap: 12,
+        dateTime: '2025-01-01T00:12:00.000Z',
+      },
+      driverNumber: '4',
+      driverName: 'Lando Norris',
+      total: 1,
+      events: [
+        {
+          driverNumber: '4',
+          driverName: 'Lando Norris',
+          stopNumber: 0,
+          lap: 12,
+          timestamp: '2025-01-01T00:12:30Z',
+          dateTime: '2025-01-01T00:12:30.000Z',
+          pitStopTime: '2.45',
+          pitStopTimeMs: 2450,
+          pitLaneTime: '22.10',
+          pitLaneTimeMs: 22100,
+          tyreBefore: {
+            stint: 1,
+            compound: 'MEDIUM',
+            isNew: true,
+            tyresNotChanged: null,
+            startLaps: 1,
+            totalLaps: 12,
+            lapsOnTyre: 11,
+            lapNumber: 12,
+            source: 'TimingAppData',
+          },
+          tyreAfter: {
+            stint: 2,
+            compound: 'HARD',
+            isNew: false,
+            tyresNotChanged: null,
+            startLaps: 12,
+            totalLaps: 20,
+            lapsOnTyre: 8,
+            lapNumber: 13,
+            source: 'TimingAppData',
+          },
+          source: 'PitStopSeries',
         },
       ],
     });

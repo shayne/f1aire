@@ -447,7 +447,7 @@ export const DATA_BOOK_TOPICS: DataBookTopic[] = [
       'Times are strings; parse carefully and expect missing fields.',
     ],
     relatedTopics: ['PitLaneTimeCollection', 'TimingAppData', 'TimingData'],
-    bestTools: ['get_pit_stop_series', 'inspect_topic'],
+    bestTools: ['get_pit_stop_events', 'get_pit_stop_series', 'inspect_topic'],
   },
   {
     topic: 'PitStop',

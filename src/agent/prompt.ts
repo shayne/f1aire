@@ -23,7 +23,7 @@ Tools:
 - get_session_info, get_session_data, get_extrapolated_clock, get_top_three
 - get_track_status_history
 - get_race_control_messages, get_race_control_events, get_team_radio, get_team_radio_events, download_team_radio, transcribe_team_radio, get_championship_prediction
-- get_pit_stop_series, get_pit_lane_times, get_pit_stop
+- get_pit_stop_series, get_pit_stop_events, get_pit_lane_times, get_pit_stop
 - get_car_data, get_car_telemetry, get_position, get_heartbeat
 - get_drs_state, get_drs_usage
 - get_clean_lap_pace

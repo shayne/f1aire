@@ -41,6 +41,7 @@ import {
   getCurrentTyreRecords,
   getTyreStintRecords,
 } from '../core/tyre-state.js';
+import { getPitStopEventRecords } from '../core/pit-stop-state.js';
 import {
   getRaceControlEvents,
   type RaceControlEvent,
@@ -428,6 +429,59 @@ export function makeTools({
       ...record,
       driverName: getDriverName(record.driverNumber),
     }));
+
+  const serializePitStopEvent = (event: ReturnType<typeof getPitStopEventRecords>[number]) => ({
+    ...event,
+    driverName: getDriverName(event.driverNumber),
+    dateTime: event.dateTime ? event.dateTime.toISOString() : null,
+  });
+
+  const listPitStopEvents = (
+    opts: {
+      driverNumber?: string | number;
+      startLap?: number;
+      endLap?: number;
+      includeFuture?: boolean;
+      limit?: number;
+      order?: 'asc' | 'desc';
+    } = {},
+  ) => {
+    const resolved = resolveCurrentCursor();
+    let events = getPitStopEventRecords({
+      pitStopSeriesState: processors.pitStopSeries?.state,
+      tyreStintSeriesState: processors.extraTopics?.TyreStintSeries?.state,
+      timingAppDataState: processors.timingAppData?.state,
+      timingDataState: processors.timingData?.state,
+      driverNumber: opts.driverNumber,
+      startLap: opts.startLap,
+      endLap: opts.endLap,
+    });
+
+    if (!opts.includeFuture) {
+      events = events.filter((event) => {
+        if (resolved.source === 'time' && event.dateTime && resolved.dateTime) {
+          return event.dateTime.getTime() <= resolved.dateTime.getTime();
+        }
+        if (event.lap !== null && resolved.lap !== null) {
+          return event.lap <= resolved.lap;
+        }
+        if (event.dateTime && resolved.dateTime) {
+          return event.dateTime.getTime() <= resolved.dateTime.getTime();
+        }
+        return true;
+      });
+    }
+
+    if (opts.order === 'desc') {
+      events = [...events].reverse();
+    }
+
+    if (typeof opts.limit === 'number' && opts.limit > 0) {
+      events = events.slice(0, Math.floor(opts.limit));
+    }
+
+    return { resolved, events };
+  };
 
   const canonicalizeTopicName = (value: string) => {
     const trimmed = value.trim();
@@ -1452,6 +1506,64 @@ export function makeTools({
       description: 'Get merged PitStopSeries',
       inputSchema: z.object({}),
       execute: async () => processors.pitStopSeries?.state ?? null,
+    }),
+    get_pit_stop_events: tool({
+      description:
+        'Get deterministic pit stop events with lap, stationary/lane times, and tyre-before/tyre-after context. Filtered to the current analysis cursor unless includeFuture is true.',
+      inputSchema: z.object({
+        driverNumber: z.union([z.string(), z.number()]).optional(),
+        startLap: z.number().int().positive().optional(),
+        endLap: z.number().int().positive().optional(),
+        includeFuture: z.boolean().optional(),
+        limit: z.number().int().positive().max(200).optional(),
+        order: z.enum(['asc', 'desc']).optional(),
+      }),
+      execute: async ({
+        driverNumber,
+        startLap,
+        endLap,
+        includeFuture,
+        limit,
+        order,
+      }) => {
+        const { resolved, events } = listPitStopEvents({
+          driverNumber,
+          startLap,
+          endLap,
+          includeFuture,
+          limit,
+          order,
+        });
+
+        const serialized = events.map(serializePitStopEvent);
+        const driver =
+          driverNumber === undefined ? null : String(driverNumber);
+
+        if (driver) {
+          return {
+            asOf: {
+              source: resolved.source,
+              lap: resolved.lap,
+              dateTime: resolved.dateTime ? resolved.dateTime.toISOString() : null,
+            },
+            driverNumber: driver,
+            driverName: getDriverName(driver),
+            total: serialized.length,
+            events: serialized,
+          };
+        }
+
+        return {
+          asOf: {
+            source: resolved.source,
+            lap: resolved.lap,
+            dateTime: resolved.dateTime ? resolved.dateTime.toISOString() : null,
+          },
+          total: serialized.length,
+          totalDrivers: new Set(events.map((event) => event.driverNumber)).size,
+          events: serialized,
+        };
+      },
     }),
     get_pit_lane_times: tool({
       description: 'Get merged PitLaneTimeCollection',

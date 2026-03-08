@@ -29,4 +29,10 @@ describe('data-book', () => {
       'transcribe_team_radio',
     );
   });
+
+  it('documents deterministic pit stop event tooling', () => {
+    expect(getDataBookTopic('PitStopSeries')?.bestTools).toContain(
+      'get_pit_stop_events',
+    );
+  });
 });
