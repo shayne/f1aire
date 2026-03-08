@@ -38,6 +38,10 @@ import {
   transcribeTeamRadioCapture,
 } from '../core/team-radio.js';
 import {
+  getCurrentTyreRecords,
+  getTyreStintRecords,
+} from '../core/tyre-state.js';
+import {
   getRaceControlEvents,
   type RaceControlEvent,
 } from '../core/processors/race-control-messages.js';
@@ -402,6 +406,29 @@ export function makeTools({
     };
   };
 
+  const getCurrentTyresView = (driverNumber?: string | number) =>
+    getCurrentTyreRecords({
+      currentTyresState: processors.extraTopics?.CurrentTyres?.state,
+      tyreStintSeriesState: processors.extraTopics?.TyreStintSeries?.state,
+      timingAppDataState: processors.timingAppData?.state,
+      timingDataState: processors.timingData?.state,
+      driverNumber,
+    }).map((record) => ({
+      ...record,
+      driverName: getDriverName(record.driverNumber),
+    }));
+
+  const getTyreStintsView = (driverNumber?: string | number) =>
+    getTyreStintRecords({
+      tyreStintSeriesState: processors.extraTopics?.TyreStintSeries?.state,
+      timingAppDataState: processors.timingAppData?.state,
+      timingDataState: processors.timingData?.state,
+      driverNumber,
+    }).map((record) => ({
+      ...record,
+      driverName: getDriverName(record.driverNumber),
+    }));
+
   const canonicalizeTopicName = (value: string) => {
     const trimmed = value.trim();
     if (trimmed.endsWith('.z')) return trimmed.slice(0, -2);
@@ -716,6 +743,38 @@ export function makeTools({
         driverName: getDriverName(key),
         gridPos: (line as any)?.GridPos ?? null,
         stints: (line as any)?.Stints ?? null,
+      };
+    }
+
+    if (topic === 'CurrentTyres') {
+      const tyres = getCurrentTyresView(resolvedDriver ?? undefined);
+      if (!tyres.length) return null;
+      if (resolvedDriver) {
+        return { asOf, tyre: tyres[0] };
+      }
+      return {
+        asOf,
+        totalDrivers: tyres.length,
+        tyres: tyres.slice(0, 8),
+      };
+    }
+
+    if (topic === 'TyreStintSeries') {
+      const stints = getTyreStintsView(resolvedDriver ?? undefined);
+      if (!stints.length) return null;
+      if (resolvedDriver) {
+        return {
+          asOf,
+          driverNumber: resolvedDriver,
+          driverName: getDriverName(resolvedDriver),
+          total: stints.length,
+          stints,
+        };
+      }
+      return {
+        asOf,
+        total: stints.length,
+        stints: stints.slice(0, 8),
       };
     }
 
@@ -1108,6 +1167,57 @@ export function makeTools({
       description: 'Get merged TimingAppData state (stints, tyres)',
       inputSchema: z.object({}),
       execute: async () => processors.timingAppData?.state ?? null,
+    }),
+    get_current_tyres: tool({
+      description:
+        'Get deterministic current tyre state per driver. Prefers CurrentTyres feed when present and falls back to TyreStintSeries/TimingAppData when needed.',
+      inputSchema: z.object({
+        driverNumber: z.union([z.string(), z.number()]).optional(),
+      }),
+      execute: async ({ driverNumber }) => {
+        const tyres = getCurrentTyresView(driverNumber);
+        if (driverNumber !== undefined) {
+          return tyres[0] ?? null;
+        }
+        return {
+          totalDrivers: tyres.length,
+          tyres,
+        };
+      },
+    }),
+    get_tyre_stints: tool({
+      description:
+        'Get per-driver tyre stint history in a deterministic shape. Prefers TyreStintSeries and falls back to TimingAppData when the newer feed is missing.',
+      inputSchema: z.object({
+        driverNumber: z.union([z.string(), z.number()]).optional(),
+      }),
+      execute: async ({ driverNumber }) => {
+        const stints = getTyreStintsView(driverNumber);
+        if (driverNumber !== undefined) {
+          return {
+            driverNumber: String(driverNumber),
+            driverName: getDriverName(String(driverNumber)),
+            total: stints.length,
+            stints,
+          };
+        }
+
+        const grouped = new Map<string, typeof stints>();
+        for (const stint of stints) {
+          const entries = grouped.get(stint.driverNumber) ?? [];
+          entries.push(stint);
+          grouped.set(stint.driverNumber, entries);
+        }
+
+        return {
+          totalDrivers: grouped.size,
+          drivers: Array.from(grouped.entries()).map(([driver, records]) => ({
+            driverNumber: driver,
+            driverName: getDriverName(driver),
+            stints: records,
+          })),
+        };
+      },
     }),
     get_timing_stats: tool({
       description: 'Get merged TimingStats state (best speeds, sectors)',

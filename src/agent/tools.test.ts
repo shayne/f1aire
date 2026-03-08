@@ -67,6 +67,8 @@ describe('tools', () => {
     expect(tools).toHaveProperty('get_position_changes');
     expect(tools).toHaveProperty('get_race_control_events');
     expect(tools).toHaveProperty('get_team_radio_events');
+    expect(tools).toHaveProperty('get_current_tyres');
+    expect(tools).toHaveProperty('get_tyre_stints');
     expect(tools).toHaveProperty('get_lap_snapshot');
     expect(tools).toHaveProperty('get_best_laps');
     expect(tools).toHaveProperty('download_team_radio');
@@ -713,6 +715,232 @@ describe('tools', () => {
         },
       },
       dateTime: new Date('2025-01-01T00:00:02Z'),
+    });
+  });
+
+  it('get_current_tyres returns deterministic tyre state with feed fallback', async () => {
+    const tools = makeTools({
+      store,
+      processors: {
+        ...processors,
+        driverList: {
+          state: {},
+          getName: (driverNumber: string) =>
+            driverNumber === '4' ? 'Lando Norris' : 'Oscar Piastri',
+        },
+        timingData: {
+          state: {
+            Lines: {
+              '4': { Line: 1 },
+              '81': { Line: 2 },
+            },
+          },
+          bestLaps: new Map(),
+          getLapHistory: () => [],
+          getLapNumbers: () => [14],
+          driversByLap: new Map([
+            [
+              14,
+              new Map([
+                ['4', { __dateTime: new Date('2025-01-01T00:00:14Z'), Line: 1 }],
+                ['81', { __dateTime: new Date('2025-01-01T00:00:14Z'), Line: 2 }],
+              ]),
+            ],
+          ]),
+        },
+        timingAppData: {
+          state: {
+            Lines: {
+              '4': {
+                Stints: {
+                  '1': {
+                    Compound: 'MEDIUM',
+                    New: 'true',
+                    StartLaps: 12,
+                    TotalLaps: 14,
+                  },
+                },
+              },
+            },
+          },
+        },
+        extraTopics: {
+          CurrentTyres: {
+            state: {
+              Tyres: {
+                '81': { Compound: 'HARD', New: 'false' },
+              },
+            },
+          },
+          TyreStintSeries: {
+            state: {
+              Stints: {
+                '4': {
+                  '1': {
+                    Compound: 'MEDIUM',
+                    New: 'true',
+                    TyresNotChanged: '0',
+                    StartLaps: 12,
+                    TotalLaps: 14,
+                  },
+                },
+              },
+            },
+          },
+        },
+      } as any,
+      timeCursor: { latest: true },
+      onTimeCursorChange: () => {},
+    });
+
+    await expect(tools.get_current_tyres.execute({} as any)).resolves.toEqual({
+      totalDrivers: 2,
+      tyres: [
+        {
+          driverNumber: '4',
+          driverName: 'Lando Norris',
+          position: 1,
+          compound: 'MEDIUM',
+          isNew: true,
+          tyresNotChanged: false,
+          stint: 1,
+          startLaps: 12,
+          totalLaps: 14,
+          lapsOnTyre: 2,
+          source: 'TyreStintSeries',
+        },
+        {
+          driverNumber: '81',
+          driverName: 'Oscar Piastri',
+          position: 2,
+          compound: 'HARD',
+          isNew: false,
+          tyresNotChanged: null,
+          stint: null,
+          startLaps: null,
+          totalLaps: null,
+          lapsOnTyre: null,
+          source: 'CurrentTyres',
+        },
+      ],
+    });
+  });
+
+  it('get_tyre_stints returns deterministic stint history with TimingAppData fallback', async () => {
+    const tools = makeTools({
+      store,
+      processors: {
+        ...processors,
+        driverList: {
+          state: {},
+          getName: (driverNumber: string) =>
+            driverNumber === '4' ? 'Lando Norris' : 'Oscar Piastri',
+        },
+        timingData: {
+          state: {
+            Lines: {
+              '4': { Position: '1' },
+              '81': { Position: '2' },
+            },
+          },
+          bestLaps: new Map(),
+          getLapHistory: () => [],
+          getLapNumbers: () => [14],
+          driversByLap: new Map([
+            [
+              14,
+              new Map([
+                ['4', { __dateTime: new Date('2025-01-01T00:00:14Z'), Line: 1 }],
+                ['81', { __dateTime: new Date('2025-01-01T00:00:14Z'), Line: 2 }],
+              ]),
+            ],
+          ]),
+        },
+        timingAppData: {
+          state: {
+            Lines: {
+              '81': {
+                Stints: {
+                  '0': {
+                    Compound: 'HARD',
+                    New: 'true',
+                    StartLaps: 0,
+                    TotalLaps: 10,
+                    LapTime: '1:33.000',
+                    LapNumber: 10,
+                  },
+                },
+              },
+            },
+          },
+        },
+        extraTopics: {
+          TyreStintSeries: {
+            state: {
+              Stints: {
+                '4': {
+                  '1': {
+                    Compound: 'MEDIUM',
+                    New: 'true',
+                    TyresNotChanged: '0',
+                    StartLaps: 12,
+                    TotalLaps: 14,
+                    LapNumber: 14,
+                  },
+                },
+              },
+            },
+          },
+        },
+      } as any,
+      timeCursor: { latest: true },
+      onTimeCursorChange: () => {},
+    });
+
+    await expect(tools.get_tyre_stints.execute({} as any)).resolves.toEqual({
+      totalDrivers: 2,
+      drivers: [
+        {
+          driverNumber: '4',
+          driverName: 'Lando Norris',
+          stints: [
+            {
+              driverNumber: '4',
+              driverName: 'Lando Norris',
+              stint: 1,
+              compound: 'MEDIUM',
+              isNew: true,
+              tyresNotChanged: false,
+              startLaps: 12,
+              totalLaps: 14,
+              lapsOnTyre: 2,
+              lapTime: null,
+              lapNumber: 14,
+              source: 'TyreStintSeries',
+            },
+          ],
+        },
+        {
+          driverNumber: '81',
+          driverName: 'Oscar Piastri',
+          stints: [
+            {
+              driverNumber: '81',
+              driverName: 'Oscar Piastri',
+              stint: 0,
+              compound: 'HARD',
+              isNew: true,
+              tyresNotChanged: null,
+              startLaps: 0,
+              totalLaps: 10,
+              lapsOnTyre: 10,
+              lapTime: '1:33.000',
+              lapNumber: 10,
+              source: 'TimingAppData',
+            },
+          ],
+        },
+      ],
     });
   });
 

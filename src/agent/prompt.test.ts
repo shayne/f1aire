@@ -24,4 +24,9 @@ describe('systemPrompt', () => {
   it('mentions the team radio transcription tool', () => {
     expect(systemPrompt).toContain('transcribe_team_radio');
   });
+
+  it('mentions deterministic tyre tools for strategy questions', () => {
+    expect(systemPrompt).toContain('get_current_tyres');
+    expect(systemPrompt).toContain('get_tyre_stints');
+  });
 });
