@@ -6,6 +6,7 @@ import { MergeProcessor } from './processors/merge-processor.js';
 import { normalizePoint } from './processors/normalize.js';
 import { PitLaneTimeCollectionProcessor } from './processors/pit-lane-time-collection.js';
 import { PositionDataProcessor } from './processors/position-data.js';
+import { SessionInfoProcessor } from './processors/session-info.js';
 import { RaceControlMessagesProcessor } from './processors/race-control-messages.js';
 import { ReplaceProcessor } from './processors/replace-processor.js';
 import { TimingDataProcessor } from './processors/timing-data.js';
@@ -62,7 +63,7 @@ export class TimingService {
     trackStatus: new TrackStatusProcessor(),
     lapCount: new MergeProcessor('LapCount'),
     weatherData: new MergeProcessor('WeatherData'),
-    sessionInfo: new MergeProcessor('SessionInfo'),
+    sessionInfo: new SessionInfoProcessor(),
     sessionData: new MergeProcessor('SessionData'),
     extrapolatedClock: new ExtrapolatedClockProcessor(),
     topThree: new MergeProcessor('TopThree'),

@@ -74,6 +74,62 @@ describe('tools', () => {
     expect(tools).toHaveProperty('set_time_cursor');
   });
 
+  it('get_topic_reference shows enriched SessionInfo circuit geometry', async () => {
+    const tools = makeTools({
+      store,
+      processors: {
+        ...processors,
+        sessionInfo: {
+          state: {
+            Name: 'Race',
+            Type: 'Race',
+            Path: '2025/2025-05-25_Test_Weekend/2025-05-25_Race/',
+            Meeting: {
+              Location: 'Monaco',
+              Circuit: { Key: 6, ShortName: 'Monaco' },
+            },
+            CircuitPoints: [
+              { x: 1, y: 2 },
+              { x: 3, y: 4 },
+            ],
+            CircuitCorners: [{ number: 1, x: 5.5, y: 6.5 }],
+            CircuitRotation: 90,
+          },
+        },
+      } as any,
+      timeCursor: { latest: true },
+      onTimeCursorChange: () => {},
+    });
+
+    const result = await tools.get_topic_reference.execute({
+      topic: 'SessionInfo',
+      includeExample: true,
+    } as any);
+
+    expect(result).toMatchObject({
+      canonicalTopic: 'SessionInfo',
+      found: true,
+      present: true,
+      example: {
+        sessionInfo: {
+          Name: 'Race',
+          Type: 'Race',
+          Path: '2025/2025-05-25_Test_Weekend/2025-05-25_Race/',
+          Meeting: {
+            Location: 'Monaco',
+            Circuit: { Key: 6, ShortName: 'Monaco' },
+          },
+        },
+        circuitGeometry: {
+          pointCount: 2,
+          cornerCount: 1,
+          rotation: 90,
+          sampleCorners: [{ number: 1, x: 5.5, y: 6.5 }],
+        },
+      },
+    });
+  });
+
   it('get_race_control_events returns typed events filtered by the current cursor', async () => {
     const tools = makeTools({
       store,

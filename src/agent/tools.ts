@@ -756,18 +756,27 @@ export function makeTools({
     }
 
     if (topic === 'SessionInfo') {
-      const state = processors.sessionInfo?.state ?? null;
+      const state = processors.sessionInfo?.state as any;
       if (!state) return null;
+      const circuitPoints = Array.isArray(state?.CircuitPoints)
+        ? state.CircuitPoints
+        : [];
+      const circuitCorners = Array.isArray(state?.CircuitCorners)
+        ? state.CircuitCorners
+        : [];
       return {
         asOf,
         sessionInfo:
-          pickKnownKeys(state, [
-            'Name',
-            'Type',
-            'Path',
-            'Meeting',
-            'Circuit',
-          ]) ?? state,
+          pickKnownKeys(state, ['Name', 'Type', 'Path', 'Meeting']) ?? state,
+        circuitGeometry: {
+          pointCount: circuitPoints.length,
+          cornerCount: circuitCorners.length,
+          rotation:
+            typeof state?.CircuitRotation === 'number'
+              ? state.CircuitRotation
+              : null,
+          sampleCorners: circuitCorners.slice(0, 6),
+        },
       };
     }
 

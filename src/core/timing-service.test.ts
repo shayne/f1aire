@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { TimingService } from './timing-service.js';
 
 const points = [
@@ -24,6 +24,51 @@ describe('TimingService', () => {
     expect(service.processors.timingData.bestLaps.get('1')?.time).toBe(
       '1:20.000',
     );
+  });
+
+  it('routes SessionInfo through the circuit-enriching processor', async () => {
+    const originalFetch = globalThis.fetch;
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ X: [1, 2], Y: [3, 4], Rotation: 45 }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+    globalThis.fetch = fetchMock as typeof fetch;
+
+    try {
+      const service = new TimingService();
+
+      service.enqueue({
+        type: 'SessionInfo',
+        json: {
+          Path: '2025/2025-01-01_Test_Event/2025-01-01_Race/',
+          Meeting: {
+            Circuit: {
+              Key: 55,
+              ShortName: 'Test Circuit',
+            },
+          },
+        },
+        dateTime: new Date('2025-01-01T00:00:00Z'),
+      });
+
+      await service.processors.sessionInfo.waitForCircuitData();
+
+      expect(fetchMock).toHaveBeenCalledWith(
+        'https://undercutf1.amandhoot.com/api/v1/circuits/55/2025',
+        expect.objectContaining({ signal: expect.any(AbortSignal) }),
+      );
+      expect(service.processors.sessionInfo.state).toMatchObject({
+        CircuitPoints: [
+          { x: 1, y: 3 },
+          { x: 2, y: 4 },
+        ],
+        CircuitRotation: 45,
+      });
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
   });
 
   it('routes TimingDataF1 into the primary timing processor', () => {
