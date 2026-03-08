@@ -151,4 +151,75 @@ describe('tyre-state', () => {
       },
     ]);
   });
+
+  it('filters future stint history and falls back from CurrentTyres for historical laps', () => {
+    const tyreStintSeriesState = {
+      Stints: {
+        '4': {
+          '1': {
+            Compound: 'MEDIUM',
+            New: 'true',
+            StartLaps: 1,
+            TotalLaps: 12,
+            LapNumber: 12,
+          },
+          '2': {
+            Compound: 'HARD',
+            New: 'false',
+            StartLaps: 12,
+            TotalLaps: 20,
+            LapNumber: 13,
+          },
+        },
+      },
+    };
+
+    expect(
+      getTyreStintRecords({
+        asOfLap: 12,
+        tyreStintSeriesState,
+        timingDataState: { Lines: { '4': { Line: 2 } } },
+      }),
+    ).toEqual([
+      {
+        driverNumber: '4',
+        stint: 1,
+        compound: 'MEDIUM',
+        isNew: true,
+        tyresNotChanged: null,
+        startLaps: 1,
+        totalLaps: 12,
+        lapsOnTyre: 11,
+        lapTime: null,
+        lapNumber: 12,
+        source: 'TyreStintSeries',
+      },
+    ]);
+
+    expect(
+      getCurrentTyreRecords({
+        asOfLap: 12,
+        currentTyresState: {
+          Tyres: {
+            '4': { Compound: 'SOFT', New: 'false' },
+          },
+        },
+        tyreStintSeriesState,
+        timingDataState: { Lines: { '4': { Line: 2 } } },
+      }),
+    ).toEqual([
+      {
+        driverNumber: '4',
+        position: 2,
+        compound: 'MEDIUM',
+        isNew: true,
+        tyresNotChanged: null,
+        stint: 1,
+        startLaps: 1,
+        totalLaps: 12,
+        lapsOnTyre: 11,
+        source: 'TyreStintSeries',
+      },
+    ]);
+  });
 });

@@ -1738,6 +1738,132 @@ describe('tools', () => {
     });
   });
 
+  it('get_current_tyres and get_tyre_stints respect historical replay cursor', async () => {
+    const tools = makeTools({
+      store,
+      processors: {
+        ...processors,
+        driverList: {
+          state: {},
+          getName: (driverNumber: string) =>
+            driverNumber === '4' ? 'Lando Norris' : 'Oscar Piastri',
+        },
+        timingData: {
+          state: {
+            Lines: {
+              '4': { Line: 1 },
+              '81': { Line: 2 },
+            },
+          },
+          bestLaps: new Map(),
+          getLapHistory: () => [],
+          getLapNumbers: () => [12, 13],
+          driversByLap: new Map([
+            [
+              12,
+              new Map([
+                [
+                  '4',
+                  { __dateTime: new Date('2025-01-01T00:12:00Z'), Line: 2 },
+                ],
+                [
+                  '81',
+                  { __dateTime: new Date('2025-01-01T00:12:00Z'), Line: 1 },
+                ],
+              ]),
+            ],
+            [
+              13,
+              new Map([
+                [
+                  '4',
+                  { __dateTime: new Date('2025-01-01T00:13:00Z'), Line: 1 },
+                ],
+                [
+                  '81',
+                  { __dateTime: new Date('2025-01-01T00:13:00Z'), Line: 2 },
+                ],
+              ]),
+            ],
+          ]),
+        },
+        extraTopics: {
+          CurrentTyres: {
+            state: {
+              Tyres: {
+                '4': { Compound: 'HARD', New: 'false' },
+              },
+            },
+          },
+          TyreStintSeries: {
+            state: {
+              Stints: {
+                '4': {
+                  '1': {
+                    Compound: 'MEDIUM',
+                    New: 'true',
+                    StartLaps: 1,
+                    TotalLaps: 12,
+                    LapNumber: 12,
+                  },
+                  '2': {
+                    Compound: 'HARD',
+                    New: 'false',
+                    StartLaps: 12,
+                    TotalLaps: 20,
+                    LapNumber: 13,
+                  },
+                },
+              },
+            },
+          },
+        },
+      } as any,
+      timeCursor: { lap: 12 },
+      onTimeCursorChange: () => {},
+    });
+
+    await expect(
+      tools.get_current_tyres.execute({ driverNumber: '4' } as any),
+    ).resolves.toEqual({
+      driverNumber: '4',
+      driverName: 'Lando Norris',
+      position: 2,
+      compound: 'MEDIUM',
+      isNew: true,
+      tyresNotChanged: null,
+      stint: 1,
+      startLaps: 1,
+      totalLaps: 12,
+      lapsOnTyre: 11,
+      source: 'TyreStintSeries',
+    });
+
+    await expect(
+      tools.get_tyre_stints.execute({ driverNumber: '4' } as any),
+    ).resolves.toEqual({
+      driverNumber: '4',
+      driverName: 'Lando Norris',
+      total: 1,
+      stints: [
+        {
+          driverNumber: '4',
+          driverName: 'Lando Norris',
+          stint: 1,
+          compound: 'MEDIUM',
+          isNew: true,
+          tyresNotChanged: null,
+          startLaps: 1,
+          totalLaps: 12,
+          lapsOnTyre: 11,
+          lapTime: null,
+          lapNumber: 12,
+          source: 'TyreStintSeries',
+        },
+      ],
+    });
+  });
+
   it('get_lap_series returns cursor-aware lap position progression', async () => {
     const tools = makeTools({
       store,

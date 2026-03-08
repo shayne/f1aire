@@ -398,6 +398,35 @@ export function makeTools({
 
   const resolveCurrentCursor = () => analysisIndex.resolveAsOf(currentCursor);
 
+  const getHistoricalTyreAsOfLap = () => {
+    const resolved = resolveCurrentCursor();
+    const latestLap = analysisIndex.lapNumbers.at(-1) ?? null;
+    if (
+      typeof resolved.lap !== 'number' ||
+      typeof latestLap !== 'number' ||
+      resolved.lap >= latestLap
+    ) {
+      return null;
+    }
+    return resolved.lap;
+  };
+
+  const getTimingDataStateAsOfLap = (asOfLap: number | null) => {
+    if (typeof asOfLap !== 'number') {
+      return processors.timingData?.state;
+    }
+    const lapDrivers = processors.timingData?.driversByLap?.get(asOfLap);
+    if (!lapDrivers) {
+      return processors.timingData?.state;
+    }
+
+    const lines: Record<string, unknown> = {};
+    for (const [driverNumber, snapshot] of lapDrivers.entries()) {
+      lines[driverNumber] = snapshot;
+    }
+    return { Lines: lines };
+  };
+
   const serializeRaceControlEvent = (event: RaceControlEvent) => ({
     ...event,
     dateTime: event.dateTime ? event.dateTime.toISOString() : null,
@@ -632,28 +661,34 @@ export function makeTools({
     };
   };
 
-  const getCurrentTyresView = (driverNumber?: string | number) =>
-    getCurrentTyreRecords({
+  const getCurrentTyresView = (driverNumber?: string | number) => {
+    const asOfLap = getHistoricalTyreAsOfLap();
+    return getCurrentTyreRecords({
       currentTyresState: processors.extraTopics?.CurrentTyres?.state,
       tyreStintSeriesState: processors.extraTopics?.TyreStintSeries?.state,
       timingAppDataState: processors.timingAppData?.state,
-      timingDataState: processors.timingData?.state,
+      timingDataState: getTimingDataStateAsOfLap(asOfLap),
       driverNumber,
+      asOfLap: asOfLap ?? undefined,
     }).map((record) => ({
       ...record,
       driverName: getDriverName(record.driverNumber),
     }));
+  };
 
-  const getTyreStintsView = (driverNumber?: string | number) =>
-    getTyreStintRecords({
+  const getTyreStintsView = (driverNumber?: string | number) => {
+    const asOfLap = getHistoricalTyreAsOfLap();
+    return getTyreStintRecords({
       tyreStintSeriesState: processors.extraTopics?.TyreStintSeries?.state,
       timingAppDataState: processors.timingAppData?.state,
-      timingDataState: processors.timingData?.state,
+      timingDataState: getTimingDataStateAsOfLap(asOfLap),
       driverNumber,
+      asOfLap: asOfLap ?? undefined,
     }).map((record) => ({
       ...record,
       driverName: getDriverName(record.driverNumber),
     }));
+  };
 
   const serializeLapSeriesRecord = (
     record: ReturnType<typeof getLapSeriesRecords>[number],
@@ -1760,7 +1795,7 @@ export function makeTools({
     }),
     get_current_tyres: tool({
       description:
-        'Get deterministic current tyre state per driver. Prefers CurrentTyres feed when present and falls back to TyreStintSeries/TimingAppData when needed.',
+        'Get deterministic current tyre state per driver as of the current analysis cursor. Prefers CurrentTyres at the latest cursor and falls back to TyreStintSeries/TimingAppData for historical replay.',
       inputSchema: z.object({
         driverNumber: z.union([z.string(), z.number()]).optional(),
       }),
@@ -1777,7 +1812,7 @@ export function makeTools({
     }),
     get_tyre_stints: tool({
       description:
-        'Get per-driver tyre stint history in a deterministic shape. Prefers TyreStintSeries and falls back to TimingAppData when the newer feed is missing.',
+        'Get per-driver tyre stint history in a deterministic shape as of the current analysis cursor. Prefers TyreStintSeries and falls back to TimingAppData when the newer feed is missing.',
       inputSchema: z.object({
         driverNumber: z.union([z.string(), z.number()]).optional(),
       }),

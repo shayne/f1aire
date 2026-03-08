@@ -111,7 +111,10 @@ function getTimingOrder(state: unknown): Map<string, number | null> {
   return out;
 }
 
-function buildDriverOrder(driverNumbers: Iterable<string>, timingDataState: unknown) {
+function buildDriverOrder(
+  driverNumbers: Iterable<string>,
+  timingDataState: unknown,
+) {
   const order = getTimingOrder(timingDataState);
   return Array.from(new Set(driverNumbers)).sort((left, right) => {
     const leftOrder = order.get(left) ?? null;
@@ -125,7 +128,9 @@ function buildDriverOrder(driverNumbers: Iterable<string>, timingDataState: unkn
   });
 }
 
-function extractTimingAppDataMap(state: unknown): Map<string, TyreStintRecord[]> {
+function extractTimingAppDataMap(
+  state: unknown,
+): Map<string, TyreStintRecord[]> {
   const lines = isPlainObject((state as { Lines?: unknown } | null)?.Lines)
     ? ((state as { Lines: Record<string, unknown> }).Lines ?? {})
     : {};
@@ -136,7 +141,9 @@ function extractTimingAppDataMap(state: unknown): Map<string, TyreStintRecord[]>
     }
     const stints = toOrderedEntries(rawLine.Stints);
     const records = stints
-      .map(([stintKey, raw]) => buildTyreStintRecord(driverNumber, stintKey, raw, 'TimingAppData'))
+      .map(([stintKey, raw]) =>
+        buildTyreStintRecord(driverNumber, stintKey, raw, 'TimingAppData'),
+      )
       .filter((record): record is TyreStintRecord => record !== null);
     if (records.length > 0) {
       out.set(driverNumber, records);
@@ -145,14 +152,18 @@ function extractTimingAppDataMap(state: unknown): Map<string, TyreStintRecord[]>
   return out;
 }
 
-function extractTyreStintSeriesMap(state: unknown): Map<string, TyreStintRecord[]> {
+function extractTyreStintSeriesMap(
+  state: unknown,
+): Map<string, TyreStintRecord[]> {
   const stints = isPlainObject((state as { Stints?: unknown } | null)?.Stints)
     ? ((state as { Stints: Record<string, unknown> }).Stints ?? {})
     : {};
   const out = new Map<string, TyreStintRecord[]>();
   for (const [driverNumber, rawDriverStints] of Object.entries(stints)) {
     const records = toOrderedEntries(rawDriverStints)
-      .map(([stintKey, raw]) => buildTyreStintRecord(driverNumber, stintKey, raw, 'TyreStintSeries'))
+      .map(([stintKey, raw]) =>
+        buildTyreStintRecord(driverNumber, stintKey, raw, 'TyreStintSeries'),
+      )
       .filter((record): record is TyreStintRecord => record !== null);
     if (records.length > 0) {
       out.set(driverNumber, records);
@@ -204,6 +215,7 @@ export function getTyreStintRecords(opts: {
   timingAppDataState?: unknown;
   timingDataState?: unknown;
   driverNumber?: string | number;
+  asOfLap?: number;
 }): TyreStintRecord[] {
   const requestedDriver =
     opts.driverNumber === undefined ? null : String(opts.driverNumber);
@@ -220,8 +232,13 @@ export function getTyreStintRecords(opts: {
   for (const driverNumber of allDrivers) {
     const preferred = tyreStintSeries.get(driverNumber);
     const fallback = timingAppData.get(driverNumber);
-    const selected = preferred && preferred.length > 0 ? preferred : fallback ?? [];
-    records.push(...selected);
+    const selected =
+      preferred && preferred.length > 0 ? preferred : (fallback ?? []);
+    records.push(
+      ...projectTyreStintsAsOf(selected, {
+        asOfLap: opts.asOfLap,
+      }),
+    );
   }
   return records;
 }
@@ -232,6 +249,7 @@ export function getCurrentTyreRecords(opts: {
   timingAppDataState?: unknown;
   timingDataState?: unknown;
   driverNumber?: string | number;
+  asOfLap?: number;
 }): CurrentTyreRecord[] {
   const requestedDriver =
     opts.driverNumber === undefined ? null : String(opts.driverNumber);
@@ -244,15 +262,12 @@ export function getCurrentTyreRecords(opts: {
     currentTyres.set(driverNumber, raw);
   }
 
-  const tyreStints = getTyreStintRecords(opts).reduce(
-    (map, record) => {
-      const records = map.get(record.driverNumber) ?? [];
-      records.push(record);
-      map.set(record.driverNumber, records);
-      return map;
-    },
-    new Map<string, TyreStintRecord[]>(),
-  );
+  const tyreStints = getTyreStintRecords(opts).reduce((map, record) => {
+    const records = map.get(record.driverNumber) ?? [];
+    records.push(record);
+    map.set(record.driverNumber, records);
+    return map;
+  }, new Map<string, TyreStintRecord[]>());
 
   const allDrivers = requestedDriver
     ? [requestedDriver]
@@ -264,7 +279,10 @@ export function getCurrentTyreRecords(opts: {
 
   return allDrivers
     .map((driverNumber) => {
-      const current = currentTyres.get(driverNumber) ?? null;
+      const current =
+        opts.asOfLap === undefined
+          ? (currentTyres.get(driverNumber) ?? null)
+          : null;
       const fallback = tyreStints.get(driverNumber)?.slice(-1)[0] ?? null;
       if (!current && !fallback) {
         return null;
@@ -273,14 +291,12 @@ export function getCurrentTyreRecords(opts: {
         driverNumber,
         position: timingOrder.get(driverNumber) ?? null,
         compound:
-          toOptionalString(current?.Compound)
-          ?? fallback?.compound
-          ?? null,
+          toOptionalString(current?.Compound) ?? fallback?.compound ?? null,
         isNew: toOptionalBoolean(current?.New) ?? fallback?.isNew ?? null,
         tyresNotChanged:
-          toOptionalBoolean(current?.TyresNotChanged)
-          ?? fallback?.tyresNotChanged
-          ?? null,
+          toOptionalBoolean(current?.TyresNotChanged) ??
+          fallback?.tyresNotChanged ??
+          null,
         stint: fallback?.stint ?? null,
         startLaps: fallback?.startLaps ?? null,
         totalLaps: fallback?.totalLaps ?? null,
@@ -289,4 +305,38 @@ export function getCurrentTyreRecords(opts: {
       } satisfies CurrentTyreRecord;
     })
     .filter((record): record is CurrentTyreRecord => record !== null);
+}
+
+function toNormalizedLap(value: number | undefined): number | null {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    return null;
+  }
+  return Math.max(1, Math.trunc(value));
+}
+
+function projectTyreStintsAsOf(
+  records: TyreStintRecord[],
+  opts: { asOfLap?: number },
+): TyreStintRecord[] {
+  const asOfLap = toNormalizedLap(opts.asOfLap);
+  if (asOfLap === null) {
+    return records;
+  }
+
+  return records
+    .filter((record, index) => {
+      const recordLap = toNormalizedLap(record.lapNumber ?? undefined);
+      if (recordLap !== null) {
+        return recordLap <= asOfLap;
+      }
+
+      if (index === 0) {
+        return true;
+      }
+
+      const startLap =
+        record.startLaps === null ? null : Math.max(1, record.startLaps + 1);
+      return startLap === null ? true : startLap <= asOfLap;
+    })
+    .slice();
 }
