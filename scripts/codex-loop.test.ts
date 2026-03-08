@@ -5,6 +5,7 @@ import {
   buildIterationPaths,
   determineNextAction,
   getDefaultSchemaPath,
+  parseCliArgs,
   requireMainBranchAndCleanTree,
   renderLoopPrompt,
   shouldStopForMaxIterations,
@@ -178,5 +179,21 @@ describe('shouldStopForMaxIterations', () => {
     expect(shouldStopForMaxIterations({ iteration: 2, maxIterations: 3 })).toBe(
       false,
     );
+  });
+});
+
+describe('parseCliArgs', () => {
+  test('parses dry-run and max-iterations flags', () => {
+    expect(parseCliArgs(['--dry-run', '--max-iterations', '5'])).toEqual({
+      dryRun: true,
+      maxIterations: 5,
+    });
+  });
+
+  test('defaults to no dry-run and no max iteration limit', () => {
+    expect(parseCliArgs([])).toEqual({
+      dryRun: false,
+      maxIterations: null,
+    });
   });
 });

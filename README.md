@@ -76,6 +76,24 @@ Runs a live streaming call against the OpenAI API (networked; costs money):
 npm run test:e2e
 ```
 
+## Codex loop
+
+For aggressive local repo automation, run:
+
+```bash
+./loop.sh
+```
+
+This invokes Codex in explicit YOLO mode, audits `f1aire` against `/Users/shayne/code/undercut-f1`, fixes one highest-priority `P0`/`P1`/`P2` gap per iteration, verifies the change, and commits directly on `main`.
+
+Recommended first run:
+
+```bash
+./loop.sh --dry-run --max-iterations 1
+```
+
+Dry-run prints the Codex command and rendered prompt without executing Codex.
+
 ## Data directory
 
 Session downloads are stored under the per-user data directory for the app name `f1aire`:
