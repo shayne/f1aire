@@ -1,6 +1,7 @@
 import type { RawPoint } from './processors/types.js';
 import { CarDataProcessor } from './processors/car-data.js';
 import { DriverListProcessor } from './processors/driver-list.js';
+import { ExtrapolatedClockProcessor } from './processors/extrapolated-clock.js';
 import { MergeProcessor } from './processors/merge-processor.js';
 import { normalizePoint } from './processors/normalize.js';
 import { PitLaneTimeCollectionProcessor } from './processors/pit-lane-time-collection.js';
@@ -62,7 +63,7 @@ export class TimingService {
     weatherData: new MergeProcessor('WeatherData'),
     sessionInfo: new MergeProcessor('SessionInfo'),
     sessionData: new MergeProcessor('SessionData'),
-    extrapolatedClock: new MergeProcessor('ExtrapolatedClock'),
+    extrapolatedClock: new ExtrapolatedClockProcessor(),
     topThree: new MergeProcessor('TopThree'),
     raceControlMessages: new MergeProcessor('RaceControlMessages'),
     teamRadio: new MergeProcessor('TeamRadio'),

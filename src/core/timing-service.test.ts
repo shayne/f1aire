@@ -118,4 +118,26 @@ describe('TimingService', () => {
       },
     });
   });
+  it('routes ExtrapolatedClock through the dedicated clock processor', () => {
+    const service = new TimingService();
+
+    service.enqueue({
+      type: 'ExtrapolatedClock',
+      json: {
+        Utc: '2025-01-01T12:00:00Z',
+        Remaining: '00:05:00',
+        Extrapolating: true,
+      },
+      dateTime: new Date('2025-01-01T12:00:00Z'),
+    });
+
+    expect(
+      service.processors.extrapolatedClock.getRemainingAt(
+        new Date('2025-01-01T12:00:30Z'),
+      ),
+    ).toMatchObject({
+      remainingMs: 270_000,
+      extrapolating: true,
+    });
+  });
 });

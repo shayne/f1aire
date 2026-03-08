@@ -133,7 +133,19 @@ export function makeTools({
     weatherData?: { state?: unknown | null };
     sessionInfo?: { state?: unknown | null };
     sessionData?: { state?: unknown | null };
-    extrapolatedClock?: { state?: unknown | null };
+    extrapolatedClock?: {
+      state?: unknown | null;
+      getAt?: (dateTime?: Date | null) => unknown | null;
+      getRemainingAt?: (dateTime?: Date | null) => {
+        state: unknown | null;
+        sourceTime: Date | null;
+        referenceTime: Date | null;
+        remainingMs: number | null;
+        remainingSeconds: number | null;
+        extrapolating: boolean;
+        expired: boolean | null;
+      };
+    };
     topThree?: { state?: unknown | null };
     raceControlMessages?: { state?: unknown | null };
     teamRadio?: { state?: unknown | null };
@@ -259,6 +271,24 @@ export function makeTools({
       : [];
     if (!entries.length) return null;
     return entries[entries.length - 1];
+  };
+
+  const getProjectedClock = (referenceTime?: Date | null) => {
+    const projected =
+      processors.extrapolatedClock?.getRemainingAt?.(referenceTime);
+    if (projected) {
+      return projected;
+    }
+    const state = processors.extrapolatedClock?.state ?? null;
+    return {
+      state,
+      sourceTime: null,
+      referenceTime: referenceTime ?? null,
+      remainingMs: null,
+      remainingSeconds: null,
+      extrapolating: Boolean((state as any)?.Extrapolating),
+      expired: null,
+    };
   };
 
   const canonicalizeTopicName = (value: string) => {
@@ -517,12 +547,23 @@ export function makeTools({
     }
 
     if (topic === 'ExtrapolatedClock') {
-      const state = processors.extrapolatedClock?.state ?? null;
-      if (!state) return null;
+      const projected = getProjectedClock(asOf.dateTime);
+      if (!projected.state) return null;
       return {
-        asOf,
+        asOf: {
+          ...asOf,
+          dateTime: projected.referenceTime ?? asOf.dateTime,
+        },
         clock:
-          pickKnownKeys(state, ['Utc', 'Remaining', 'Extrapolating']) ?? state,
+          pickKnownKeys(projected.state, [
+            'Utc',
+            'Remaining',
+            'Extrapolating',
+          ]) ?? projected.state,
+        projectedRemainingMs: projected.remainingMs,
+        projectedRemainingSeconds: projected.remainingSeconds,
+        extrapolating: projected.extrapolating,
+        expired: projected.expired,
       };
     }
 
@@ -811,9 +852,32 @@ export function makeTools({
       execute: async () => processors.sessionData?.state ?? null,
     }),
     get_extrapolated_clock: tool({
-      description: 'Get merged ExtrapolatedClock',
+      description:
+        'Get ExtrapolatedClock as of the current analysis cursor, including projected remaining time when the session clock is extrapolating.',
       inputSchema: z.object({}),
-      execute: async () => processors.extrapolatedClock?.state ?? null,
+      execute: async () => {
+        const resolved = resolveCurrentCursor();
+        const projected = getProjectedClock(resolved.dateTime);
+        if (!projected.state) return null;
+        return {
+          asOf: {
+            source: resolved.source,
+            lap: resolved.lap,
+            dateTime: projected.referenceTime ?? resolved.dateTime,
+          },
+          clock:
+            pickKnownKeys(projected.state, [
+              'Utc',
+              'Remaining',
+              'Extrapolating',
+            ]) ?? projected.state,
+          sourceTime: projected.sourceTime,
+          remainingMs: projected.remainingMs,
+          remainingSeconds: projected.remainingSeconds,
+          extrapolating: projected.extrapolating,
+          expired: projected.expired,
+        };
+      },
     }),
     get_top_three: tool({
       description: 'Get merged TopThree',

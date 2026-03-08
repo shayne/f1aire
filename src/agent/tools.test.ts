@@ -132,6 +132,75 @@ describe('tools', () => {
     });
   });
 
+  it('get_extrapolated_clock projects remaining time at the current cursor', async () => {
+    const tools = makeTools({
+      store,
+      processors: {
+        ...processors,
+        timingData: {
+          bestLaps: new Map(),
+          getLapHistory: () => [],
+          getLapNumbers: () => [10],
+          driversByLap: new Map([
+            [
+              10,
+              new Map([
+                ['4', { __dateTime: new Date('2025-01-01T12:00:30Z') }],
+              ]),
+            ],
+          ]),
+          state: {},
+        },
+        extrapolatedClock: {
+          state: {
+            Utc: '2025-01-01T12:00:00Z',
+            Remaining: '00:10:00',
+            Extrapolating: true,
+          },
+          getRemainingAt: (dateTime?: Date | null) => {
+            const referenceTime = dateTime ?? new Date('2025-01-01T12:00:00Z');
+            const elapsedMs = Math.max(
+              0,
+              referenceTime.getTime() -
+                new Date('2025-01-01T12:00:00Z').getTime(),
+            );
+            return {
+              state: {
+                Utc: '2025-01-01T12:00:00Z',
+                Remaining: '00:10:00',
+                Extrapolating: true,
+              },
+              sourceTime: new Date('2025-01-01T12:00:00Z'),
+              referenceTime,
+              remainingMs: 600_000 - elapsedMs,
+              remainingSeconds: (600_000 - elapsedMs) / 1_000,
+              extrapolating: true,
+              expired: false,
+            };
+          },
+        },
+      } as any,
+      timeCursor: { latest: true },
+      onTimeCursorChange: () => {},
+    });
+
+    const result = await tools.get_extrapolated_clock.execute({} as any);
+
+    expect(result).toMatchObject({
+      asOf: { lap: 10, dateTime: new Date('2025-01-01T12:00:30Z') },
+      clock: {
+        Utc: '2025-01-01T12:00:00Z',
+        Remaining: '00:10:00',
+        Extrapolating: true,
+      },
+      sourceTime: new Date('2025-01-01T12:00:00Z'),
+      remainingMs: 570_000,
+      remainingSeconds: 570,
+      extrapolating: true,
+      expired: false,
+    });
+  });
+
   it('get_latest returns merged state for auxiliary patch topics', async () => {
     const tools = makeTools({
       store: {
