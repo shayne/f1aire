@@ -30,6 +30,10 @@ describe('systemPrompt', () => {
     expect(systemPrompt).toContain('get_tyre_stints');
   });
 
+  it('mentions the weather series tool for condition trend questions', () => {
+    expect(systemPrompt).toContain('get_weather_series');
+  });
+
   it('mentions deterministic pit stop event tooling', () => {
     expect(systemPrompt).toContain('get_pit_stop_events');
   });

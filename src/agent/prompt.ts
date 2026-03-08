@@ -19,7 +19,7 @@ Tools:
 - get_keyframe(topic): keyframe snapshot JSON for a topic (Index.json KeyFramePath)
 - get_driver_list, get_timing_state, get_lap_history
 - get_timing_app_data, get_current_tyres, get_tyre_stints, get_timing_stats
-- get_track_status, get_lap_count, get_weather
+- get_track_status, get_lap_count, get_weather, get_weather_series
 - get_session_info, get_session_data, get_extrapolated_clock, get_top_three
 - get_track_status_history
 - get_race_control_messages, get_race_control_events, get_team_radio, get_team_radio_events, download_team_radio, transcribe_team_radio, get_championship_prediction

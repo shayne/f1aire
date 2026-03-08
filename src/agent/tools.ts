@@ -43,6 +43,10 @@ import {
 } from '../core/tyre-state.js';
 import { getPitStopEventRecords } from '../core/pit-stop-state.js';
 import {
+  getWeatherSeriesRecords,
+  summarizeWeatherSeries,
+} from '../core/weather-series.js';
+import {
   getRaceControlEvents,
   type RaceControlEvent,
 } from '../core/processors/race-control-messages.js';
@@ -481,6 +485,52 @@ export function makeTools({
     }
 
     return { resolved, events };
+  };
+
+  const listWeatherSeries = (
+    opts: {
+      includeFuture?: boolean;
+      limit?: number;
+      order?: 'asc' | 'desc';
+    } = {},
+  ) => {
+    const resolved = resolveCurrentCursor();
+    const latestWeather = getNormalizedLatest('WeatherData');
+    let samples = getWeatherSeriesRecords({
+      weatherDataSeriesState: processors.extraTopics?.WeatherDataSeries?.state,
+      weatherDataState: processors.weatherData?.state,
+      weatherDataTimestamp: latestWeather?.dateTime ?? null,
+    });
+
+    if (!opts.includeFuture && resolved.dateTime) {
+      const cutoffMs = resolved.dateTime.getTime();
+      samples = samples.filter((sample) => {
+        if (!sample.timestamp) {
+          return true;
+        }
+        const sampleMs = Date.parse(sample.timestamp);
+        return Number.isFinite(sampleMs) ? sampleMs <= cutoffMs : true;
+      });
+    }
+
+    const order = opts.order ?? 'asc';
+    if (order === 'desc') {
+      samples = [...samples].reverse();
+    }
+    if (typeof opts.limit === 'number') {
+      samples = samples.slice(0, opts.limit);
+    }
+
+    return {
+      resolved,
+      samples,
+      summary: summarizeWeatherSeries(samples),
+      total: getWeatherSeriesRecords({
+        weatherDataSeriesState: processors.extraTopics?.WeatherDataSeries?.state,
+        weatherDataState: processors.weatherData?.state,
+        weatherDataTimestamp: latestWeather?.dateTime ?? null,
+      }).length,
+    };
   };
 
   const canonicalizeTopicName = (value: string) => {
@@ -1297,6 +1347,35 @@ export function makeTools({
       description: 'Get merged WeatherData',
       inputSchema: z.object({}),
       execute: async () => processors.weatherData?.state ?? null,
+    }),
+    get_weather_series: tool({
+      description:
+        'Get deterministic weather samples from WeatherDataSeries, filtered to the current analysis cursor unless includeFuture is true. Falls back to the latest WeatherData when the series feed is unavailable.',
+      inputSchema: z.object({
+        includeFuture: z.boolean().optional(),
+        limit: z.number().int().positive().max(500).optional(),
+        order: z.enum(['asc', 'desc']).optional(),
+      }),
+      execute: async ({ includeFuture, limit, order }) => {
+        const { resolved, samples, summary, total } = listWeatherSeries({
+          includeFuture,
+          limit,
+          order,
+        });
+        return {
+          asOf: {
+            source: resolved.source,
+            lap: resolved.lap,
+            dateTime: resolved.dateTime,
+            includeFuture: Boolean(includeFuture),
+          },
+          total,
+          returned: samples.length,
+          order: order ?? 'asc',
+          summary,
+          samples,
+        };
+      },
     }),
     get_session_info: tool({
       description: 'Get merged SessionInfo',

@@ -70,6 +70,7 @@ describe('tools', () => {
     expect(tools).toHaveProperty('get_current_tyres');
     expect(tools).toHaveProperty('get_tyre_stints');
     expect(tools).toHaveProperty('get_pit_stop_events');
+    expect(tools).toHaveProperty('get_weather_series');
     expect(tools).toHaveProperty('get_lap_snapshot');
     expect(tools).toHaveProperty('get_best_laps');
     expect(tools).toHaveProperty('download_team_radio');
@@ -231,6 +232,143 @@ describe('tools', () => {
           status: null,
           driverNumber: null,
           message: 'YELLOW IN TRACK SECTOR 2',
+        },
+      ],
+    });
+  });
+
+  it('get_weather_series returns cursor-aware typed weather samples', async () => {
+    const tools = makeTools({
+      store,
+      processors: {
+        ...processors,
+        timingData: {
+          state: {
+            Lines: {
+              '4': { Position: '1' },
+            },
+          },
+          bestLaps: new Map(),
+          getLapHistory: () => [],
+          getLapNumbers: () => [14, 15],
+          driversByLap: new Map([
+            [
+              14,
+              new Map([
+                [
+                  '4',
+                  {
+                    __dateTime: new Date('2026-03-07T04:49:30Z'),
+                    NumberOfLaps: 14,
+                    Position: '1',
+                  },
+                ],
+              ]),
+            ],
+            [
+              15,
+              new Map([
+                [
+                  '4',
+                  {
+                    __dateTime: new Date('2026-03-07T04:50:30Z'),
+                    NumberOfLaps: 15,
+                    Position: '1',
+                  },
+                ],
+              ]),
+            ],
+          ]),
+        },
+        weatherData: {
+          state: {
+            AirTemp: '20.4',
+            Humidity: '67.7',
+            Pressure: '1013.7',
+            Rainfall: '1',
+            TrackTemp: '36.9',
+            WindDirection: '94',
+            WindSpeed: '2.7',
+          },
+        },
+        extraTopics: {
+          WeatherDataSeries: {
+            state: {
+              Series: {
+                '0': {
+                  Timestamp: '2026-03-07T04:49:11.917Z',
+                  Weather: {
+                    AirTemp: '20.5',
+                    Humidity: '67.5',
+                    Pressure: '1013.5',
+                    Rainfall: '0',
+                    TrackTemp: '37.3',
+                    WindDirection: '85',
+                    WindSpeed: '2.2',
+                  },
+                },
+                '1': {
+                  Timestamp: '2026-03-07T04:50:11.926Z',
+                  Weather: {
+                    AirTemp: '20.4',
+                    Humidity: '67.7',
+                    Pressure: '1013.7',
+                    Rainfall: '1',
+                    TrackTemp: '36.9',
+                    WindDirection: '94',
+                    WindSpeed: '2.7',
+                  },
+                },
+              },
+            },
+          },
+        },
+      } as any,
+      timeCursor: { lap: 14 },
+      onTimeCursorChange: () => {},
+    });
+
+    const result = await tools.get_weather_series.execute({} as any);
+
+    expect(result).toEqual({
+      asOf: {
+        source: 'lap',
+        lap: 14,
+        dateTime: new Date('2026-03-07T04:49:30.000Z'),
+        includeFuture: false,
+      },
+      total: 2,
+      returned: 1,
+      order: 'asc',
+      summary: {
+        samples: 1,
+        fromTime: '2026-03-07T04:49:11.917Z',
+        toTime: '2026-03-07T04:49:11.917Z',
+        airTempStartC: 20.5,
+        airTempEndC: 20.5,
+        airTempDeltaC: 0,
+        trackTempStartC: 37.3,
+        trackTempEndC: 37.3,
+        trackTempDeltaC: 0,
+        minAirTempC: 20.5,
+        maxAirTempC: 20.5,
+        minTrackTempC: 37.3,
+        maxTrackTempC: 37.3,
+        rainfallSamples: 0,
+        maxWindSpeed: 2.2,
+      },
+      samples: [
+        {
+          sampleId: '0',
+          timestamp: '2026-03-07T04:49:11.917Z',
+          airTempC: 20.5,
+          humidityPct: 67.5,
+          pressureHpa: 1013.5,
+          rainfall: 0,
+          trackTempC: 37.3,
+          windDirectionDeg: 85,
+          windSpeed: 2.2,
+          source: 'WeatherDataSeries',
         },
       ],
     });

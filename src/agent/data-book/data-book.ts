@@ -619,7 +619,7 @@ export const DATA_BOOK_TOPICS: DataBookTopic[] = [
       'LapPosition may switch representation (array vs indexed object) across updates.',
     ],
     relatedTopics: ['TimingData', 'Position', 'OvertakeSeries'],
-    bestTools: ['get_latest', 'get_topic_timeline', 'get_keyframe', 'inspect_topic'],
+    bestTools: ['get_weather_series', 'get_latest', 'get_topic_timeline', 'get_keyframe', 'inspect_topic'],
   },
   {
     topic: 'WeatherDataSeries',
