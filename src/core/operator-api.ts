@@ -4,6 +4,13 @@ import { buildAnalysisIndex, type LapRecord } from './analysis-index.js';
 import { isPlainObject } from './processors/merge.js';
 import { normalizePoint } from './processors/normalize.js';
 import {
+  buildSessionDataState,
+  buildSessionLifecycleSnapshot,
+  type SessionArchiveStatus,
+  type SessionLifecycleEvent,
+  type SessionLifecycleStatus,
+} from './session-lifecycle.js';
+import {
   getSessionStaticPrefix,
   getTeamRadioCaptures,
   type TeamRadioCaptureSummary,
@@ -132,6 +139,29 @@ export type TeamRadioEventsResponse = {
   captures: TeamRadioEventRecord[];
 };
 
+export type SessionLifecycleOrder = 'asc' | 'desc';
+
+export type SessionLifecycleEventRecord = Pick<
+  SessionLifecycleEvent,
+  'eventId' | 'utc' | 'sessionStatus' | 'trackStatus' | 'source'
+>;
+
+export type SessionLifecycleResponse = {
+  asOf: {
+    source: SerializedResolvedCursor['source'];
+    lap: number | null;
+    dateTime: string | null;
+    includeFuture: boolean;
+  };
+  sessionStatus: SessionLifecycleStatus | null;
+  trackStatus: SessionLifecycleStatus | null;
+  archiveStatus: SessionArchiveStatus | null;
+  total: number;
+  returned: number;
+  order: SessionLifecycleOrder;
+  events: SessionLifecycleEventRecord[];
+};
+
 export type OperatorApi = {
   getLatest: (topic: string) => OperatorTopicSnapshot | null;
   getTimingLap: (options?: {
@@ -147,6 +177,11 @@ export type OperatorApi = {
     driverNumber?: string | number;
     limit?: number;
   }) => TeamRadioEventsResponse;
+  getSessionLifecycle: (options?: {
+    includeFuture?: boolean;
+    limit?: number;
+    order?: SessionLifecycleOrder;
+  }) => SessionLifecycleResponse;
   getControlState: () => ReplayControlState;
   applyControl: (request: ReplayControlRequest) => ReplayControlResult;
 };
@@ -184,6 +219,37 @@ function parseIsoDate(value: string | null): Date | null {
 function getRawLatest(store: SessionStore, topic: string): RawPoint | null {
   const direct = store.topic(topic).latest as RawPoint | null;
   return direct ?? (store.topic(`${topic}.z`).latest as RawPoint | null);
+}
+
+function getNormalizedTopicTimeline(
+  store: SessionStore,
+  topic: string,
+  options?: { from?: Date; to?: Date },
+): RawPoint[] {
+  let timeline = store.topic(topic).timeline(options?.from, options?.to);
+  if (!timeline.length && !topic.endsWith('.z')) {
+    timeline = store.topic(`${topic}.z`).timeline(options?.from, options?.to);
+  }
+  return timeline.map((point) => normalizePoint(point));
+}
+
+function getSubscribeTopicSnapshot(store: SessionStore, topic: string): unknown {
+  const subscribe = isPlainObject(store.raw.subscribe)
+    ? store.raw.subscribe
+    : null;
+  return subscribe?.[topic] ?? null;
+}
+
+function serializeSessionLifecycleEvent(
+  event: SessionLifecycleEvent,
+): SessionLifecycleEventRecord {
+  return {
+    eventId: event.eventId,
+    utc: event.utc,
+    sessionStatus: event.sessionStatus,
+    trackStatus: event.trackStatus,
+    source: event.source,
+  };
 }
 
 function getDriverName(
@@ -419,14 +485,18 @@ function parseCursorIso(cursor: TimeCursor): Date | null {
   return Number.isFinite(parsed.getTime()) ? parsed : null;
 }
 
+function getTimingSnapshotPosition(snapshot: unknown) {
+  if (!isPlainObject(snapshot)) {
+    return Infinity;
+  }
+
+  return Number(snapshot.Position ?? snapshot.Line ?? Infinity);
+}
+
 function sortTimingSnapshots(entries: Array<[string, unknown]>) {
   return [...entries].sort(([leftNumber, left], [rightNumber, right]) => {
-    const leftPosition = Number(
-      (left as any)?.Position ?? (left as any)?.Line ?? Infinity,
-    );
-    const rightPosition = Number(
-      (right as any)?.Position ?? (right as any)?.Line ?? Infinity,
-    );
+    const leftPosition = getTimingSnapshotPosition(left);
+    const rightPosition = getTimingSnapshotPosition(right);
     if (Number.isFinite(leftPosition) || Number.isFinite(rightPosition)) {
       if (!Number.isFinite(leftPosition)) return 1;
       if (!Number.isFinite(rightPosition)) return -1;
@@ -617,6 +687,84 @@ export function createOperatorApi({
     };
   };
 
+  const getSessionLifecycle: OperatorApi['getSessionLifecycle'] = (
+    options = {},
+  ) => {
+    const analysisIndex = buildAnalysisIndex({
+      processors: service.processors,
+    });
+    const resolved = analysisIndex.resolveAsOf(currentCursor);
+    const to = options.includeFuture ? undefined : (resolved.dateTime ?? undefined);
+    const fallbackDateTime = resolved.dateTime ?? new Date(0);
+
+    const sessionDataBase = normalizePoint({
+      type: 'SessionData',
+      json: getSubscribeTopicSnapshot(store, 'SessionData') ?? {},
+      dateTime: fallbackDateTime,
+    }).json;
+
+    const sessionDataState = buildSessionDataState({
+      baseState: sessionDataBase,
+      timeline: getNormalizedTopicTimeline(store, 'SessionData', { to }),
+    });
+
+    const sessionStatusState =
+      getNormalizedTopicTimeline(store, 'SessionStatus', { to }).at(-1)?.json ??
+      getSubscribeTopicSnapshot(store, 'SessionStatus') ??
+      null;
+
+    const archiveStatusState =
+      getNormalizedTopicTimeline(store, 'ArchiveStatus', { to }).at(-1)?.json ??
+      getSubscribeTopicSnapshot(store, 'ArchiveStatus') ??
+      null;
+
+    const sessionInfoState =
+      service.processors.sessionInfo?.state ??
+      normalizePoint({
+        type: 'SessionInfo',
+        json: getSubscribeTopicSnapshot(store, 'SessionInfo') ?? {},
+        dateTime: fallbackDateTime,
+      }).json;
+
+    const snapshot = buildSessionLifecycleSnapshot({
+      sessionDataState,
+      sessionStatusState,
+      archiveStatusState,
+      sessionInfoState,
+    });
+
+    let events = snapshot.events;
+    const order = options.order ?? 'asc';
+    if (order === 'desc') {
+      events = [...events].reverse();
+    }
+    if (typeof options.limit === 'number' && options.limit >= 0) {
+      events = events.slice(0, options.limit);
+    }
+
+    return {
+      asOf: {
+        source: resolved.source,
+        lap: resolved.lap,
+        dateTime: resolved.dateTime?.toISOString() ?? null,
+        includeFuture: Boolean(options.includeFuture),
+      },
+      sessionStatus: snapshot.sessionStatus
+        ? (serializeValue(snapshot.sessionStatus) as SessionLifecycleStatus)
+        : null,
+      trackStatus: snapshot.trackStatus
+        ? (serializeValue(snapshot.trackStatus) as SessionLifecycleStatus)
+        : null,
+      archiveStatus: snapshot.archiveStatus
+        ? (serializeValue(snapshot.archiveStatus) as SessionArchiveStatus)
+        : null,
+      total: snapshot.events.length,
+      returned: events.length,
+      order,
+      events: events.map(serializeSessionLifecycleEvent),
+    };
+  };
+
   const getControlState = () =>
     buildControlState(store, service, currentCursor);
 
@@ -749,6 +897,7 @@ export function createOperatorApi({
     getTimingLap,
     getBestLaps,
     getTeamRadioEvents,
+    getSessionLifecycle,
     getControlState,
     applyControl,
   };

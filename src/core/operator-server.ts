@@ -10,6 +10,8 @@ import type {
   OperatorApi,
   ReplayControlRequest,
   ReplayControlResult,
+  SessionLifecycleOrder,
+  SessionLifecycleResponse,
   TeamRadioEventsResponse,
   TimingLapResponse,
 } from './operator-api.js';
@@ -36,6 +38,12 @@ type BestLapQuery = {
 type TeamRadioQuery = {
   driverNumber?: string;
   limit?: number;
+};
+
+type SessionLifecycleQuery = {
+  includeFuture?: boolean;
+  limit?: number;
+  order?: SessionLifecycleOrder;
 };
 
 const JSON_HEADERS = {
@@ -89,6 +97,21 @@ function parseOptionalBoolean(value: string | null): boolean | undefined {
   if (normalized === '0' || normalized === 'false' || normalized === 'no') {
     return false;
   }
+  return undefined;
+}
+
+function parseOptionalOrder(
+  value: string | null,
+): SessionLifecycleOrder | undefined {
+  if (value === null) {
+    return undefined;
+  }
+
+  const normalized = value.trim().toLowerCase();
+  if (normalized === 'asc' || normalized === 'desc') {
+    return normalized;
+  }
+
   return undefined;
 }
 
@@ -157,6 +180,28 @@ function handleTeamRadioEvents(
   return api.getTeamRadioEvents(options);
 }
 
+function handleSessionLifecycle(
+  api: OperatorApi,
+  url: URL,
+): SessionLifecycleResponse {
+  const options: SessionLifecycleQuery = {};
+  const includeFuture = parseOptionalBoolean(
+    url.searchParams.get('includeFuture'),
+  );
+  if (typeof includeFuture === 'boolean') {
+    options.includeFuture = includeFuture;
+  }
+  const limit = parseOptionalInt(url.searchParams.get('limit'));
+  if (typeof limit === 'number') {
+    options.limit = limit;
+  }
+  const order = parseOptionalOrder(url.searchParams.get('order'));
+  if (order) {
+    options.order = order;
+  }
+  return api.getSessionLifecycle(options);
+}
+
 function applyControl(
   api: OperatorApi,
   request: JsonObject,
@@ -223,6 +268,10 @@ export function createOperatorApiRequestHandler(opts: {
         const topic = decodeURIComponent(segments[1]!);
         if (topic === 'TeamRadio' && segments[2] === 'events') {
           sendJson(res, 200, handleTeamRadioEvents(api, url));
+          return;
+        }
+        if (topic === 'SessionLifecycle' && segments[2] === 'events') {
+          sendJson(res, 200, handleSessionLifecycle(api, url));
           return;
         }
         if (segments[2] === 'latest') {

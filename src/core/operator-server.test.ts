@@ -6,7 +6,14 @@ import { TimingService } from './timing-service.js';
 
 type RawPoint = SessionStore['raw']['live'][number];
 
-function buildStore(points: RawPoint[]): SessionStore {
+type BuildStoreOptions = {
+  subscribe?: Record<string, unknown>;
+};
+
+function buildStore(
+  points: RawPoint[],
+  options: BuildStoreOptions = {},
+): SessionStore {
   const byTopic = new Map<string, RawPoint[]>();
   for (const point of points) {
     const items = byTopic.get(point.type) ?? [];
@@ -20,7 +27,7 @@ function buildStore(points: RawPoint[]): SessionStore {
   }
   return {
     raw: {
-      subscribe: {},
+      subscribe: options.subscribe ?? {},
       live: points,
       download: {
         prefix:
@@ -123,10 +130,16 @@ afterEach(async () => {
   activeServers.clear();
 });
 
-async function startTestServer() {
+async function startTestServer(
+  testPoints: RawPoint[] = points,
+  options: BuildStoreOptions = {},
+) {
   const service = new TimingService();
-  points.forEach((point) => service.enqueue(point));
-  const api = createOperatorApi({ store: buildStore(points), service });
+  testPoints.forEach((point) => service.enqueue(point));
+  const api = createOperatorApi({
+    store: buildStore(testPoints, options),
+    service,
+  });
   const server = await startOperatorApiServer({ api });
   activeServers.add(server);
   return server;
@@ -232,6 +245,119 @@ describe('operator-server', () => {
             LastLapTime: { Value: '1:30.100' },
             __dateTime: '2025-01-01T00:00:12.000Z',
           },
+        },
+      ],
+    });
+  });
+
+  it('serves structured session lifecycle events over HTTP', async () => {
+    const lifecyclePoints: RawPoint[] = [
+      ...points,
+      {
+        type: 'SessionData',
+        json: {
+          StatusSeries: {
+            '0': {
+              Utc: '2025-01-01T00:00:02.000Z',
+              SessionStatus: 'Started',
+            },
+          },
+        },
+        dateTime: new Date('2025-01-01T00:00:02Z'),
+      },
+      {
+        type: 'SessionData',
+        json: {
+          StatusSeries: {
+            '1': {
+              Utc: '2025-01-01T00:00:03.000Z',
+              TrackStatus: 'Yellow',
+            },
+          },
+        },
+        dateTime: new Date('2025-01-01T00:00:03Z'),
+      },
+      {
+        type: 'SessionStatus',
+        json: {
+          Utc: '2025-01-01T00:00:04.000Z',
+          Status: 'Started',
+        },
+        dateTime: new Date('2025-01-01T00:00:04Z'),
+      },
+      {
+        type: 'SessionData',
+        json: {
+          StatusSeries: {
+            '2': {
+              Utc: '2025-01-01T00:00:13.000Z',
+              SessionStatus: 'Finished',
+            },
+          },
+        },
+        dateTime: new Date('2025-01-01T00:00:13Z'),
+      },
+      {
+        type: 'ArchiveStatus',
+        json: {
+          Status: 'Complete',
+        },
+        dateTime: new Date('2025-01-01T00:00:14Z'),
+      },
+    ];
+
+    const server = await startTestServer(lifecyclePoints, {
+      subscribe: {
+        SessionInfo: {
+          SessionStatus: 'Inactive',
+          ArchiveStatus: { Status: 'Generating' },
+        },
+      },
+    });
+
+    const lifecycleResponse = await fetch(
+      `${server.origin}/data/SessionLifecycle/events?limit=2&order=desc&includeFuture=true`,
+    );
+    expect(lifecycleResponse.status).toBe(200);
+    await expect(lifecycleResponse.json()).resolves.toEqual({
+      asOf: {
+        source: 'latest',
+        lap: 12,
+        dateTime: '2025-01-01T00:00:12.000Z',
+        includeFuture: true,
+      },
+      sessionStatus: {
+        status: 'Finished',
+        utc: '2025-01-01T00:00:13.000Z',
+        source: 'SessionData',
+      },
+      trackStatus: {
+        status: 'Yellow',
+        utc: '2025-01-01T00:00:03.000Z',
+        source: 'SessionData',
+      },
+      archiveStatus: {
+        status: 'Complete',
+        source: 'ArchiveStatus',
+        raw: { Status: 'Complete' },
+      },
+      total: 4,
+      returned: 2,
+      order: 'desc',
+      events: [
+        {
+          eventId: '2',
+          utc: '2025-01-01T00:00:13.000Z',
+          sessionStatus: 'Finished',
+          trackStatus: null,
+          source: 'SessionData',
+        },
+        {
+          eventId: 'latest',
+          utc: '2025-01-01T00:00:04.000Z',
+          sessionStatus: 'Started',
+          trackStatus: null,
+          source: 'SessionStatus',
         },
       ],
     });

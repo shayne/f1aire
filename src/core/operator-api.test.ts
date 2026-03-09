@@ -5,7 +5,14 @@ import { createOperatorApi } from './operator-api.js';
 
 type RawPoint = SessionStore['raw']['live'][number];
 
-function buildStore(points: RawPoint[]): SessionStore {
+type BuildStoreOptions = {
+  subscribe?: Record<string, unknown>;
+};
+
+function buildStore(
+  points: RawPoint[],
+  options: BuildStoreOptions = {},
+): SessionStore {
   const byTopic = new Map<string, RawPoint[]>();
   for (const point of points) {
     const items = byTopic.get(point.type) ?? [];
@@ -19,7 +26,7 @@ function buildStore(points: RawPoint[]): SessionStore {
   }
   return {
     raw: {
-      subscribe: {},
+      subscribe: options.subscribe ?? {},
       live: points,
       download: {
         prefix:
@@ -313,6 +320,175 @@ describe('createOperatorApi', () => {
             },
             stint: null,
           },
+        },
+      ],
+    });
+  });
+
+  it('returns cursor-aware session lifecycle snapshots and event timelines', () => {
+    const lifecyclePoints: RawPoint[] = [
+      ...points,
+      {
+        type: 'SessionData',
+        json: {
+          StatusSeries: {
+            '0': {
+              Utc: '2025-01-01T00:00:02.000Z',
+              SessionStatus: 'Started',
+            },
+          },
+        },
+        dateTime: new Date('2025-01-01T00:00:02Z'),
+      },
+      {
+        type: 'SessionData',
+        json: {
+          StatusSeries: {
+            '1': {
+              Utc: '2025-01-01T00:00:03.000Z',
+              TrackStatus: 'Yellow',
+            },
+          },
+        },
+        dateTime: new Date('2025-01-01T00:00:03Z'),
+      },
+      {
+        type: 'SessionStatus',
+        json: {
+          Utc: '2025-01-01T00:00:04.000Z',
+          Status: 'Started',
+        },
+        dateTime: new Date('2025-01-01T00:00:04Z'),
+      },
+      {
+        type: 'SessionData',
+        json: {
+          StatusSeries: {
+            '2': {
+              Utc: '2025-01-01T00:00:13.000Z',
+              SessionStatus: 'Finished',
+            },
+          },
+        },
+        dateTime: new Date('2025-01-01T00:00:13Z'),
+      },
+      {
+        type: 'ArchiveStatus',
+        json: {
+          Status: 'Complete',
+        },
+        dateTime: new Date('2025-01-01T00:00:14Z'),
+      },
+    ];
+    const service = new TimingService();
+    lifecyclePoints.forEach((point) => service.enqueue(point));
+    const api = createOperatorApi({
+      store: buildStore(lifecyclePoints, {
+        subscribe: {
+          SessionInfo: {
+            SessionStatus: 'Inactive',
+            ArchiveStatus: { Status: 'Generating' },
+          },
+        },
+      }),
+      service,
+    });
+
+    expect(api.getSessionLifecycle()).toEqual({
+      asOf: {
+        source: 'latest',
+        lap: 12,
+        dateTime: '2025-01-01T00:00:12.000Z',
+        includeFuture: false,
+      },
+      sessionStatus: {
+        status: 'Started',
+        utc: '2025-01-01T00:00:04.000Z',
+        source: 'SessionStatus',
+      },
+      trackStatus: {
+        status: 'Yellow',
+        utc: '2025-01-01T00:00:03.000Z',
+        source: 'SessionData',
+      },
+      archiveStatus: {
+        status: 'Generating',
+        source: 'SessionInfo',
+        raw: { Status: 'Generating' },
+      },
+      total: 3,
+      returned: 3,
+      order: 'asc',
+      events: [
+        {
+          eventId: '0',
+          utc: '2025-01-01T00:00:02.000Z',
+          sessionStatus: 'Started',
+          trackStatus: null,
+          source: 'SessionData',
+        },
+        {
+          eventId: '1',
+          utc: '2025-01-01T00:00:03.000Z',
+          sessionStatus: null,
+          trackStatus: 'Yellow',
+          source: 'SessionData',
+        },
+        {
+          eventId: 'latest',
+          utc: '2025-01-01T00:00:04.000Z',
+          sessionStatus: 'Started',
+          trackStatus: null,
+          source: 'SessionStatus',
+        },
+      ],
+    });
+
+    expect(
+      api.getSessionLifecycle({
+        includeFuture: true,
+        order: 'desc',
+        limit: 2,
+      }),
+    ).toEqual({
+      asOf: {
+        source: 'latest',
+        lap: 12,
+        dateTime: '2025-01-01T00:00:12.000Z',
+        includeFuture: true,
+      },
+      sessionStatus: {
+        status: 'Finished',
+        utc: '2025-01-01T00:00:13.000Z',
+        source: 'SessionData',
+      },
+      trackStatus: {
+        status: 'Yellow',
+        utc: '2025-01-01T00:00:03.000Z',
+        source: 'SessionData',
+      },
+      archiveStatus: {
+        status: 'Complete',
+        source: 'ArchiveStatus',
+        raw: { Status: 'Complete' },
+      },
+      total: 4,
+      returned: 2,
+      order: 'desc',
+      events: [
+        {
+          eventId: '2',
+          utc: '2025-01-01T00:00:13.000Z',
+          sessionStatus: 'Finished',
+          trackStatus: null,
+          source: 'SessionData',
+        },
+        {
+          eventId: 'latest',
+          utc: '2025-01-01T00:00:04.000Z',
+          sessionStatus: 'Started',
+          trackStatus: null,
+          source: 'SessionStatus',
         },
       ],
     });
