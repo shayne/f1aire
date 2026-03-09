@@ -511,6 +511,15 @@ describe('createOperatorApi', () => {
           hasGeometry: true,
           sampleCorners: [{ number: 1, x: 5.5, y: 6.5 }],
         },
+        circuitGeometryData: {
+          points: [
+            { x: 1, y: 2 },
+            { x: 3, y: 4 },
+          ],
+          corners: [{ number: 1, x: 5.5, y: 6.5 }],
+          rotation: 90,
+          hasGeometry: true,
+        },
       },
     });
   });

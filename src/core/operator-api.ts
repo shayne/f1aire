@@ -36,7 +36,10 @@ import {
   getPositionSnapshot,
   type PositionSnapshot,
 } from './position-snapshot.js';
-import { getSessionInfoSummary } from './session-info.js';
+import {
+  getSessionInfoCircuitGeometryData,
+  getSessionInfoSummary,
+} from './session-info.js';
 import {
   getCurrentTyreRecords,
   getTyreStintRecords,
@@ -442,6 +445,7 @@ function serializeValue(value: unknown): unknown {
 function serializeTopicData(topic: string, data: unknown): unknown {
   if (topic === 'SessionInfo') {
     const summary = getSessionInfoSummary(data);
+    const geometryData = getSessionInfoCircuitGeometryData(data);
     if (!summary) {
       return serializeValue(data);
     }
@@ -463,6 +467,9 @@ function serializeTopicData(topic: string, data: unknown): unknown {
         Meeting: summary.Meeting,
       }),
       circuitGeometry: serializeValue(summary.CircuitGeometry),
+      circuitGeometryData: geometryData
+        ? serializeValue(geometryData)
+        : geometryData,
     };
   }
 

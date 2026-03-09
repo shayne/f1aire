@@ -90,7 +90,10 @@ import {
   buildPositionSnapshotFromTimelines,
   getPositionSnapshot,
 } from '../core/position-snapshot.js';
-import { getSessionInfoSummary } from '../core/session-info.js';
+import {
+  getSessionInfoCircuitGeometryData,
+  getSessionInfoSummary,
+} from '../core/session-info.js';
 import {
   getRaceControlEvents,
   type RaceControlEvent,
@@ -1246,6 +1249,7 @@ export function makeTools({
 
   const getStructuredSessionInfoState = (value: unknown) => {
     const summary = getSessionInfoSummary(value);
+    const geometryData = getSessionInfoCircuitGeometryData(value);
     if (!summary) {
       return null;
     }
@@ -1274,6 +1278,14 @@ export function makeTools({
         hasGeometry: summary.CircuitGeometry.hasGeometry,
         sampleCorners: summary.CircuitGeometry.sampleCorners,
       },
+      circuitGeometryData: geometryData
+        ? {
+            points: geometryData.points,
+            corners: geometryData.corners,
+            rotation: geometryData.rotation,
+            hasGeometry: geometryData.hasGeometry,
+          }
+        : null,
     };
   };
 

@@ -30,6 +30,18 @@ export type SessionInfoCircuitCornerSummary = {
   y: number;
 };
 
+export type SessionInfoCircuitPointSummary = {
+  x: number;
+  y: number;
+};
+
+export type SessionInfoCircuitGeometryData = {
+  points: SessionInfoCircuitPointSummary[];
+  corners: SessionInfoCircuitCornerSummary[];
+  rotation: number | null;
+  hasGeometry: boolean;
+};
+
 export type SessionInfoCircuitGeometrySummary = {
   pointCount: number;
   cornerCount: number;
@@ -118,45 +130,89 @@ function getSessionTypeText(value: unknown): string | null {
   return asNonEmptyString(direct)?.toLowerCase() ?? null;
 }
 
+function getCircuitPoints(
+  value: ObjectRecord,
+): SessionInfoCircuitPointSummary[] {
+  return Array.isArray(value.CircuitPoints)
+    ? value.CircuitPoints
+        .map((item) => {
+          const point = asObject(item);
+          if (!point) {
+            return null;
+          }
+
+          const x = toFiniteNumber(point.x ?? point.X);
+          const y = toFiniteNumber(point.y ?? point.Y);
+          if (x === null || y === null) {
+            return null;
+          }
+
+          return { x, y } satisfies SessionInfoCircuitPointSummary;
+        })
+        .filter(
+          (point): point is SessionInfoCircuitPointSummary => point !== null,
+        )
+    : [];
+}
+
+function getCircuitCorners(
+  value: ObjectRecord,
+): SessionInfoCircuitCornerSummary[] {
+  return Array.isArray(value.CircuitCorners)
+    ? value.CircuitCorners
+        .map((item) => {
+          const corner = asObject(item);
+          if (!corner) {
+            return null;
+          }
+
+          const number = toFiniteInteger(corner.number ?? corner.Number);
+          const x = toFiniteNumber(corner.x ?? corner.X);
+          const y = toFiniteNumber(corner.y ?? corner.Y);
+          if (number === null || x === null || y === null) {
+            return null;
+          }
+
+          return { number, x, y } satisfies SessionInfoCircuitCornerSummary;
+        })
+        .filter(
+          (corner): corner is SessionInfoCircuitCornerSummary => corner !== null,
+        )
+    : [];
+}
+
+export function getSessionInfoCircuitGeometryData(
+  value: unknown,
+): SessionInfoCircuitGeometryData | null {
+  const root = asObject(value);
+  if (!root) {
+    return null;
+  }
+
+  const points = getCircuitPoints(root);
+  const corners = getCircuitCorners(root);
+
+  return {
+    points,
+    corners,
+    rotation: toFiniteInteger(root.CircuitRotation),
+    hasGeometry: points.length > 0 || corners.length > 0,
+  };
+}
+
 function getCircuitGeometrySummary(
   value: ObjectRecord,
 ): SessionInfoCircuitGeometrySummary {
-  const pointCount = Array.isArray(value.CircuitPoints)
-    ? value.CircuitPoints.length
-    : 0;
-  const sampleCorners = Array.isArray(value.CircuitCorners)
-    ? value.CircuitCorners.map((item) => {
-        const corner = asObject(item);
-        if (!corner) {
-          return null;
-        }
-
-        const number = toFiniteInteger(corner.number ?? corner.Number);
-        const x = toFiniteNumber(corner.x ?? corner.X);
-        const y = toFiniteNumber(corner.y ?? corner.Y);
-        if (number === null || x === null || y === null) {
-          return null;
-        }
-
-        return { number, x, y } satisfies SessionInfoCircuitCornerSummary;
-      })
-        .filter(
-          (corner): corner is SessionInfoCircuitCornerSummary =>
-            corner !== null,
-        )
-        .slice(0, 6)
-    : [];
+  const geometry = getSessionInfoCircuitGeometryData(value);
+  const points = geometry?.points ?? [];
+  const corners = geometry?.corners ?? [];
 
   return {
-    pointCount,
-    cornerCount: Array.isArray(value.CircuitCorners)
-      ? value.CircuitCorners.length
-      : 0,
-    rotation: toFiniteInteger(value.CircuitRotation),
-    hasGeometry:
-      pointCount > 0 ||
-      (Array.isArray(value.CircuitCorners) && value.CircuitCorners.length > 0),
-    sampleCorners,
+    pointCount: points.length,
+    cornerCount: corners.length,
+    rotation: geometry?.rotation ?? null,
+    hasGeometry: geometry?.hasGeometry ?? false,
+    sampleCorners: corners.slice(0, 6),
   };
 }
 
