@@ -17,6 +17,7 @@ import type {
   TeamRadioDownloadRequest,
   TeamRadioEventsResponse,
   TeamRadioPlaybackRequest,
+  TeamRadioTranscriptionRequest,
   TimingLapResponse,
   TyreStintsResponse,
 } from './operator-api.js';
@@ -163,6 +164,18 @@ function classifyTeamRadioError(error: unknown): TeamRadioErrorResponse {
   }
 
   if (/does not have a downloadable asset URL\./i.test(errorMessage)) {
+    return {
+      statusCode: 400,
+      errorCode: 'invalid-request',
+      errorMessage,
+    };
+  }
+
+  if (
+    /OpenAI API key is required to transcribe team radio clips\./i.test(
+      errorMessage,
+    )
+  ) {
     return {
       statusCode: 400,
       errorCode: 'invalid-request',
@@ -344,7 +357,9 @@ export function createOperatorApiRequestHandler(opts: {
         segments.length === 3 &&
         segments[0] === 'data' &&
         segments[1] === 'TeamRadio' &&
-        (segments[2] === 'download' || segments[2] === 'play')
+        (segments[2] === 'download' ||
+          segments[2] === 'play' ||
+          segments[2] === 'transcribe')
       ) {
         let body: JsonObject = {};
         try {
@@ -363,6 +378,14 @@ export function createOperatorApiRequestHandler(opts: {
           if (segments[2] === 'download') {
             const result = await api.downloadTeamRadioCapture(
               body as TeamRadioDownloadRequest,
+            );
+            sendJson(res, 200, result);
+            return;
+          }
+
+          if (segments[2] === 'transcribe') {
+            const result = await api.transcribeTeamRadioCapture(
+              body as TeamRadioTranscriptionRequest,
             );
             sendJson(res, 200, result);
             return;

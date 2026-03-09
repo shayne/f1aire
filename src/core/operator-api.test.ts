@@ -576,8 +576,9 @@ describe('createOperatorApi', () => {
         store: buildStore(points),
         service,
         teamRadioFetchImpl: fetchImpl as typeof fetch,
-        teamRadioSpawnImpl:
-          spawnImpl as Parameters<typeof createOperatorApi>[0]['teamRadioSpawnImpl'],
+        teamRadioSpawnImpl: spawnImpl as Parameters<
+          typeof createOperatorApi
+        >[0]['teamRadioSpawnImpl'],
       });
 
       const download = await api.downloadTeamRadioCapture({
@@ -630,6 +631,88 @@ describe('createOperatorApi', () => {
 
       expect(fetchImpl).toHaveBeenCalledTimes(1);
       expect(spawnImpl).toHaveBeenCalledTimes(1);
+    } finally {
+      rmSync(destinationDir, { recursive: true, force: true });
+    }
+  });
+
+  it('transcribes team radio clips through operator workflows and reuses the cached transcript', async () => {
+    const service = new TimingService();
+    points.forEach((point) => service.enqueue(point));
+    const destinationDir = mkdtempSync(
+      path.join(tmpdir(), 'f1aire-operator-team-radio-transcribe-'),
+    );
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockImplementation(async (input, init) => {
+        const url = String(input);
+        if (url.endsWith('.mp3')) {
+          return new Response('radio-bytes');
+        }
+
+        expect(url).toBe('https://api.openai.com/v1/audio/transcriptions');
+        expect(init?.method).toBe('POST');
+
+        return new Response(JSON.stringify({ text: 'Box this lap.' }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      });
+
+    try {
+      const api = createOperatorApi({
+        store: buildStore(points),
+        service,
+        teamRadioFetchImpl: fetchImpl,
+      });
+
+      const first = await api.transcribeTeamRadioCapture({
+        captureId: '1',
+        destinationDir,
+        apiKey: 'sk-test',
+      });
+
+      expect(first).toMatchObject({
+        captureId: '1',
+        driverNumber: '4',
+        reused: false,
+        transcription: 'Box this lap.',
+        transcriptionReused: false,
+        model: 'gpt-4o-transcribe',
+        filePath: path.join(destinationDir, 'LANNOR01_4_20250101_000011.mp3'),
+      });
+      expect(readFileSync(first.filePath, 'utf-8')).toBe('radio-bytes');
+      expect(readFileSync(first.transcriptionFilePath, 'utf-8')).toContain(
+        'Box this lap.',
+      );
+      expect(api.getTeamRadioEvents({ driverNumber: '4', limit: 1 })).toEqual({
+        sessionPrefix:
+          'https://livetiming.formula1.com/static/2025/Test_Weekend/Race/',
+        total: 1,
+        returned: 1,
+        captures: [
+          expect.objectContaining({
+            captureId: '1',
+            downloadedFilePath: first.filePath,
+            hasTranscription: true,
+          }),
+        ],
+      });
+
+      const second = await api.transcribeTeamRadioCapture({
+        captureId: '1',
+        destinationDir,
+        apiKey: 'sk-test',
+      });
+
+      expect(second).toMatchObject({
+        captureId: '1',
+        reused: true,
+        transcription: 'Box this lap.',
+        transcriptionReused: true,
+        transcriptionFilePath: first.transcriptionFilePath,
+      });
+      expect(fetchImpl).toHaveBeenCalledTimes(2);
     } finally {
       rmSync(destinationDir, { recursive: true, force: true });
     }

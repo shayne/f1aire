@@ -15,10 +15,12 @@ import {
   getSessionStaticPrefix,
   getTeamRadioCaptures,
   playTeamRadioCapture as playTeamRadioClip,
+  transcribeTeamRadioCapture as transcribeTeamRadioClip,
   type TeamRadioCaptureSummary,
   type TeamRadioDownloadResult,
   type TeamRadioPlaybackResult,
   type TeamRadioPlayer,
+  type TeamRadioTranscriptionResult,
 } from './team-radio.js';
 import {
   buildPositionSnapshotFromTimelines,
@@ -197,6 +199,18 @@ export type TeamRadioPlaybackRequest = {
   player?: TeamRadioPlayer;
 };
 
+export type TeamRadioTranscriptionRequest = {
+  captureId?: string | number;
+  driverNumber?: string | number;
+  destinationDir?: string;
+  overwriteDownload?: boolean;
+  appName?: string;
+  forceTranscription?: boolean;
+  model?: string;
+  apiKey?: string | null;
+  apiBase?: string;
+};
+
 export type SessionLifecycleOrder = 'asc' | 'desc';
 
 export type SessionLifecycleEventRecord = Pick<
@@ -250,6 +264,9 @@ export type OperatorApi = {
   playTeamRadioCapture: (
     options?: TeamRadioPlaybackRequest,
   ) => Promise<TeamRadioPlaybackResult>;
+  transcribeTeamRadioCapture: (
+    options?: TeamRadioTranscriptionRequest,
+  ) => Promise<TeamRadioTranscriptionResult>;
   getSessionLifecycle: (options?: {
     includeFuture?: boolean;
     limit?: number;
@@ -780,7 +797,10 @@ export function createOperatorApi({
     },
   ) => {
     pid?: number;
-    once?: (event: string, listener: (...args: unknown[]) => unknown) => unknown;
+    once?: (
+      event: string,
+      listener: (...args: unknown[]) => unknown,
+    ) => unknown;
     unref?: () => void;
   };
 }): OperatorApi {
@@ -1071,6 +1091,24 @@ export function createOperatorApi({
       spawnImpl: teamRadioSpawnImpl,
     });
 
+  const transcribeTeamRadioCapture: OperatorApi['transcribeTeamRadioCapture'] =
+    (options = {}) =>
+      transcribeTeamRadioClip({
+        source: store,
+        state: getTeamRadioWorkflowState(store, service),
+        captureId: options.captureId,
+        driverNumber: options.driverNumber,
+        destinationDir: options.destinationDir,
+        appName: options.appName,
+        overwriteDownload: options.overwriteDownload,
+        forceTranscription: options.forceTranscription,
+        model: options.model,
+        apiKey: options.apiKey,
+        apiBase: options.apiBase,
+        downloadFetchImpl: teamRadioFetchImpl,
+        transcriptionFetchImpl: teamRadioFetchImpl,
+      });
+
   const getSessionLifecycle: OperatorApi['getSessionLifecycle'] = (
     options = {},
   ) => {
@@ -1288,6 +1326,7 @@ export function createOperatorApi({
     getTeamRadioEvents,
     downloadTeamRadioCapture,
     playTeamRadioCapture,
+    transcribeTeamRadioCapture,
     getSessionLifecycle,
     getControlState,
     applyControl,

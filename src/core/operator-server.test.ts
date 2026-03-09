@@ -15,7 +15,9 @@ type BuildStoreOptions = {
 
 type StartTestServerOptions = BuildStoreOptions & {
   teamRadioFetchImpl?: typeof fetch;
-  teamRadioSpawnImpl?: Parameters<typeof createOperatorApi>[0]['teamRadioSpawnImpl'];
+  teamRadioSpawnImpl?: Parameters<
+    typeof createOperatorApi
+  >[0]['teamRadioSpawnImpl'];
 };
 
 function buildStore(
@@ -784,6 +786,108 @@ describe('operator-server', () => {
         errorCode: 'not-found',
         errorMessage: 'No matching team radio capture was found.',
       });
+    } finally {
+      rmSync(destinationDir, { recursive: true, force: true });
+    }
+  });
+
+  it('serves team radio transcription workflows over HTTP', async () => {
+    const destinationDir = mkdtempSync(
+      path.join(tmpdir(), 'f1aire-team-radio-http-transcribe-'),
+    );
+    const fetchImpl = async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith('.mp3')) {
+        return new Response('radio-bytes');
+      }
+
+      expect(url).toBe('https://api.openai.com/v1/audio/transcriptions');
+      expect(init?.method).toBe('POST');
+
+      return new Response(JSON.stringify({ text: 'Copy, box this lap.' }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    };
+
+    try {
+      const server = await startTestServer(points, {
+        teamRadioFetchImpl: fetchImpl as typeof fetch,
+      });
+
+      const transcribeResponse = await fetch(
+        `${server.origin}/data/TeamRadio/transcribe`,
+        {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            captureId: '1',
+            destinationDir,
+            apiKey: 'sk-test',
+          }),
+        },
+      );
+      expect(transcribeResponse.status).toBe(200);
+      const first = await transcribeResponse.json();
+      expect(first).toMatchObject({
+        captureId: '1',
+        driverNumber: '4',
+        reused: false,
+        transcription: 'Copy, box this lap.',
+        transcriptionReused: false,
+        filePath: path.join(destinationDir, 'LANNOR01_4_20250101_000011.mp3'),
+      });
+      expect(readFileSync(first.filePath, 'utf-8')).toBe('radio-bytes');
+
+      const cachedResponse = await fetch(
+        `${server.origin}/data/TeamRadio/transcribe`,
+        {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            captureId: '1',
+            destinationDir,
+            apiKey: 'sk-test',
+          }),
+        },
+      );
+      expect(cachedResponse.status).toBe(200);
+      await expect(cachedResponse.json()).resolves.toMatchObject({
+        captureId: '1',
+        reused: true,
+        transcription: 'Copy, box this lap.',
+        transcriptionReused: true,
+        transcriptionFilePath: first.transcriptionFilePath,
+      });
+
+      const previousOpenAiApiKey = process.env.OPENAI_API_KEY;
+      delete process.env.OPENAI_API_KEY;
+      try {
+        const invalidResponse = await fetch(
+          `${server.origin}/data/TeamRadio/transcribe`,
+          {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({
+              captureId: '1',
+              destinationDir,
+              forceTranscription: true,
+            }),
+          },
+        );
+        expect(invalidResponse.status).toBe(400);
+        await expect(invalidResponse.json()).resolves.toEqual({
+          errorCode: 'invalid-request',
+          errorMessage:
+            'OpenAI API key is required to transcribe team radio clips. Set OPENAI_API_KEY or save a key in f1aire settings.',
+        });
+      } finally {
+        if (previousOpenAiApiKey === undefined) {
+          delete process.env.OPENAI_API_KEY;
+        } else {
+          process.env.OPENAI_API_KEY = previousOpenAiApiKey;
+        }
+      }
     } finally {
       rmSync(destinationDir, { recursive: true, force: true });
     }
