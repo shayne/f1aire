@@ -10,7 +10,9 @@ import {
 import { isPlainObject } from './processors/merge.js';
 import { PositionDataProcessor } from './processors/position-data.js';
 import { CarDataProcessor } from './processors/car-data.js';
+import { TimingDataProcessor } from './processors/timing-data.js';
 import type { RawPoint } from './processors/types.js';
+import { isTimingDataPointType } from './timing-data.js';
 import { getTimingLineOrder } from './timing-data.js';
 
 type DriverListState = Record<string, unknown> | null | undefined;
@@ -180,12 +182,14 @@ export function getPositionSnapshot(opts: {
 export function buildPositionSnapshotFromTimelines(opts: {
   positionTimeline?: RawPoint[];
   carDataTimeline?: RawPoint[];
+  timingDataTimeline?: RawPoint[];
   driverListState?: DriverListState;
   timingDataState?: unknown;
   driverNumber?: string | number;
 }): PositionSnapshot | null {
   const positionProcessor = new PositionDataProcessor();
   const carDataProcessor = new CarDataProcessor();
+  const timingDataProcessor = new TimingDataProcessor();
 
   for (const point of [...(opts.positionTimeline ?? [])].sort(
     (left, right) => left.dateTime.getTime() - right.dateTime.getTime(),
@@ -199,11 +203,19 @@ export function buildPositionSnapshotFromTimelines(opts: {
     carDataProcessor.process(point);
   }
 
+  for (const point of [...(opts.timingDataTimeline ?? [])]
+    .filter((entry) => isTimingDataPointType(entry.type))
+    .sort(
+      (left, right) => left.dateTime.getTime() - right.dateTime.getTime(),
+    )) {
+    timingDataProcessor.process(point);
+  }
+
   return getPositionSnapshot({
     positionState: positionProcessor.state,
     carDataState: carDataProcessor.state,
     driverListState: opts.driverListState,
-    timingDataState: opts.timingDataState,
+    timingDataState: timingDataProcessor.state ?? opts.timingDataState,
     driverNumber: opts.driverNumber,
   });
 }

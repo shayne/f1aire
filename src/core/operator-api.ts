@@ -245,6 +245,16 @@ function getNormalizedTopicTimeline(
   return timeline.map((point) => normalizePoint(point));
 }
 
+function getNormalizedTimingDataTimeline(
+  store: SessionStore,
+  options?: { from?: Date; to?: Date },
+): RawPoint[] {
+  return [
+    ...getNormalizedTopicTimeline(store, 'TimingData', options),
+    ...getNormalizedTopicTimeline(store, 'TimingDataF1', options),
+  ].sort((left, right) => left.dateTime.getTime() - right.dateTime.getTime());
+}
+
 function getSubscribeTopicSnapshot(
   store: SessionStore,
   topic: string,
@@ -725,22 +735,34 @@ export function createOperatorApi({
       processors: service.processors,
     });
     const resolved = analysisIndex.resolveAsOf(currentCursor);
-    const historicalCutoff = getHistoricalReplayCutoff(
-      service,
-      analysisIndex.lapNumbers,
-      resolved.lap,
-    );
+    const replayCutoff =
+      resolved.source === 'time'
+        ? parseIsoDate(currentCursor.iso ?? null)
+        : getHistoricalReplayCutoff(
+            service,
+            analysisIndex.lapNumbers,
+            resolved.lap,
+          );
 
-    const snapshot = historicalCutoff
+    const snapshot = replayCutoff
       ? buildPositionSnapshotFromTimelines({
           positionTimeline: getNormalizedTopicTimeline(store, 'Position', {
-            to: historicalCutoff,
+            to: replayCutoff,
           }),
           carDataTimeline: getNormalizedTopicTimeline(store, 'CarData', {
-            to: historicalCutoff,
+            to: replayCutoff,
           }),
+          timingDataTimeline:
+            resolved.source === 'time'
+              ? getNormalizedTimingDataTimeline(store, {
+                  to: replayCutoff,
+                })
+              : undefined,
           driverListState: service.processors.driverList?.state ?? null,
-          timingDataState: getTimingDataStateAsOfLap(service, resolved.lap),
+          timingDataState:
+            resolved.source === 'time'
+              ? undefined
+              : getTimingDataStateAsOfLap(service, resolved.lap),
           driverNumber: options.driverNumber,
         })
       : getPositionSnapshot({
@@ -758,7 +780,10 @@ export function createOperatorApi({
     return {
       asOf: {
         lap: resolved.lap,
-        dateTime: resolved.dateTime?.toISOString() ?? null,
+        dateTime:
+          resolved.source === 'time'
+            ? (currentCursor.iso ?? null)
+            : (resolved.dateTime?.toISOString() ?? null),
         source: resolved.source,
       },
       ...(serializeValue(structuredClone(snapshot)) as PositionSnapshot),

@@ -2552,6 +2552,218 @@ describe('tools', () => {
     });
   });
 
+  it('get_position_snapshot reconstructs exact-time snapshots inside the latest lap', async () => {
+    const exactTimePoints = [
+      {
+        type: 'Position',
+        json: {
+          Position: [
+            {
+              Timestamp: '2025-01-01T00:00:12.260Z',
+              Entries: {
+                '4': { Status: 'OnTrack', X: 10, Y: 20, Z: 1 },
+                '81': { Status: 'OnTrack', X: 30, Y: 40, Z: 2 },
+              },
+            },
+          ],
+        },
+        dateTime: new Date('2025-01-01T00:00:12.260Z'),
+      },
+      {
+        type: 'CarData',
+        json: {
+          Entries: [
+            {
+              Utc: '2025-01-01T00:00:12.270Z',
+              Cars: {
+                '4': { Channels: { '2': '302', '3': '8' } },
+                '81': { Channels: { '2': '298', '3': '7' } },
+              },
+            },
+          ],
+        },
+        dateTime: new Date('2025-01-01T00:00:12.270Z'),
+      },
+      {
+        type: 'TimingData',
+        json: {
+          Lines: {
+            '4': { Line: 2, NumberOfLaps: 12 },
+            '81': { Line: 1, NumberOfLaps: 12 },
+          },
+        },
+        dateTime: new Date('2025-01-01T00:00:12.000Z'),
+      },
+      {
+        type: 'TimingDataF1',
+        json: {
+          Lines: {
+            '4': { Line: 1 },
+            '81': { Line: 2 },
+          },
+        },
+        dateTime: new Date('2025-01-01T00:00:12.250Z'),
+      },
+      {
+        type: 'Position',
+        json: {
+          Position: [
+            {
+              Timestamp: '2025-01-01T00:00:12.950Z',
+              Entries: {
+                '4': { Status: 'OnTrack', X: 11, Y: 21, Z: 1 },
+                '81': { Status: 'OnTrack', X: 31, Y: 41, Z: 2 },
+              },
+            },
+          ],
+        },
+        dateTime: new Date('2025-01-01T00:00:12.950Z'),
+      },
+      {
+        type: 'CarData',
+        json: {
+          Entries: [
+            {
+              Utc: '2025-01-01T00:00:12.960Z',
+              Cars: {
+                '4': { Channels: { '2': '290', '3': '7' } },
+                '81': { Channels: { '2': '305', '3': '8' } },
+              },
+            },
+          ],
+        },
+        dateTime: new Date('2025-01-01T00:00:12.960Z'),
+      },
+    ];
+    const byTopic = new Map<string, any[]>();
+    for (const point of exactTimePoints) {
+      const items = byTopic.get(point.type) ?? [];
+      items.push(point);
+      byTopic.set(point.type, items);
+    }
+    for (const items of byTopic.values()) {
+      items.sort(
+        (left, right) => left.dateTime.getTime() - right.dateTime.getTime(),
+      );
+    }
+
+    const tools = makeTools({
+      store: {
+        raw: { subscribe: {}, live: exactTimePoints },
+        topic: (name: string) => {
+          const items = byTopic.get(name) ?? [];
+          return {
+            latest: items.at(-1) ?? null,
+            timeline: (from?: Date, to?: Date) =>
+              items.filter(
+                (point) =>
+                  (!from || point.dateTime >= from) &&
+                  (!to || point.dateTime <= to),
+              ),
+          };
+        },
+      } as any,
+      processors: {
+        ...processors,
+        driverList: {
+          state: {
+            '4': { FullName: 'Lando Norris' },
+            '81': { FullName: 'Oscar Piastri' },
+          },
+          getName: (driverNumber: string) =>
+            driverNumber === '4' ? 'Lando Norris' : 'Oscar Piastri',
+        },
+        timingData: {
+          state: {
+            Lines: {
+              '4': { Line: 2 },
+              '81': { Line: 1 },
+            },
+          },
+          bestLaps: new Map(),
+          getLapHistory: () => [],
+          getLapNumbers: () => [12],
+          driversByLap: new Map([
+            [
+              12,
+              new Map([
+                [
+                  '4',
+                  {
+                    __dateTime: new Date('2025-01-01T00:00:12.000Z'),
+                    Line: 2,
+                  },
+                ],
+                [
+                  '81',
+                  {
+                    __dateTime: new Date('2025-01-01T00:00:12.000Z'),
+                    Line: 1,
+                  },
+                ],
+              ]),
+            ],
+          ]),
+        },
+        position: {
+          state: exactTimePoints[4].json,
+        },
+        carData: {
+          state: exactTimePoints[5].json,
+        },
+      } as any,
+      timeCursor: { iso: '2025-01-01T00:00:12.300Z' },
+      onTimeCursorChange: () => {},
+    });
+
+    await expect(
+      tools.get_position_snapshot.execute({} as any),
+    ).resolves.toEqual({
+      asOf: {
+        source: 'time',
+        lap: 12,
+        dateTime: new Date('2025-01-01T00:00:12.300Z'),
+      },
+      positionTimestamp: '2025-01-01T00:00:12.260Z',
+      telemetryUtc: '2025-01-01T00:00:12.270Z',
+      totalDrivers: 2,
+      drivers: [
+        {
+          driverNumber: '4',
+          driverName: 'Lando Norris',
+          timingPosition: 1,
+          status: 'OnTrack',
+          offTrack: false,
+          coordinates: { x: 10, y: 20, z: 1 },
+          telemetry: {
+            rpm: null,
+            speed: 302,
+            gear: 8,
+            throttle: null,
+            brake: null,
+            drs: null,
+          },
+        },
+        {
+          driverNumber: '81',
+          driverName: 'Oscar Piastri',
+          timingPosition: 2,
+          status: 'OnTrack',
+          offTrack: false,
+          coordinates: { x: 30, y: 40, z: 2 },
+          telemetry: {
+            rpm: null,
+            speed: 298,
+            gear: 7,
+            throttle: null,
+            brake: null,
+            drs: null,
+          },
+        },
+      ],
+    });
+  });
+
   it('get_tyre_stints returns deterministic stint history with TimingAppData fallback', async () => {
     const tools = makeTools({
       store,

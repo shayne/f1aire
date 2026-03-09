@@ -200,6 +200,107 @@ describe('createOperatorApi', () => {
     },
   ];
 
+  const exactTimePositionPoints: RawPoint[] = [
+    {
+      type: 'DriverList',
+      json: {
+        '4': { FullName: 'Lando Norris' },
+        '81': { FullName: 'Oscar Piastri' },
+      },
+      dateTime: new Date('2025-01-01T00:00:01.000Z'),
+    },
+    {
+      type: 'TimingData',
+      json: {
+        Lines: {
+          '4': { Line: 2, NumberOfLaps: 12 },
+          '81': { Line: 1, NumberOfLaps: 12 },
+        },
+      },
+      dateTime: new Date('2025-01-01T00:00:12.000Z'),
+    },
+    {
+      type: 'TimingDataF1',
+      json: {
+        Lines: {
+          '4': { Line: 1 },
+          '81': { Line: 2 },
+        },
+      },
+      dateTime: new Date('2025-01-01T00:00:12.250Z'),
+    },
+    {
+      type: 'Position',
+      json: {
+        Position: [
+          {
+            Timestamp: '2025-01-01T00:00:12.260Z',
+            Entries: {
+              '4': { Status: 'OnTrack', X: 10, Y: 20, Z: 1 },
+              '81': { Status: 'OnTrack', X: 30, Y: 40, Z: 2 },
+            },
+          },
+        ],
+      },
+      dateTime: new Date('2025-01-01T00:00:12.260Z'),
+    },
+    {
+      type: 'CarData',
+      json: {
+        Entries: [
+          {
+            Utc: '2025-01-01T00:00:12.270Z',
+            Cars: {
+              '4': { Channels: { '2': '302', '3': '8' } },
+              '81': { Channels: { '2': '298', '3': '7' } },
+            },
+          },
+        ],
+      },
+      dateTime: new Date('2025-01-01T00:00:12.270Z'),
+    },
+    {
+      type: 'TimingData',
+      json: {
+        Lines: {
+          '4': { Line: 2 },
+          '81': { Line: 1 },
+        },
+      },
+      dateTime: new Date('2025-01-01T00:00:12.900Z'),
+    },
+    {
+      type: 'Position',
+      json: {
+        Position: [
+          {
+            Timestamp: '2025-01-01T00:00:12.950Z',
+            Entries: {
+              '4': { Status: 'OnTrack', X: 11, Y: 21, Z: 1 },
+              '81': { Status: 'OnTrack', X: 31, Y: 41, Z: 2 },
+            },
+          },
+        ],
+      },
+      dateTime: new Date('2025-01-01T00:00:12.950Z'),
+    },
+    {
+      type: 'CarData',
+      json: {
+        Entries: [
+          {
+            Utc: '2025-01-01T00:00:12.960Z',
+            Cars: {
+              '4': { Channels: { '2': '290', '3': '7' } },
+              '81': { Channels: { '2': '305', '3': '8' } },
+            },
+          },
+        ],
+      },
+      dateTime: new Date('2025-01-01T00:00:12.960Z'),
+    },
+  ];
+
   it('returns stable topic snapshots backed by processor state', () => {
     const service = new TimingService();
     points.forEach((point) => service.enqueue(point));
@@ -679,6 +780,62 @@ describe('createOperatorApi', () => {
             rpm: null,
             speed: 301,
             gear: 8,
+            throttle: null,
+            brake: null,
+            drs: null,
+          },
+        },
+      ],
+    });
+  });
+
+  it('reconstructs exact-time position snapshots within the latest lap', () => {
+    const service = new TimingService();
+    exactTimePositionPoints.forEach((point) => service.enqueue(point));
+
+    const api = createOperatorApi({
+      store: buildStore(exactTimePositionPoints),
+      service,
+      timeCursor: { iso: '2025-01-01T00:00:12.300Z' },
+    });
+
+    expect(api.getPositionSnapshot()).toEqual({
+      asOf: {
+        lap: 12,
+        dateTime: '2025-01-01T00:00:12.300Z',
+        source: 'time',
+      },
+      positionTimestamp: '2025-01-01T00:00:12.260Z',
+      telemetryUtc: '2025-01-01T00:00:12.270Z',
+      totalDrivers: 2,
+      drivers: [
+        {
+          driverNumber: '4',
+          driverName: 'Lando Norris',
+          timingPosition: 1,
+          status: 'OnTrack',
+          offTrack: false,
+          coordinates: { x: 10, y: 20, z: 1 },
+          telemetry: {
+            rpm: null,
+            speed: 302,
+            gear: 8,
+            throttle: null,
+            brake: null,
+            drs: null,
+          },
+        },
+        {
+          driverNumber: '81',
+          driverName: 'Oscar Piastri',
+          timingPosition: 2,
+          status: 'OnTrack',
+          offTrack: false,
+          coordinates: { x: 30, y: 40, z: 2 },
+          telemetry: {
+            rpm: null,
+            speed: 298,
+            gear: 7,
             throttle: null,
             brake: null,
             drs: null,

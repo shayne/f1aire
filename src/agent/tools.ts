@@ -723,13 +723,23 @@ export function makeTools({
   const getPositionSnapshotView = (driverNumber?: string | number) => {
     const resolved = resolveCurrentCursor();
     const latestLap = analysisIndex.lapNumbers.at(-1) ?? null;
-    const useHistoricalReplay =
-      Boolean(resolved.dateTime) &&
-      typeof resolved.lap === 'number' &&
-      typeof latestLap === 'number' &&
-      resolved.lap < latestLap;
+    const replayCutoff =
+      resolved.source === 'time'
+        ? (() => {
+            if (!currentCursor.iso) {
+              return null;
+            }
+            const parsed = new Date(currentCursor.iso);
+            return Number.isFinite(parsed.getTime()) ? parsed : null;
+          })()
+        : Boolean(resolved.dateTime) &&
+            typeof resolved.lap === 'number' &&
+            typeof latestLap === 'number' &&
+            resolved.lap < latestLap
+          ? resolved.dateTime
+          : null;
 
-    if (!useHistoricalReplay) {
+    if (!replayCutoff) {
       return getPositionSnapshot({
         positionState: processors.position?.state,
         carDataState: processors.carData?.state,
@@ -741,13 +751,30 @@ export function makeTools({
 
     return buildPositionSnapshotFromTimelines({
       positionTimeline: analysis.getTopicTimeline('Position', {
-        to: resolved.dateTime ?? undefined,
+        to: replayCutoff,
       }),
       carDataTimeline: analysis.getTopicTimeline('CarData', {
-        to: resolved.dateTime ?? undefined,
+        to: replayCutoff,
       }),
+      timingDataTimeline:
+        resolved.source === 'time'
+          ? [
+              ...analysis.getTopicTimeline('TimingData', {
+                to: replayCutoff,
+              }),
+              ...analysis.getTopicTimeline('TimingDataF1', {
+                to: replayCutoff,
+              }),
+            ].sort(
+              (left, right) =>
+                left.dateTime.getTime() - right.dateTime.getTime(),
+            )
+          : undefined,
       driverListState: processors.driverList?.state ?? null,
-      timingDataState: getTimingDataStateAsOfLap(resolved.lap),
+      timingDataState:
+        resolved.source === 'time'
+          ? undefined
+          : getTimingDataStateAsOfLap(resolved.lap),
       driverNumber,
     });
   };
@@ -1797,7 +1824,8 @@ export function makeTools({
         asOf,
         lapCount:
           getLapCountSnapshot(state) ??
-          (pickKnownKeys(state, ['CurrentLap', 'TotalLaps']) ?? state),
+          pickKnownKeys(state, ['CurrentLap', 'TotalLaps']) ??
+          state,
       };
     }
 
@@ -3385,11 +3413,19 @@ export function makeTools({
         }
 
         const resolved = resolveCurrentCursor();
+        const snapshotDateTime =
+          resolved.source === 'time' && currentCursor.iso
+            ? new Date(currentCursor.iso)
+            : resolved.dateTime;
         return {
           asOf: {
             source: resolved.source,
             lap: resolved.lap,
-            dateTime: resolved.dateTime,
+            dateTime:
+              snapshotDateTime instanceof Date &&
+              Number.isFinite(snapshotDateTime.getTime())
+                ? snapshotDateTime
+                : resolved.dateTime,
           },
           ...snapshot,
         };
