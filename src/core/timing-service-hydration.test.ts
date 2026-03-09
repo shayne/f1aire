@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { deflateRawSync } from 'node:zlib';
 import {
   hydrateTimingServiceFromStore,
   TimingService,
@@ -21,6 +22,85 @@ function buildStore(raw: {
 }
 
 describe('hydrateTimingServiceFromStore', () => {
+  it('hydrates compressed subscription feeds before canonicalizing topic names', () => {
+    const service = new TimingService();
+    const carData = deflateRawSync(
+      Buffer.from(
+        JSON.stringify({
+          Entries: [
+            {
+              Utc: '2025-03-01T10:00:00Z',
+              Cars: {
+                '4': {
+                  Channels: { '0': 12100, '2': 314 },
+                },
+              },
+            },
+          ],
+        }),
+      ),
+    ).toString('base64');
+    const position = deflateRawSync(
+      Buffer.from(
+        JSON.stringify({
+          Position: [
+            {
+              Timestamp: '2025-03-01T10:00:00Z',
+              Entries: {
+                '4': { Status: 'OnTrack', X: 1.5, Y: 2.5, Z: 0 },
+              },
+            },
+          ],
+        }),
+      ),
+    ).toString('base64');
+    const store = buildStore({
+      subscribe: {
+        SessionInfo: {
+          Name: 'Race',
+          Path: '2025/2025-03-01_Test_Weekend/2025-03-01_Race/',
+        },
+        Heartbeat: {
+          Utc: '2025-03-01T10:00:00Z',
+        },
+        'CarData.z': carData,
+        'Position.z': position,
+      },
+      live: [],
+      keyframes: null,
+    });
+
+    const result = hydrateTimingServiceFromStore({ service, store });
+
+    expect(result).toEqual({
+      subscribeTopics: ['SessionInfo', 'Heartbeat', 'CarData', 'Position'],
+      keyframeTopics: [],
+      livePoints: 0,
+    });
+    expect(service.processors.carData.state).toEqual({
+      Entries: [
+        {
+          Utc: '2025-03-01T10:00:00Z',
+          Cars: {
+            '4': {
+              Channels: { '0': 12100, '2': 314 },
+            },
+          },
+        },
+      ],
+    });
+    expect(service.processors.position.state).toEqual({
+      Position: [
+        {
+          Entries: {
+            '4': { Status: 'OnTrack', X: 1.5, Y: 2.5, Z: 0 },
+          },
+          Timestamp: '2025-03-01T10:00:00Z',
+        },
+      ],
+    });
+  });
+
   it('hydrates keyframe-only feeds into processors when the live stream is missing', () => {
     const service = new TimingService();
     const store = buildStore({

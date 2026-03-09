@@ -208,7 +208,7 @@ export function hydrateTimingServiceFromStore(opts: {
     for (const [topic, json] of Object.entries(store.raw.subscribe)) {
       const canonicalTopic = canonicalizeTopicName(topic);
       service.enqueue({
-        type: canonicalTopic,
+        type: topic,
         json,
         dateTime: fallbackDateTime,
       });
@@ -235,7 +235,7 @@ export function hydrateTimingServiceFromStore(opts: {
 
       const canonicalTopic = canonicalizeTopicName(topic);
       service.enqueue({
-        type: canonicalTopic,
+        type: topic,
         json,
         dateTime: fallbackDateTime,
       });
