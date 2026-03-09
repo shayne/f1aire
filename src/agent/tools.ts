@@ -27,6 +27,7 @@ import { buildAnalysisIndex } from '../core/analysis-index.js';
 import { getHeartbeatSnapshot } from '../core/heartbeat.js';
 import { shapeOf, shapeOfMany } from '../core/inspect.js';
 import { getLapCountSnapshot } from '../core/lap-count.js';
+import { getWeatherSnapshot } from '../core/weather-data.js';
 import {
   classifyDrsChannel45,
   computeGapTrainsForLap,
@@ -1661,16 +1662,7 @@ export function makeTools({
     if (topic === 'WeatherData') {
       const state = processors.weatherData?.state ?? null;
       if (!state) return null;
-      const preferred = pickKnownKeys(state, [
-        'AirTemp',
-        'TrackTemp',
-        'Humidity',
-        'Pressure',
-        'WindSpeed',
-        'WindDirection',
-        'Rainfall',
-      ]);
-      return { asOf, weather: preferred ?? state };
+      return { asOf, weather: getWeatherSnapshot(state) ?? state };
     }
 
     if (topic === 'ExtrapolatedClock') {
@@ -2360,9 +2352,12 @@ export function makeTools({
       },
     }),
     get_weather: tool({
-      description: 'Get merged WeatherData',
+      description: 'Get the latest typed WeatherData snapshot',
       inputSchema: z.object({}),
-      execute: async () => processors.weatherData?.state ?? null,
+      execute: async () => {
+        const state = processors.weatherData?.state ?? null;
+        return state ? (getWeatherSnapshot(state) ?? state) : null;
+      },
     }),
     get_weather_series: tool({
       description:

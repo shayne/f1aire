@@ -239,7 +239,7 @@ describe('hydrateTimingServiceFromStore', () => {
       Utc: '2025-03-01T10:00:00.000Z',
     });
     expect(service.processors.weatherData.state).toEqual({
-      AirTemp: '21.4',
+      AirTemp: 21.4,
     });
   });
 });

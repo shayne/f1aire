@@ -20,6 +20,7 @@ import { TimingAppDataProcessor } from './processors/timing-app-data.js';
 import { TimingDataProcessor } from './processors/timing-data.js';
 import { TimingStatsProcessor } from './processors/timing-stats.js';
 import { TrackStatusProcessor } from './processors/track-status.js';
+import { WeatherDataProcessor } from './processors/weather-data.js';
 import { getTopicDefinition, TOPIC_REGISTRY } from './topic-registry.js';
 
 const EXPLICIT_PROCESSOR_TOPICS = new Set([
@@ -131,7 +132,7 @@ export class TimingService {
     timingStats: new TimingStatsProcessor(),
     trackStatus: new TrackStatusProcessor(),
     lapCount: new LapCountProcessor(),
-    weatherData: new ReplaceProcessor('WeatherData'),
+    weatherData: new WeatherDataProcessor(),
     sessionInfo: new SessionInfoProcessor(),
     sessionData: new MergeProcessor('SessionData'),
     extrapolatedClock: new ExtrapolatedClockProcessor(),

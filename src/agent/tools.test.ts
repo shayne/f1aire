@@ -1062,6 +1062,40 @@ describe('tools', () => {
     });
   });
 
+  it('get_weather returns the latest typed weather snapshot', async () => {
+    const tools = makeTools({
+      store,
+      processors: {
+        ...processors,
+        weatherData: {
+          state: {
+            Timestamp: '2026-03-07T04:50:11.926Z',
+            AirTemp: '20.4',
+            Humidity: '67.7',
+            Pressure: '1013.7',
+            Rainfall: '1',
+            TrackTemp: '36.9',
+            WindDirection: '94',
+            WindSpeed: '2.7',
+          },
+        },
+      } as any,
+      timeCursor: { latest: true },
+      onTimeCursorChange: () => {},
+    });
+
+    await expect(tools.get_weather.execute({} as any)).resolves.toEqual({
+      timestamp: '2026-03-07T04:50:11.926Z',
+      airTempC: 20.4,
+      humidityPct: 67.7,
+      pressureHpa: 1013.7,
+      rainfall: 1,
+      trackTempC: 36.9,
+      windDirectionDeg: 94,
+      windSpeed: 2.7,
+    });
+  });
+
   it('get_driver_race_info returns cursor-aware typed rows', async () => {
     const tools = makeTools({
       store: {

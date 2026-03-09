@@ -342,7 +342,7 @@ describe('TimingService', () => {
     });
 
     expect(service.processors.weatherData.state).toEqual({
-      AirTemp: '22',
+      AirTemp: 22,
     });
     expect(service.processors.lapCount.state).toEqual({
       CurrentLap: 12,
