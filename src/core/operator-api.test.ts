@@ -293,6 +293,47 @@ describe('createOperatorApi', () => {
     });
   });
 
+  it('steps replay control by time relative to the current cursor timestamp', () => {
+    const service = new TimingService();
+    points.forEach((point) => service.enqueue(point));
+    const onTimeCursorChange = vi.fn();
+    const api = createOperatorApi({
+      store: buildStore(points),
+      service,
+      timeCursor: { iso: '2025-01-01T00:00:11.700Z' },
+      onTimeCursorChange,
+    });
+
+    expect(api.applyControl({ operation: 'step-time', deltaMs: 100 })).toEqual({
+      ok: true,
+      value: {
+        sessionLoaded: true,
+        sessionName: null,
+        cursor: {
+          lap: 12,
+          iso: '2025-01-01T00:00:11.800Z',
+          latest: false,
+        },
+        resolved: {
+          lap: 12,
+          dateTime: '2025-01-01T00:00:12.000Z',
+          source: 'time',
+        },
+        lapRange: {
+          firstLap: 11,
+          lastLap: 12,
+          totalLaps: 2,
+        },
+      },
+    });
+
+    expect(onTimeCursorChange).toHaveBeenLastCalledWith({
+      lap: 12,
+      iso: '2025-01-01T00:00:11.800Z',
+      latest: false,
+    });
+  });
+
   it('returns structured errors for invalid replay control requests', () => {
     const api = createOperatorApi({
       store: buildStore([]),
@@ -311,6 +352,13 @@ describe('createOperatorApi', () => {
       error: {
         errorCode: 'invalid-request',
         errorMessage: 'set-time requires a valid ISO timestamp.',
+      },
+    });
+    expect(api.applyControl({ operation: 'step-time', deltaMs: Number.NaN })).toEqual({
+      ok: false,
+      error: {
+        errorCode: 'invalid-request',
+        errorMessage: 'step-time requires a finite deltaMs value.',
       },
     });
   });

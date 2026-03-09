@@ -46,13 +46,15 @@ export type ReplayControlOperation =
   | 'set-latest'
   | 'set-lap'
   | 'set-time'
-  | 'step-lap';
+  | 'step-lap'
+  | 'step-time';
 
 export type ReplayControlRequest =
   | { operation: 'set-latest' }
   | { operation: 'set-lap'; lap: number }
   | { operation: 'set-time'; iso: string }
-  | { operation: 'step-lap'; delta?: number };
+  | { operation: 'step-lap'; delta?: number }
+  | { operation: 'step-time'; deltaMs: number };
 
 export type ReplayControlErrorCode =
   | 'invalid-request'
@@ -250,6 +252,15 @@ function normalizeCursor(
     return { lap: resolved.lap, iso: requested.iso, latest: false };
   }
   return { lap: resolved.lap };
+}
+
+function parseCursorIso(cursor: TimeCursor): Date | null {
+  if (typeof cursor.iso !== 'string' || cursor.iso.trim().length === 0) {
+    return null;
+  }
+
+  const parsed = new Date(cursor.iso);
+  return Number.isFinite(parsed.getTime()) ? parsed : null;
 }
 
 function sortTimingSnapshots(entries: Array<[string, unknown]>) {
@@ -509,6 +520,35 @@ export function createOperatorApi({
             ? Math.trunc(request.delta)
             : 1;
         return commitCursor({ lap: startingLap + delta });
+      }
+      case 'step-time': {
+        if (!Number.isFinite(request.deltaMs)) {
+          return createControlError(
+            'invalid-request',
+            'step-time requires a finite deltaMs value.',
+          );
+        }
+        if (!lapRange) {
+          return createControlError(
+            'no-laps',
+            'No lap snapshots are available for replay control.',
+          );
+        }
+
+        const current = analysisIndex.resolveAsOf(currentCursor);
+        const baseTime = parseCursorIso(currentCursor) ?? current.dateTime;
+        if (!baseTime) {
+          return createControlError(
+            'invalid-request',
+            'step-time requires replay timestamps to be available.',
+          );
+        }
+
+        return commitCursor({
+          iso: new Date(
+            baseTime.getTime() + Math.trunc(request.deltaMs),
+          ).toISOString(),
+        });
       }
       default:
         return createControlError(

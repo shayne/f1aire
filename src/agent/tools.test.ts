@@ -3477,6 +3477,103 @@ describe('tools', () => {
     expect(onTimeCursorChange).toHaveBeenNthCalledWith(2, { lap: 11 });
   });
 
+  it('step_time_cursor supports time-based stepping via replay control primitives', async () => {
+    const onTimeCursorChange = vi.fn();
+    const tools = makeTools({
+      store: {
+        ...store,
+        raw: {
+          subscribe: { SessionInfo: { Name: 'Replay Test' } },
+          live: [
+            {
+              type: 'TimingData',
+              json: {},
+              dateTime: new Date('2025-01-01T00:00:10Z'),
+            },
+          ],
+        },
+      } as any,
+      processors: {
+        ...processors,
+        timingData: {
+          state: {
+            Lines: {
+              '4': { Line: 1, NumberOfLaps: 11 },
+            },
+          },
+          bestLaps: new Map(),
+          driversByLap: new Map([
+            [
+              11,
+              new Map([
+                [
+                  '4',
+                  {
+                    Line: 1,
+                    NumberOfLaps: 11,
+                    __dateTime: new Date('2025-01-01T00:00:11Z'),
+                  },
+                ],
+              ]),
+            ],
+            [
+              12,
+              new Map([
+                [
+                  '4',
+                  {
+                    Line: 1,
+                    NumberOfLaps: 12,
+                    __dateTime: new Date('2025-01-01T00:00:12Z'),
+                  },
+                ],
+              ]),
+            ],
+          ]),
+          getLapHistory: () => [],
+          getLapNumbers: () => [11, 12],
+        },
+        driverList: {
+          state: { '4': { FullName: 'Lando Norris' } },
+          getName: () => 'Lando Norris',
+        },
+      } as any,
+      timeCursor: { iso: '2025-01-01T00:00:11.700Z' },
+      onTimeCursorChange,
+    });
+
+    await expect(
+      tools.step_time_cursor.execute({ deltaMs: 100 } as any),
+    ).resolves.toEqual({
+      ok: true,
+      value: {
+        sessionLoaded: true,
+        sessionName: null,
+        cursor: {
+          lap: 12,
+          iso: '2025-01-01T00:00:11.800Z',
+          latest: false,
+        },
+        resolved: {
+          lap: 12,
+          source: 'time',
+          dateTime: '2025-01-01T00:00:12.000Z',
+        },
+        lapRange: {
+          firstLap: 11,
+          lastLap: 12,
+          totalLaps: 2,
+        },
+      },
+    });
+
+    expect(onTimeCursorChange).toHaveBeenLastCalledWith({
+      lap: 12,
+      iso: '2025-01-01T00:00:11.800Z',
+      latest: false,
+    });
+  });
+
   it('step_time_cursor returns a structured no-laps error when replay data is unavailable', async () => {
     const tools = makeTools({
       store,

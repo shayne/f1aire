@@ -3290,15 +3290,24 @@ export function makeTools({
     }),
     step_time_cursor: tool({
       description:
-        'Step the analysis cursor forward or backward by lap relative to the current cursor. Returns structured replay-control state or an explicit error when no lap snapshots exist.',
+        'Step the analysis cursor forward or backward relative to the current cursor. Use delta for lap stepping or deltaMs for time stepping. Returns structured replay-control state or an explicit error when replay data is unavailable.',
       inputSchema: z.object({
         delta: z.number().int().optional(),
+        deltaMs: z.number().optional(),
       }),
-      execute: async ({ delta }) =>
-        createReplayApi().applyControl({
+      execute: async ({ delta, deltaMs }) => {
+        if (typeof deltaMs === 'number') {
+          return createReplayApi().applyControl({
+            operation: 'step-time',
+            deltaMs,
+          });
+        }
+
+        return createReplayApi().applyControl({
           operation: 'step-lap',
           ...(typeof delta === 'number' ? { delta } : {}),
-        }),
+        });
+      },
     }),
     get_stint_pace: tool({
       description: 'Get stint pace summary for a driver.',

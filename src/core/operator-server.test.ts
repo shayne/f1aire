@@ -208,6 +208,28 @@ describe('operator-server', () => {
       },
     });
 
+    const stepTimeResponse = await fetch(`${server.origin}/control`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        operation: 'step-time',
+        deltaMs: -600,
+      }),
+    });
+    expect(stepTimeResponse.status).toBe(200);
+    await expect(stepTimeResponse.json()).resolves.toMatchObject({
+      cursor: {
+        lap: 11,
+        iso: '2025-01-01T00:00:11.400Z',
+        latest: false,
+      },
+      resolved: {
+        lap: 11,
+        dateTime: '2025-01-01T00:00:11.000Z',
+        source: 'time',
+      },
+    });
+
     const invalidResponse = await fetch(`${server.origin}/control`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -217,6 +239,17 @@ describe('operator-server', () => {
     await expect(invalidResponse.json()).resolves.toEqual({
       errorCode: 'invalid-request',
       errorMessage: 'set-time requires a valid ISO timestamp.',
+    });
+
+    const invalidStepTimeResponse = await fetch(`${server.origin}/control`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ operation: 'step-time', deltaMs: 'bad' }),
+    });
+    expect(invalidStepTimeResponse.status).toBe(400);
+    await expect(invalidStepTimeResponse.json()).resolves.toEqual({
+      errorCode: 'invalid-request',
+      errorMessage: 'step-time requires a finite deltaMs value.',
     });
   });
 });
