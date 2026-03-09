@@ -20,6 +20,7 @@ import {
   getPositionSnapshot,
   type PositionSnapshot,
 } from './position-snapshot.js';
+import { getSessionInfoSummary } from './session-info.js';
 import {
   getCurrentTyreRecords,
   getTyreStintRecords,
@@ -250,6 +251,36 @@ function serializeValue(value: unknown): unknown {
     return out;
   }
   return value;
+}
+
+function serializeTopicData(topic: string, data: unknown): unknown {
+  if (topic === 'SessionInfo') {
+    const summary = getSessionInfoSummary(data);
+    if (!summary) {
+      return serializeValue(data);
+    }
+
+    return {
+      sessionInfo: serializeValue({
+        Key: summary.Key,
+        Name: summary.Name,
+        Type: summary.Type,
+        Path: summary.Path,
+        StaticPrefix: summary.StaticPrefix,
+        StartDate: summary.StartDate,
+        EndDate: summary.EndDate,
+        GmtOffset: summary.GmtOffset,
+        ScheduledStartUtc: summary.ScheduledStartUtc,
+        IsRace: summary.IsRace,
+        IsQualifying: summary.IsQualifying,
+        IsSprint: summary.IsSprint,
+        Meeting: summary.Meeting,
+      }),
+      circuitGeometry: serializeValue(summary.CircuitGeometry),
+    };
+  }
+
+  return serializeValue(data);
 }
 
 function parseIsoDate(value: string | null): Date | null {
@@ -713,7 +744,7 @@ export function createOperatorApi({
         semantics: definition?.semantics ?? null,
         source: 'processor',
         dateTime: fallback?.dateTime?.toISOString() ?? null,
-        data: serializeValue(structuredClone(mergedState)),
+        data: serializeTopicData(canonicalTopic, structuredClone(mergedState)),
       };
     }
 
@@ -729,7 +760,7 @@ export function createOperatorApi({
       semantics: definition?.semantics ?? null,
       source: 'raw',
       dateTime: normalized.dateTime?.toISOString() ?? null,
-      data: serializeValue(normalized.json),
+      data: serializeTopicData(canonicalTopic, normalized.json),
     };
   };
 

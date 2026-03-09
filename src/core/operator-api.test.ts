@@ -344,6 +344,71 @@ describe('createOperatorApi', () => {
         },
       },
     });
+
+    service.enqueue({
+      type: 'SessionInfo',
+      json: {
+        Key: '3001',
+        Name: 'Race',
+        Type: 'Race',
+        Path: '2025/2025-05-25_Monaco_Grand_Prix/2025-05-25_Race/',
+        StartDate: '2025-05-25T15:00:00',
+        EndDate: '2025-05-25T17:00:00',
+        GmtOffset: '+0200',
+        Meeting: {
+          Location: 'Monte Carlo',
+          Circuit: { Key: 6, ShortName: 'Monaco' },
+        },
+        CircuitPoints: [
+          { x: 1, y: 2 },
+          { x: 3, y: 4 },
+        ],
+        CircuitCorners: [{ number: 1, x: 5.5, y: 6.5 }],
+        CircuitRotation: 90,
+      },
+      dateTime: new Date('2025-01-01T00:00:13Z'),
+    });
+
+    expect(api.getLatest('SessionInfo')).toEqual({
+      topic: 'SessionInfo',
+      streamName: 'SessionInfo',
+      availability: 'all-sessions',
+      semantics: 'replace',
+      source: 'processor',
+      dateTime: null,
+      data: {
+        sessionInfo: {
+          Key: 3001,
+          Name: 'Race',
+          Type: 'Race',
+          Path: '2025/2025-05-25_Monaco_Grand_Prix/2025-05-25_Race/',
+          StaticPrefix:
+            'https://livetiming.formula1.com/static/2025/2025-05-25_Monaco_Grand_Prix/2025-05-25_Race/',
+          StartDate: '2025-05-25T15:00:00',
+          EndDate: '2025-05-25T17:00:00',
+          GmtOffset: '+02:00',
+          ScheduledStartUtc: '2025-05-25T13:00:00.000Z',
+          IsRace: true,
+          IsQualifying: false,
+          IsSprint: false,
+          Meeting: {
+            Key: null,
+            Name: null,
+            OfficialName: null,
+            Location: 'Monte Carlo',
+            Country: null,
+            Circuit: { Key: 6, ShortName: 'Monaco' },
+          },
+        },
+        circuitGeometry: {
+          pointCount: 2,
+          cornerCount: 1,
+          rotation: 90,
+          hasGeometry: true,
+          sampleCorners: [{ number: 1, x: 5.5, y: 6.5 }],
+        },
+      },
+    });
   });
 
   it('provides cursor-driven lap replay control with nearest-lap normalization', () => {

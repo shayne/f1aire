@@ -88,6 +88,7 @@ import {
   buildPositionSnapshotFromTimelines,
   getPositionSnapshot,
 } from '../core/position-snapshot.js';
+import { getSessionInfoSummary } from '../core/session-info.js';
 import {
   getRaceControlEvents,
   type RaceControlEvent,
@@ -1239,6 +1240,39 @@ export function makeTools({
     return out;
   };
 
+  const getStructuredSessionInfoState = (value: unknown) => {
+    const summary = getSessionInfoSummary(value);
+    if (!summary) {
+      return null;
+    }
+
+    return {
+      sessionInfo:
+        pickKnownKeys(summary, [
+          'Key',
+          'Name',
+          'Type',
+          'Path',
+          'StaticPrefix',
+          'StartDate',
+          'EndDate',
+          'GmtOffset',
+          'ScheduledStartUtc',
+          'IsRace',
+          'IsQualifying',
+          'IsSprint',
+          'Meeting',
+        ]) ?? summary,
+      circuitGeometry: {
+        pointCount: summary.CircuitGeometry.pointCount,
+        cornerCount: summary.CircuitGeometry.cornerCount,
+        rotation: summary.CircuitGeometry.rotation,
+        hasGeometry: summary.CircuitGeometry.hasGeometry,
+        sampleCorners: summary.CircuitGeometry.sampleCorners,
+      },
+    };
+  };
+
   const pickLastIndexedValues = (value: unknown, limit: number) => {
     if (!isPlainObject(value)) return null;
     const keys = Object.keys(value).sort((a, b) => Number(a) - Number(b));
@@ -1716,26 +1750,9 @@ export function makeTools({
     if (topic === 'SessionInfo') {
       const state = processors.sessionInfo?.state as any;
       if (!state) return null;
-      const circuitPoints = Array.isArray(state?.CircuitPoints)
-        ? state.CircuitPoints
-        : [];
-      const circuitCorners = Array.isArray(state?.CircuitCorners)
-        ? state.CircuitCorners
-        : [];
-      return {
-        asOf,
-        sessionInfo:
-          pickKnownKeys(state, ['Name', 'Type', 'Path', 'Meeting']) ?? state,
-        circuitGeometry: {
-          pointCount: circuitPoints.length,
-          cornerCount: circuitCorners.length,
-          rotation:
-            typeof state?.CircuitRotation === 'number'
-              ? state.CircuitRotation
-              : null,
-          sampleCorners: circuitCorners.slice(0, 6),
-        },
-      };
+      const summary = getStructuredSessionInfoState(state);
+      if (!summary) return null;
+      return { asOf, ...summary };
     }
 
     if (topic === 'SessionData') {
@@ -2447,9 +2464,11 @@ export function makeTools({
         }),
     }),
     get_session_info: tool({
-      description: 'Get merged SessionInfo',
+      description:
+        'Get deterministic SessionInfo with derived static prefix, scheduled UTC start, and session-type flags.',
       inputSchema: z.object({}),
-      execute: async () => processors.sessionInfo?.state ?? null,
+      execute: async () =>
+        getStructuredSessionInfoState(processors.sessionInfo?.state ?? null),
     }),
     get_session_data: tool({
       description: 'Get merged SessionData',
