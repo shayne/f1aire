@@ -94,6 +94,12 @@ import {
   buildSessionDataState,
   buildSessionLifecycleSnapshot,
 } from '../core/session-lifecycle.js';
+import {
+  getTlaRcmRecords,
+  summarizeTlaRcmRecords,
+  TLA_RCM_CATEGORIES,
+  type TlaRcmRecord,
+} from '../core/tla-rcm.js';
 import type { TimeCursor } from '../core/time-cursor.js';
 import { getDataBookIndex, getDataBookTopic } from './data-book/data-book.js';
 import type { LapRecord } from '../core/analysis-index.js';
@@ -450,6 +456,12 @@ export function makeTools({
   const serializeRaceControlEvent = (event: RaceControlEvent) => ({
     ...event,
     dateTime: event.dateTime ? event.dateTime.toISOString() : null,
+  });
+
+  const serializeTlaRcmRecord = (record: TlaRcmRecord) => ({
+    ...record,
+    dateTime: record.dateTime ? record.dateTime.toISOString() : null,
+    driverName: record.driverNumber ? getDriverName(record.driverNumber) : null,
   });
 
   const getOvertakeSeriesContext = (record: OvertakeSeriesRecord) => {
@@ -1109,6 +1121,75 @@ export function makeTools({
       sessionStatus: snapshot.sessionStatus,
       trackStatus: snapshot.trackStatus,
       archiveStatus: snapshot.archiveStatus,
+      events,
+    };
+  };
+
+  const listTlaRcmEvents = (
+    opts: {
+      category?: string;
+      driverNumber?: string | number;
+      search?: string;
+      includeFuture?: boolean;
+      limit?: number;
+      order?: 'asc' | 'desc';
+    } = {},
+  ) => {
+    const resolved = resolveCurrentCursor();
+    const to = opts.includeFuture
+      ? undefined
+      : (resolved.dateTime ?? undefined);
+
+    let events = getTlaRcmRecords({
+      tlaRcmState:
+        processors.extraTopics?.TlaRcm?.state ??
+        getNormalizedLatest('TlaRcm')?.json ??
+        null,
+      timeline: analysis.getTopicTimeline('TlaRcm', { to }),
+    });
+
+    const categoryFilter =
+      typeof opts.category === 'string'
+        ? opts.category.trim().toLowerCase()
+        : '';
+    const driverFilter =
+      opts.driverNumber === undefined ? null : String(opts.driverNumber);
+    const searchFilter =
+      typeof opts.search === 'string' ? opts.search.trim().toLowerCase() : '';
+
+    if (categoryFilter) {
+      events = events.filter(
+        (event) => event.category.toLowerCase() === categoryFilter,
+      );
+    }
+    if (driverFilter !== null) {
+      events = events.filter((event) => event.driverNumber === driverFilter);
+    }
+    if (searchFilter) {
+      events = events.filter((event) =>
+        [event.message, event.timestamp, event.driverNumber]
+          .filter((value): value is string => typeof value === 'string')
+          .some((value) => value.toLowerCase().includes(searchFilter)),
+      );
+    }
+
+    const order = opts.order ?? 'desc';
+    if (order === 'desc') {
+      events = [...events].reverse();
+    }
+
+    const total = events.length;
+    const summary = summarizeTlaRcmRecords(events);
+
+    if (typeof opts.limit === 'number' && opts.limit > 0) {
+      events = events.slice(0, opts.limit);
+    }
+
+    return {
+      resolved,
+      total,
+      summary,
+      order,
       events,
     };
   };
@@ -2448,6 +2529,49 @@ export function makeTools({
           }).events.length,
           returned: events.length,
           events: events.map(serializeRaceControlEvent),
+        };
+      },
+    }),
+    get_tla_rcm_events: tool({
+      description:
+        'Get deterministic TlaRcm ticker events with typed message context, filtered to the current analysis cursor unless includeFuture is true.',
+      inputSchema: z.object({
+        category: z.enum(TLA_RCM_CATEGORIES).optional(),
+        driverNumber: z.union([z.string(), z.number()]).optional(),
+        search: z.string().optional(),
+        includeFuture: z.boolean().optional(),
+        limit: z.number().int().positive().max(200).optional(),
+        order: z.enum(['asc', 'desc']).optional(),
+      }),
+      execute: async ({
+        category,
+        driverNumber,
+        search,
+        includeFuture,
+        limit,
+        order,
+      }) => {
+        const result = listTlaRcmEvents({
+          category,
+          driverNumber,
+          search,
+          includeFuture,
+          limit,
+          order,
+        });
+
+        return {
+          asOf: {
+            source: result.resolved.source,
+            lap: result.resolved.lap,
+            dateTime: result.resolved.dateTime,
+            includeFuture: Boolean(includeFuture),
+          },
+          total: result.total,
+          returned: result.events.length,
+          order: result.order,
+          summary: result.summary,
+          events: result.events.map(serializeTlaRcmRecord),
         };
       },
     }),

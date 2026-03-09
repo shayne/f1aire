@@ -1054,7 +1054,12 @@ export const DATA_BOOK_TOPICS: DataBookTopic[] = [
       'This is not a full replacement for detailed RaceControlMessages categories.',
     ],
     relatedTopics: ['RaceControlMessages', 'TrackStatus', 'SessionStatus'],
-    bestTools: ['get_latest', 'get_topic_timeline', 'get_keyframe'],
+    bestTools: [
+      'get_tla_rcm_events',
+      'get_latest',
+      'get_topic_timeline',
+      'get_keyframe',
+    ],
   },
   {
     topic: 'DriverTracker',

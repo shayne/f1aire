@@ -67,6 +67,7 @@ describe('tools', () => {
     expect(tools).toHaveProperty('get_position_snapshot');
     expect(tools).toHaveProperty('get_position_changes');
     expect(tools).toHaveProperty('get_race_control_events');
+    expect(tools).toHaveProperty('get_tla_rcm_events');
     expect(tools).toHaveProperty('get_driver_tracker');
     expect(tools).toHaveProperty('get_driver_race_info');
     expect(tools).toHaveProperty('get_overtake_series');
@@ -715,6 +716,179 @@ describe('tools', () => {
           status: null,
           driverNumber: null,
           message: 'YELLOW IN TRACK SECTOR 2',
+        },
+      ],
+    });
+  });
+
+  it('get_tla_rcm_events returns typed ticker events filtered by the current cursor', async () => {
+    const tlaPoints = [
+      {
+        type: 'TlaRcm',
+        json: {
+          Timestamp: '2026-03-07T16:00:00',
+          Message: 'GREEN LIGHT - PIT EXIT OPEN',
+        },
+        dateTime: new Date('2026-03-07T05:00:02.740Z'),
+      },
+      {
+        type: 'TlaRcm',
+        json: {
+          Timestamp: '2026-03-07T16:04:02',
+          Message:
+            'CAR 43 (COL) TIME 1:23.393 DELETED - TRACK LIMITS AT TURN 7 LAP 3 16:02:50',
+        },
+        dateTime: new Date('2026-03-07T05:04:04.328Z'),
+      },
+      {
+        type: 'TlaRcm',
+        json: {
+          Timestamp: '2026-03-07T16:10:31',
+          Message: 'RED FLAG',
+        },
+        dateTime: new Date('2026-03-07T05:10:33.959Z'),
+      },
+    ];
+
+    const customStore = {
+      raw: {
+        subscribe: {},
+        live: tlaPoints,
+      },
+      topic: (name: string) => {
+        const items = tlaPoints.filter((point) => point.type === name);
+        return {
+          latest: items.at(-1) ?? null,
+          timeline: (_from?: Date, to?: Date) =>
+            items.filter((point) => !to || point.dateTime <= to),
+        };
+      },
+    } as any;
+
+    const tools = makeTools({
+      store: customStore,
+      processors: {
+        ...processors,
+        driverList: {
+          state: { '43': { FullName: 'Franco Colapinto' } },
+          getName: (driverNumber: string) =>
+            driverNumber === '43' ? 'Franco Colapinto' : null,
+        },
+        timingData: {
+          state: {
+            Lines: {
+              '43': { Position: '18' },
+            },
+          },
+          bestLaps: new Map(),
+          getLapHistory: () => [],
+          getLapNumbers: () => [3],
+          driversByLap: new Map([
+            [
+              3,
+              new Map([
+                [
+                  '43',
+                  {
+                    __dateTime: new Date('2026-03-07T05:05:00.000Z'),
+                    NumberOfLaps: 3,
+                    Position: '18',
+                  },
+                ],
+              ]),
+            ],
+          ]),
+        },
+        extraTopics: {
+          TlaRcm: {
+            state: tlaPoints.at(-1)?.json,
+          },
+        },
+      } as any,
+      timeCursor: { latest: true },
+      onTimeCursorChange: () => {},
+    });
+
+    const result = await tools.get_tla_rcm_events.execute({
+      order: 'asc',
+    } as any);
+
+    expect(result).toEqual({
+      asOf: {
+        source: 'latest',
+        lap: 3,
+        dateTime: new Date('2026-03-07T05:05:00.000Z'),
+        includeFuture: false,
+      },
+      total: 2,
+      returned: 2,
+      order: 'asc',
+      summary: {
+        total: 2,
+        byCategory: {
+          'track-status': 0,
+          'track-limits': 1,
+          investigation: 0,
+          'pit-lane': 1,
+          'session-control': 0,
+          drs: 0,
+          other: 0,
+        },
+        driverCount: 1,
+        sectors: [],
+      },
+      events: [
+        {
+          eventId: '0',
+          timestamp: '2026-03-07T16:00:00',
+          dateTime: '2026-03-07T05:00:02.740Z',
+          message: 'GREEN LIGHT - PIT EXIT OPEN',
+          category: 'pit-lane',
+          driverNumber: null,
+          driverName: null,
+          lap: null,
+          sector: null,
+          pit: true,
+          raw: {
+            Timestamp: '2026-03-07T16:00:00',
+            Message: 'GREEN LIGHT - PIT EXIT OPEN',
+          },
+        },
+        {
+          eventId: '1',
+          timestamp: '2026-03-07T16:04:02',
+          dateTime: '2026-03-07T05:04:04.328Z',
+          message:
+            'CAR 43 (COL) TIME 1:23.393 DELETED - TRACK LIMITS AT TURN 7 LAP 3 16:02:50',
+          category: 'track-limits',
+          driverNumber: '43',
+          driverName: 'Franco Colapinto',
+          lap: 3,
+          sector: null,
+          pit: false,
+          raw: {
+            Timestamp: '2026-03-07T16:04:02',
+            Message:
+              'CAR 43 (COL) TIME 1:23.393 DELETED - TRACK LIMITS AT TURN 7 LAP 3 16:02:50',
+          },
+        },
+      ],
+    });
+
+    await expect(
+      tools.get_tla_rcm_events.execute({
+        category: 'track-limits',
+        driverNumber: '43',
+      } as any),
+    ).resolves.toMatchObject({
+      total: 1,
+      returned: 1,
+      events: [
+        {
+          category: 'track-limits',
+          driverNumber: '43',
+          driverName: 'Franco Colapinto',
+          lap: 3,
         },
       ],
     });

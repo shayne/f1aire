@@ -88,4 +88,10 @@ describe('data-book', () => {
       'get_session_lifecycle',
     );
   });
+
+  it('documents deterministic tla-rcm tooling', () => {
+    expect(getDataBookTopic('TlaRcm')?.bestTools).toContain(
+      'get_tla_rcm_events',
+    );
+  });
 });
