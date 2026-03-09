@@ -11,6 +11,7 @@ import { LapCountProcessor } from './processors/lap-count.js';
 import { MergeProcessor } from './processors/merge-processor.js';
 import { normalizePoint } from './processors/normalize.js';
 import { PitLaneTimeCollectionProcessor } from './processors/pit-lane-time-collection.js';
+import { PitStopSeriesProcessor } from './processors/pit-stop-series.js';
 import { PositionDataProcessor } from './processors/position-data.js';
 import { SessionInfoProcessor } from './processors/session-info.js';
 import { RaceControlMessagesProcessor } from './processors/race-control-messages.js';
@@ -142,7 +143,7 @@ export class TimingService {
     teamRadio: new TeamRadioProcessor(),
     championshipPrediction: new MergeProcessor('ChampionshipPrediction'),
     driverRaceInfo: new DriverRaceInfoProcessor(),
-    pitStopSeries: new MergeProcessor('PitStopSeries'),
+    pitStopSeries: new PitStopSeriesProcessor(),
     pitStop: new ReplaceProcessor('PitStop'),
     pitLaneTimeCollection: new PitLaneTimeCollectionProcessor(),
     carData: new CarDataProcessor(),
