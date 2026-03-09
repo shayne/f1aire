@@ -6,6 +6,15 @@ import {
   type CarDataState,
 } from './feed-models.js';
 import {
+  findDriverNumberByName,
+  getDriverListEntries,
+  getDriverName as getDriverListName,
+  getDriverNameFromEntry,
+  getDriverTeamColourFromEntry,
+  getDriverTeamNameFromEntry,
+  type DriverListState,
+} from './driver-list.js';
+import {
   decodeCarChannels,
   extractLapTimeMs,
   extractSegmentStatuses,
@@ -44,7 +53,7 @@ type TimingDataProcessorLike = {
 };
 
 type DriverListProcessorLike = {
-  state?: Record<string, unknown> | null;
+  state?: DriverListState;
   getName?: (driverNumber: string) => string | null;
 };
 
@@ -82,18 +91,15 @@ function normalizeDriverNumber(value: string | number) {
 }
 
 function getDriverListMap(processors: ProcessorsLike) {
-  const raw = processors.driverList?.state ?? {};
-  if (!isPlainObject(raw)) return new Map<string, Record<string, unknown>>();
-  const map = new Map<string, Record<string, unknown>>();
-  for (const [num, data] of Object.entries(raw)) {
-    if (num === '_kf') continue;
-    if (isPlainObject(data)) map.set(num, data as Record<string, unknown>);
-  }
-  return map;
+  return new Map(getDriverListEntries(processors.driverList?.state ?? null));
 }
 
 function getDriverName(processors: ProcessorsLike, driverNumber: string) {
-  return processors.driverList?.getName?.(driverNumber) ?? null;
+  return (
+    processors.driverList?.getName?.(driverNumber) ??
+    getDriverListName(processors.driverList?.state, driverNumber) ??
+    null
+  );
 }
 
 function getTrackStatusAt(
@@ -165,37 +171,17 @@ export function createAnalysisContext(opts: {
     for (const [num, data] of driverMap.entries()) {
       out.push({
         number: num,
-        name:
-          (data as any)?.FullName ??
-          (data as any)?.BroadcastName ??
-          (data as any)?.Tla ??
-          num,
-        team: (data as any)?.TeamName ?? null,
-        teamColour: (data as any)?.TeamColour ?? null,
+        name: getDriverNameFromEntry(data) ?? num,
+        team: getDriverTeamNameFromEntry(data),
+        teamColour: getDriverTeamColourFromEntry(data),
         data,
       });
     }
     return out;
   };
 
-  const getDriverNumberByName = (name: string) => {
-    const needle = name.toLowerCase();
-    for (const [num, data] of driverMap.entries()) {
-      const full = String((data as any)?.FullName ?? '').toLowerCase();
-      const broadcast = String(
-        (data as any)?.BroadcastName ?? '',
-      ).toLowerCase();
-      const tla = String((data as any)?.Tla ?? '').toLowerCase();
-      if (
-        full.includes(needle) ||
-        broadcast.includes(needle) ||
-        tla === needle
-      ) {
-        return num;
-      }
-    }
-    return null;
-  };
+  const getDriverNumberByName = (name: string) =>
+    findDriverNumberByName(processors.driverList?.state, name);
 
   const getTopicStats = () => {
     const counts = new Map<string, number>();
