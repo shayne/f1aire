@@ -73,12 +73,6 @@ export class TimingDataProcessor implements Processor<TimingState> {
         isTimingFlagActive(partial.InPit)
       ) {
         merged.IsPitLap = true;
-      } else if (
-        isTimingFlagActive(merged.IsPitLap) &&
-        !isTimingFlagActive(merged.PitOut) &&
-        !isTimingFlagActive(merged.InPit)
-      ) {
-        merged.IsPitLap = false;
       }
       const lapNumber = getTimingLineLapNumber(merged);
       const lapUpdate = getTimingLineLapNumber(partial);
@@ -94,6 +88,14 @@ export class TimingDataProcessor implements Processor<TimingState> {
         const snap = structuredClone(merged) as TimingLine;
         snap.__dateTime = point.dateTime;
         lapDrivers.set(num, snap);
+
+        if (
+          isTimingFlagActive(merged.IsPitLap) &&
+          !isTimingFlagActive(snap.PitOut) &&
+          !isTimingFlagActive(snap.InPit)
+        ) {
+          merged.IsPitLap = false;
+        }
       }
 
       const time = getTimingLineBestLapTime(merged);

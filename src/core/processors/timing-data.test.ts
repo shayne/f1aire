@@ -130,4 +130,51 @@ describe('TimingDataProcessor', () => {
       },
     });
   });
+
+  it('keeps IsPitLap set through the lap snapshot, then clears it for the next lap', () => {
+    const processor = new TimingDataProcessor();
+
+    processor.process({
+      type: 'TimingData',
+      json: {
+        Lines: {
+          '4': {
+            NumberOfLaps: 11,
+            InPit: true,
+          },
+        },
+      },
+      dateTime: new Date('2025-01-01T00:00:11Z'),
+    });
+
+    processor.process({
+      type: 'TimingData',
+      json: {
+        Lines: {
+          '4': {
+            InPit: false,
+            NumberOfLaps: 12,
+            LastLapTime: { Value: '1:41.000' },
+          },
+        },
+      },
+      dateTime: new Date('2025-01-01T00:00:12Z'),
+    });
+
+    expect(processor.getLapSnapshot('4', 12)).toMatchObject({
+      NumberOfLaps: 12,
+      InPit: false,
+      IsPitLap: true,
+      LastLapTime: { Value: '1:41.000' },
+    });
+    expect(processor.state).toMatchObject({
+      Lines: {
+        '4': {
+          NumberOfLaps: 12,
+          InPit: false,
+          IsPitLap: false,
+        },
+      },
+    });
+  });
 });
