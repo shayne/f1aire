@@ -1,6 +1,6 @@
 {
   "name": "f1aire",
-  "version": "0.1.4",
+  "version": "0.0.0",
   "description": "An F1 AI race engineer chat agent (terminal UI).",
   "type": "module",
   "license": "MIT",
