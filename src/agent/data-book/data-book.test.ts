@@ -76,4 +76,16 @@ describe('data-book', () => {
       'get_content_streams',
     );
   });
+
+  it('documents deterministic session lifecycle tooling', () => {
+    expect(getDataBookTopic('SessionData')?.bestTools).toContain(
+      'get_session_lifecycle',
+    );
+    expect(getDataBookTopic('SessionStatus')?.bestTools).toContain(
+      'get_session_lifecycle',
+    );
+    expect(getDataBookTopic('ArchiveStatus')?.bestTools).toContain(
+      'get_session_lifecycle',
+    );
+  });
 });

@@ -394,7 +394,12 @@ export const DATA_BOOK_TOPICS: DataBookTopic[] = [
       'Initial keyframes may arrive as arrays while live patches use keyed objects, so normalization is required before merging.',
     ],
     relatedTopics: ['TrackStatus', 'TimingData', 'Heartbeat'],
-    bestTools: ['get_session_data', 'get_topic_timeline', 'inspect_topic'],
+    bestTools: [
+      'get_session_data',
+      'get_session_lifecycle',
+      'get_topic_timeline',
+      'inspect_topic',
+    ],
   },
   {
     topic: 'RaceControlMessages',
@@ -735,7 +740,12 @@ export const DATA_BOOK_TOPICS: DataBookTopic[] = [
       'Status reflects archive build state, not sporting result status.',
     ],
     relatedTopics: ['SessionStatus', 'SessionInfo'],
-    bestTools: ['get_latest', 'get_download_manifest', 'get_keyframe'],
+    bestTools: [
+      'get_session_lifecycle',
+      'get_latest',
+      'get_download_manifest',
+      'get_keyframe',
+    ],
   },
   {
     topic: 'SessionStatus',
@@ -756,7 +766,12 @@ export const DATA_BOOK_TOPICS: DataBookTopic[] = [
       'Status vocabulary can vary by season/session type; do not hardcode a single enum.',
     ],
     relatedTopics: ['SessionInfo', 'TrackStatus', 'ArchiveStatus'],
-    bestTools: ['get_latest', 'get_topic_timeline', 'get_keyframe'],
+    bestTools: [
+      'get_session_lifecycle',
+      'get_latest',
+      'get_topic_timeline',
+      'get_keyframe',
+    ],
   },
   {
     topic: 'ContentStreams',

@@ -80,6 +80,7 @@ describe('tools', () => {
     expect(tools).toHaveProperty('get_audio_streams');
     expect(tools).toHaveProperty('get_lap_snapshot');
     expect(tools).toHaveProperty('get_best_laps');
+    expect(tools).toHaveProperty('get_session_lifecycle');
     expect(tools).toHaveProperty('download_team_radio');
     expect(tools).toHaveProperty('transcribe_team_radio');
     expect(tools).toHaveProperty('get_replay_control');
@@ -211,6 +212,263 @@ describe('tools', () => {
             'https://livetiming.formula1.com/static/2025/2025-03-01_Test_Weekend/2025-03-01_Race/AudioStreams/FX.m3u8',
         },
       ],
+    });
+  });
+
+  it('get_session_lifecycle returns typed cursor-aware lifecycle state', async () => {
+    const sessionDataPoints = [
+      {
+        type: 'SessionData',
+        json: {
+          StatusSeries: {
+            '1': {
+              Utc: '2024-07-05T11:30:01.009Z',
+              SessionStatus: 'Started',
+            },
+          },
+        },
+        dateTime: new Date('2024-07-05T11:30:01.009Z'),
+      },
+      {
+        type: 'SessionData',
+        json: {
+          StatusSeries: {
+            '2': {
+              Utc: '2024-07-05T11:34:24.114Z',
+              TrackStatus: 'Yellow',
+            },
+          },
+        },
+        dateTime: new Date('2024-07-05T11:34:24.114Z'),
+      },
+      {
+        type: 'SessionData',
+        json: {
+          StatusSeries: {
+            '3': {
+              Utc: '2024-07-05T11:38:50.337Z',
+              SessionStatus: 'Aborted',
+            },
+          },
+        },
+        dateTime: new Date('2024-07-05T11:38:50.337Z'),
+      },
+      {
+        type: 'SessionStatus',
+        json: {
+          Utc: '2024-07-05T11:46:00.078Z',
+          Status: 'Started',
+        },
+        dateTime: new Date('2024-07-05T11:46:00.078Z'),
+      },
+    ];
+
+    const customStore = {
+      raw: {
+        subscribe: {
+          SessionInfo: {
+            SessionStatus: 'Inactive',
+            ArchiveStatus: { Status: 'Generating' },
+          },
+          SessionData: {
+            StatusSeries: [
+              {
+                Utc: '2024-07-05T11:04:27.057Z',
+                TrackStatus: 'AllClear',
+              },
+            ],
+          },
+        },
+        live: sessionDataPoints,
+      },
+      topic: (name: string) => {
+        const items = sessionDataPoints.filter((point) => point.type === name);
+        return {
+          latest: items.at(-1) ?? null,
+          timeline: (_from?: Date, to?: Date) =>
+            items.filter((point) => !to || point.dateTime <= to),
+        };
+      },
+    } as any;
+
+    const tools = makeTools({
+      store: customStore,
+      processors: {
+        ...processors,
+        timingData: {
+          state: {
+            Lines: {
+              '4': { Position: '1' },
+            },
+          },
+          bestLaps: new Map(),
+          getLapHistory: () => [],
+          getLapNumbers: () => [14, 15],
+          driversByLap: new Map([
+            [
+              14,
+              new Map([
+                [
+                  '4',
+                  {
+                    __dateTime: new Date('2024-07-05T11:35:00.000Z'),
+                    NumberOfLaps: 14,
+                    Position: '1',
+                  },
+                ],
+              ]),
+            ],
+            [
+              15,
+              new Map([
+                [
+                  '4',
+                  {
+                    __dateTime: new Date('2024-07-05T11:47:00.000Z'),
+                    NumberOfLaps: 15,
+                    Position: '1',
+                  },
+                ],
+              ]),
+            ],
+          ]),
+        },
+        sessionInfo: {
+          state: customStore.raw.subscribe.SessionInfo,
+        },
+        sessionData: {
+          state: {
+            StatusSeries: {
+              '0': {
+                Utc: '2024-07-05T11:04:27.057Z',
+                TrackStatus: 'AllClear',
+              },
+              '1': {
+                Utc: '2024-07-05T11:30:01.009Z',
+                SessionStatus: 'Started',
+              },
+              '2': {
+                Utc: '2024-07-05T11:34:24.114Z',
+                TrackStatus: 'Yellow',
+              },
+              '3': {
+                Utc: '2024-07-05T11:38:50.337Z',
+                SessionStatus: 'Aborted',
+              },
+            },
+          },
+        },
+      } as any,
+      timeCursor: { lap: 14 },
+      onTimeCursorChange: () => {},
+    });
+
+    const result = await tools.get_session_lifecycle.execute({} as any);
+
+    expect(result).toEqual({
+      asOf: {
+        source: 'lap',
+        lap: 14,
+        dateTime: new Date('2024-07-05T11:35:00.000Z'),
+        includeFuture: false,
+      },
+      sessionStatus: {
+        status: 'Started',
+        utc: '2024-07-05T11:30:01.009Z',
+        source: 'SessionData',
+      },
+      trackStatus: {
+        status: 'Yellow',
+        utc: '2024-07-05T11:34:24.114Z',
+        source: 'SessionData',
+      },
+      archiveStatus: {
+        status: 'Generating',
+        source: 'SessionInfo',
+        raw: { Status: 'Generating' },
+      },
+      total: 3,
+      returned: 3,
+      order: 'asc',
+      events: [
+        {
+          eventId: '0',
+          utc: '2024-07-05T11:04:27.057Z',
+          sessionStatus: null,
+          trackStatus: 'AllClear',
+          source: 'SessionData',
+        },
+        {
+          eventId: '1',
+          utc: '2024-07-05T11:30:01.009Z',
+          sessionStatus: 'Started',
+          trackStatus: null,
+          source: 'SessionData',
+        },
+        {
+          eventId: '2',
+          utc: '2024-07-05T11:34:24.114Z',
+          sessionStatus: null,
+          trackStatus: 'Yellow',
+          source: 'SessionData',
+        },
+      ],
+    });
+  });
+
+  it('get_topic_reference shows typed lifecycle examples for SessionStatus', async () => {
+    const tools = makeTools({
+      store: {
+        ...store,
+        raw: {
+          subscribe: {
+            SessionInfo: {
+              SessionStatus: 'Inactive',
+              ArchiveStatus: { Status: 'Generating' },
+            },
+          },
+          live: [],
+        },
+        topic: () => ({ latest: null, timeline: () => [] }),
+      } as any,
+      processors: {
+        ...processors,
+        sessionInfo: {
+          state: {
+            SessionStatus: 'Inactive',
+            ArchiveStatus: { Status: 'Generating' },
+          },
+        },
+      } as any,
+      timeCursor: { latest: true },
+      onTimeCursorChange: () => {},
+    });
+
+    const result = await tools.get_topic_reference.execute({
+      topic: 'SessionStatus',
+      includeExample: true,
+    } as any);
+
+    expect(result).toMatchObject({
+      canonicalTopic: 'SessionStatus',
+      found: true,
+      present: true,
+      example: {
+        sessionStatus: {
+          status: 'Inactive',
+          source: 'SessionInfo',
+        },
+        archiveStatus: {
+          status: 'Generating',
+          source: 'SessionInfo',
+        },
+        recentEvents: [
+          {
+            sessionStatus: 'Inactive',
+            source: 'SessionInfo',
+          },
+        ],
+      },
     });
   });
 

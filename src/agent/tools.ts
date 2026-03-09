@@ -86,6 +86,10 @@ import {
   type RaceControlEvent,
 } from '../core/processors/race-control-messages.js';
 import { createOperatorApi } from '../core/operator-api.js';
+import {
+  buildSessionDataState,
+  buildSessionLifecycleSnapshot,
+} from '../core/session-lifecycle.js';
 import type { TimeCursor } from '../core/time-cursor.js';
 import { getDataBookIndex, getDataBookTopic } from './data-book/data-book.js';
 import type { LapRecord } from '../core/analysis-index.js';
@@ -991,6 +995,84 @@ export function makeTools({
     };
   };
 
+  const serializeSessionLifecycleEvent = (event: {
+    eventId: string;
+    utc: string | null;
+    sessionStatus: string | null;
+    trackStatus: string | null;
+    source: 'SessionData' | 'SessionStatus' | 'SessionInfo';
+  }) => ({
+    eventId: event.eventId,
+    utc: event.utc,
+    sessionStatus: event.sessionStatus,
+    trackStatus: event.trackStatus,
+    source: event.source,
+  });
+
+  const listSessionLifecycle = (
+    opts: {
+      includeFuture?: boolean;
+      limit?: number;
+      order?: 'asc' | 'desc';
+    } = {},
+  ) => {
+    const resolved = resolveCurrentCursor();
+    const to = opts.includeFuture ? undefined : (resolved.dateTime ?? undefined);
+    const fallbackDateTime = resolved.dateTime ?? new Date(0);
+
+    const sessionDataBase = normalizePoint({
+      type: 'SessionData',
+      json: (store.raw.subscribe as any)?.SessionData ?? {},
+      dateTime: fallbackDateTime,
+    }).json;
+
+    const sessionDataState = buildSessionDataState({
+      baseState: sessionDataBase,
+      timeline: analysis.getTopicTimeline('SessionData', { to }),
+    });
+
+    const sessionStatusState =
+      analysis.getTopicTimeline('SessionStatus', { to }).at(-1)?.json ??
+      ((store.raw.subscribe as any)?.SessionStatus ?? null);
+
+    const archiveStatusState =
+      analysis.getTopicTimeline('ArchiveStatus', { to }).at(-1)?.json ??
+      ((store.raw.subscribe as any)?.ArchiveStatus ?? null);
+
+    const sessionInfoState =
+      processors.sessionInfo?.state ??
+      normalizePoint({
+        type: 'SessionInfo',
+        json: (store.raw.subscribe as any)?.SessionInfo ?? {},
+        dateTime: fallbackDateTime,
+      }).json;
+
+    const snapshot = buildSessionLifecycleSnapshot({
+      sessionDataState,
+      sessionStatusState,
+      archiveStatusState,
+      sessionInfoState,
+    });
+
+    let events = snapshot.events;
+    const order = opts.order ?? 'asc';
+    if (order === 'desc') {
+      events = [...events].reverse();
+    }
+    if (typeof opts.limit === 'number' && opts.limit > 0) {
+      events = events.slice(0, opts.limit);
+    }
+
+    return {
+      resolved,
+      total: snapshot.events.length,
+      sessionStatus: snapshot.sessionStatus,
+      trackStatus: snapshot.trackStatus,
+      archiveStatus: snapshot.archiveStatus,
+      events,
+    };
+  };
+
   const canonicalizeTopicName = (value: string) => {
     const trimmed = value.trim();
     if (trimmed.endsWith('.z')) return trimmed.slice(0, -2);
@@ -1506,11 +1588,38 @@ export function makeTools({
     }
 
     if (topic === 'SessionData') {
+      const lifecycle = listSessionLifecycle({ limit: 8 });
       const state = processors.sessionData?.state ?? null;
-      if (!state) return null;
+      if (!state && !lifecycle.total) return null;
       return {
         asOf,
-        sessionData: pickKnownKeys(state, ['Series', 'StatusSeries']) ?? state,
+        sessionStatus: lifecycle.sessionStatus,
+        trackStatus: lifecycle.trackStatus,
+        archiveStatus: lifecycle.archiveStatus,
+        recentEvents: lifecycle.events.map(serializeSessionLifecycleEvent),
+        sessionData:
+          state === null
+            ? null
+            : (pickKnownKeys(state, ['Series', 'StatusSeries']) ?? state),
+      };
+    }
+
+    if (topic === 'SessionStatus' || topic === 'ArchiveStatus') {
+      const lifecycle = listSessionLifecycle({ limit: 8 });
+      if (
+        !lifecycle.sessionStatus &&
+        !lifecycle.archiveStatus &&
+        lifecycle.events.length === 0
+      ) {
+        return null;
+      }
+
+      return {
+        asOf,
+        sessionStatus: lifecycle.sessionStatus,
+        trackStatus: lifecycle.trackStatus,
+        archiveStatus: lifecycle.archiveStatus,
+        recentEvents: lifecycle.events.map(serializeSessionLifecycleEvent),
       };
     }
 
@@ -2186,6 +2295,33 @@ export function makeTools({
       description: 'Get merged SessionData',
       inputSchema: z.object({}),
       execute: async () => processors.sessionData?.state ?? null,
+    }),
+    get_session_lifecycle: tool({
+      description:
+        'Get deterministic session lifecycle status and status-series events, filtered to the current analysis cursor unless includeFuture is true.',
+      inputSchema: z.object({
+        includeFuture: z.boolean().optional(),
+        limit: z.number().int().positive().max(200).optional(),
+        order: z.enum(['asc', 'desc']).optional(),
+      }),
+      execute: async ({ includeFuture, limit, order }) => {
+        const result = listSessionLifecycle({ includeFuture, limit, order });
+        return {
+          asOf: {
+            source: result.resolved.source,
+            lap: result.resolved.lap,
+            dateTime: result.resolved.dateTime,
+            includeFuture: Boolean(includeFuture),
+          },
+          sessionStatus: result.sessionStatus,
+          trackStatus: result.trackStatus,
+          archiveStatus: result.archiveStatus,
+          total: result.total,
+          returned: result.events.length,
+          order: order ?? 'asc',
+          events: result.events.map(serializeSessionLifecycleEvent),
+        };
+      },
     }),
     get_extrapolated_clock: tool({
       description:
