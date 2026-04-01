@@ -134,6 +134,10 @@ describe('App engineer shell', () => {
 
     const frame = app.lastFrame() ?? '';
     expect(frame).toContain('Ask the engineer');
+    expect(frame).toContain('Quick summary:');
+    expect(frame).toContain('Winner: unavailable');
+    expect(frame).not.toContain('Quick summary: Winner: unavailable');
+    expect(frame).not.toContain('…');
     expect(frame).not.toContain('F1aire - Virtual Race Engineer');
     expect(frame).not.toContain('s settings');
     app.unmount();

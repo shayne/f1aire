@@ -321,13 +321,14 @@ function NewMessagesPill({
       left={0}
       right={0}
       justifyContent="center"
+      opaque
     >
       <Box
         onClick={onClick}
         onMouseEnter={() => setHover(true)}
         onMouseLeave={() => setHover(false)}
       >
-        <Text>
+        <Text backgroundColor={hover ? 'ansi:black' : 'ansi:blackBright'}>
           {' '}
           {count > 0
             ? `${count} new ${plural(count, 'message')}`

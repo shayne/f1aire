@@ -375,15 +375,16 @@ export function App(): React.JSX.Element {
     const computedSummary = summarizeFromLines(lines);
     const summaryText = [
       'Quick summary:',
+      '',
       computedSummary.winner
-        ? `Winner: ${computedSummary.winner.name} (#${computedSummary.winner.number})`
-        : 'Winner: unavailable',
+        ? `- Winner: ${computedSummary.winner.name} (#${computedSummary.winner.number})`
+        : '- Winner: unavailable',
       computedSummary.fastestLap
-        ? `Fastest lap: ${computedSummary.fastestLap.name} (#${computedSummary.fastestLap.number}) ${computedSummary.fastestLap.time}`
-        : 'Fastest lap: unavailable',
+        ? `- Fastest lap: ${computedSummary.fastestLap.name} (#${computedSummary.fastestLap.number}) ${computedSummary.fastestLap.time}`
+        : '- Fastest lap: unavailable',
       computedSummary.totalLaps
-        ? `Total laps: ${computedSummary.totalLaps}`
-        : 'Total laps: unavailable',
+        ? `- Total laps: ${computedSummary.totalLaps}`
+        : '- Total laps: unavailable',
     ].join('\n');
     setSummary(computedSummary);
     const loadStart = performance.now();

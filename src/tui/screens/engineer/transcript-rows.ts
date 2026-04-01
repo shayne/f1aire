@@ -28,18 +28,6 @@ function stripAnsi(text: string): string {
   return text.replace(ANSI_SGR_REGEX, '');
 }
 
-function padTerminalLines(text: string, width: number): string {
-  if (width <= 0 || !text) return text;
-  const lines = text.split('\n');
-  return lines
-    .map((line) => {
-      const visible = stripAnsi(line);
-      const pad = width - visible.length;
-      return pad > 0 ? `${line}${' '.repeat(pad)}` : line;
-    })
-    .join('\n');
-}
-
 function wrapAnsiLine(text: string, width: number): string[] {
   if (width <= 0) return [text];
   const visible = stripAnsi(text);
@@ -135,20 +123,13 @@ function createMessageRows(
 
   const renderedLines =
     message.role === 'assistant'
-      ? padTerminalLines(
-          wrapAnsiText(
-            renderMarkdownToTerminal(message.content, messageWidth),
-            messageWidth,
-          ).join('\n'),
+      ? wrapAnsiText(
+          renderMarkdownToTerminal(message.content, messageWidth),
           messageWidth,
-        ).split('\n')
-      : padTerminalLines(
-          message.content
-            .split('\n')
-            .flatMap((line) => wrapPlainTextLine(line, messageWidth))
-            .join('\n'),
-          messageWidth,
-        ).split('\n');
+        )
+      : message.content
+          .split('\n')
+          .flatMap((line) => wrapPlainTextLine(line, messageWidth));
 
   const rows: TranscriptRow[] = [
     createLabelRow(`${indexKey}-label`, label, color),
