@@ -739,8 +739,14 @@ export function App(): React.JSX.Element {
   });
 
   const headerRows = breadcrumb.length ? (isShort ? 4 : 6) : isShort ? 3 : 4;
-  const footerRows = getFooterHintRowCount(screen.name, terminalColumns);
-  const contentHeight = Math.max(terminalRows - headerRows - footerRows, 10);
+  const showGlobalChrome = screen.name !== 'engineer';
+  const footerRows = showGlobalChrome
+    ? getFooterHintRowCount(screen.name, terminalColumns)
+    : 0;
+  const contentHeight = Math.max(
+    terminalRows - (showGlobalChrome ? headerRows : 0) - footerRows,
+    10,
+  );
   const asOfLabel = timeCursor?.latest
     ? 'Latest'
     : Number.isFinite(timeCursor?.lap)
@@ -764,11 +770,13 @@ export function App(): React.JSX.Element {
 
   return (
     <Box flexDirection="column" height={terminalRows}>
-      <Header breadcrumb={breadcrumb} compact={isShort} />
+      {showGlobalChrome ? (
+        <Header breadcrumb={breadcrumb} compact={isShort} />
+      ) : null}
       <Box
         flexGrow={1}
         flexDirection="column"
-        marginLeft={1}
+        marginLeft={showGlobalChrome ? 1 : 0}
         height={contentHeight}
       >
         {!runtimeReady ? (
@@ -886,7 +894,7 @@ export function App(): React.JSX.Element {
           </>
         )}
       </Box>
-      <FooterHints screen={screen.name} />
+      {showGlobalChrome ? <FooterHints screen={screen.name} /> : null}
     </Box>
   );
 }
