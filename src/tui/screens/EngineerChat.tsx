@@ -1,6 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Box, Text, useStdout } from 'ink';
-import TextInput from 'ink-text-input';
 import type { ChatMessage } from '../chat-state.js';
 import type { Summary as SummaryData } from '../../core/summary.js';
 import type { Meeting, Session } from '../../core/types.js';
@@ -11,6 +10,11 @@ import {
   buildTranscriptRows,
   type TranscriptRow,
 } from './engineer/transcript-rows.js';
+import { Composer } from './engineer/Composer.js';
+import {
+  COMPOSER_VISIBLE_LINE_CAP,
+  useComposerState,
+} from './engineer/useComposerState.js';
 import { useTranscriptViewport } from './engineer/useTranscriptViewport.js';
 
 type ConversationRow = TranscriptRow;
@@ -64,41 +68,20 @@ const ConversationPanel = React.memo(function ConversationPanel({
   );
 });
 
-type AskInputProps = {
+type ComposerPanelProps = {
   onSend: (text: string) => void;
-  height?: number;
+  isStreaming: boolean;
+  height: number;
 };
 
-const AskInput = React.memo(function AskInput({
+const ComposerPanel = React.memo(function ComposerPanel({
   onSend,
+  isStreaming,
   height,
-}: AskInputProps) {
-  const [input, setInput] = useState('');
+}: ComposerPanelProps) {
+  const state = useComposerState({ onSend, isStreaming });
 
-  const handleSubmit = (value: string) => {
-    const trimmed = value.trim();
-    if (!trimmed) return;
-    onSend(trimmed);
-    setInput('');
-  };
-
-  return (
-    <Panel
-      title="Ask the engineer"
-      tone="muted"
-      boxProps={height ? { height } : undefined}
-    >
-      <Box>
-        <Text color={theme.muted}>› </Text>
-        <TextInput
-          value={input}
-          onChange={setInput}
-          onSubmit={handleSubmit}
-          placeholder="Ask about pace, gaps, tyres..."
-        />
-      </Box>
-    </Panel>
-  );
+  return <Composer state={state} isStreaming={isStreaming} height={height} />;
 });
 
 export function EngineerChat({
@@ -152,7 +135,7 @@ export function EngineerChat({
     onRender?.();
   });
 
-  const inputPanelHeight = 5;
+  const inputPanelHeight = COMPOSER_VISIBLE_LINE_CAP + 5;
   const panelOverhead = 4;
   const gapBetweenPanels = compact ? 0 : 1;
   const availableForConversation = rows - inputPanelHeight - gapBetweenPanels;
@@ -240,7 +223,11 @@ export function EngineerChat({
           height={conversationPanelHeight}
           onRender={onConversationRender}
         />
-        <AskInput onSend={onSend} height={inputPanelHeight} />
+        <ComposerPanel
+          onSend={onSend}
+          isStreaming={isStreaming}
+          height={inputPanelHeight}
+        />
       </Box>
       <Box
         flexDirection="column"
