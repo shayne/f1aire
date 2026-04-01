@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo } from 'react';
+import React, { useMemo } from 'react';
 import { Box, Text, useInput, type Key } from '#ink';
 import { Panel } from '../../components/Panel.js';
 import {
@@ -87,13 +87,11 @@ export function Composer({
   state,
   isStreaming,
   width,
-  onHeightChange,
   onInterceptInput,
 }: {
   state: ComposerState;
   isStreaming: boolean;
   width: number;
-  onHeightChange?: (visibleLineCount: number) => void;
   onInterceptInput?: (input: string, key: Key) => boolean;
 }): React.JSX.Element {
   useInput(
@@ -115,10 +113,6 @@ export function Composer({
 
   const visibleStart = lineMeta.lines.length - visibleLines.length;
   const cursorVisibleIndex = lineMeta.lineIndex - visibleStart;
-
-  useEffect(() => {
-    onHeightChange?.(visibleLines.length);
-  }, [onHeightChange, visibleLines.length]);
 
   const panelHeight = visibleLines.length + 5;
 

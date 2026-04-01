@@ -7,12 +7,10 @@ import { useComposerState } from './useComposerState.js';
 function Harness({
   isStreaming = false,
   onSend,
-  onHeightChange,
   width = 32,
 }: {
   isStreaming?: boolean;
   onSend: (text: string) => void;
-  onHeightChange?: (visibleLineCount: number) => void;
   width?: number;
 }) {
   const state = useComposerState({ onSend, isStreaming });
@@ -21,7 +19,6 @@ function Harness({
       state={state}
       isStreaming={isStreaming}
       width={width}
-      onHeightChange={onHeightChange}
     />
   );
 }
@@ -148,16 +145,14 @@ describe('Composer', () => {
 
   it('grows to five visible wrapped lines before scrolling older content away', async () => {
     const onSend = vi.fn();
-    const onHeightChange = vi.fn();
     const { stdin, lastFrame, unmount } = await renderTui(
-      <Harness onSend={onSend} onHeightChange={onHeightChange} width={3} />,
+      <Harness onSend={onSend} width={3} />,
     );
 
     await waitForTick();
     stdin.write('abcdefghijklmnopqr');
     await waitForTick();
 
-    expect(onHeightChange).toHaveBeenLastCalledWith(5);
     const frame = lastFrame() ?? '';
     expect(frame).not.toContain('abc');
     expect(frame).toContain('ghi');

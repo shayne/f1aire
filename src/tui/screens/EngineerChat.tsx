@@ -60,7 +60,6 @@ type ComposerPanelProps = {
   onSend: (text: string) => void;
   isStreaming: boolean;
   width: number;
-  onHeightChange: (visibleLineCount: number) => void;
   onInterceptInput?: (input: string, key: Key) => boolean;
 };
 
@@ -68,7 +67,6 @@ const ComposerPanel = React.memo(function ComposerPanel({
   onSend,
   isStreaming,
   width,
-  onHeightChange,
   onInterceptInput,
 }: ComposerPanelProps) {
   const state = useComposerState({ onSend, isStreaming });
@@ -78,7 +76,6 @@ const ComposerPanel = React.memo(function ComposerPanel({
       state={state}
       isStreaming={isStreaming}
       width={width}
-      onHeightChange={onHeightChange}
       onInterceptInput={onInterceptInput}
     />
   );
@@ -122,7 +119,6 @@ export function EngineerChat({
   const compact = rows < 32;
   const messageContentWidth = Math.max(10, columns - 2);
   const composerContentWidth = Math.max(12, columns - 4);
-  const [, setComposerVisibleLines] = useState(1);
   const [detailsExpanded, setDetailsExpanded] = useState(false);
 
   useEffect(() => {
@@ -226,7 +222,6 @@ export function EngineerChat({
             onSend={onSend}
             isStreaming={isStreaming}
             width={composerContentWidth}
-            onHeightChange={setComposerVisibleLines}
             onInterceptInput={handleComposerIntercept}
           />
         </Box>

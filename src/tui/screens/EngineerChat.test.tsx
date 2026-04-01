@@ -320,4 +320,26 @@ describe('EngineerChat', () => {
     expect(onRender).toHaveBeenCalledTimes(1);
     unmount();
   });
+
+  it('does not re-render the root when the composer grows multiline input', async () => {
+    const onRender = vi.fn();
+    const { stdin, lastFrame, unmount } = await renderTui(
+      <EngineerChat {...baseProps} maxHeight={20} onRender={onRender} />,
+    );
+
+    await tick();
+    expect(onRender).toHaveBeenCalledTimes(1);
+
+    stdin.write('p');
+    stdin.write('\u001b[13;2u');
+    stdin.write('l');
+    await tick();
+
+    expect(onRender).toHaveBeenCalledTimes(1);
+
+    const frame = stripAnsi(lastFrame() ?? '');
+    expect(frame).toContain('› p');
+    expect(frame).toContain('  l');
+    unmount();
+  });
 });
