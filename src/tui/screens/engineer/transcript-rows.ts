@@ -6,11 +6,7 @@ import { renderMarkdownToTerminal } from '../../terminal-markdown.js';
 
 const ANSI_SGR_REGEX = /\x1b\[[0-9;]*m/g;
 
-type TranscriptRowKind =
-  | 'message-label'
-  | 'message-line'
-  | 'spacer'
-  | 'pending-status';
+type TranscriptRowKind = 'label' | 'message-line' | 'spacer' | 'pending-status';
 
 export type TranscriptRow = {
   key: string;
@@ -112,7 +108,7 @@ function createLabelRow(
 ): TranscriptRow {
   return {
     key,
-    kind: 'message-label',
+    kind: 'label',
     plainText: label,
     node: React.createElement(Text, { color, wrap: 'truncate-end' }, label),
   };
@@ -122,7 +118,7 @@ function createSpacerRow(key: string): TranscriptRow {
   return {
     key,
     kind: 'spacer',
-    plainText: ' ',
+    plainText: '',
     node: React.createElement(Text, { wrap: 'truncate-end' }, ' '),
   };
 }

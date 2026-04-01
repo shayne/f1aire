@@ -37,14 +37,12 @@ function activityColor(entry: string) {
 type ConversationPanelProps = {
   visibleRows: ConversationRow[];
   height?: number;
-  scrollHint?: string | null;
   onRender?: () => void;
 };
 
 const ConversationPanel = React.memo(function ConversationPanel({
   visibleRows,
   height,
-  scrollHint,
   onRender,
 }: ConversationPanelProps) {
   useEffect(() => {
@@ -58,11 +56,6 @@ const ConversationPanel = React.memo(function ConversationPanel({
       boxProps={height ? { height, overflow: 'hidden' } : { flexGrow: 1 }}
     >
       <Box flexDirection="column">
-        {scrollHint ? (
-          <Text color={theme.muted} wrap="truncate-end">
-            {scrollHint}
-          </Text>
-        ) : null}
         {visibleRows.map((row) => (
           <Box key={row.key}>{row.node}</Box>
         ))}
@@ -164,6 +157,7 @@ export function EngineerChat({
   const gapBetweenPanels = compact ? 0 : 1;
   const availableForConversation = rows - inputPanelHeight - gapBetweenPanels;
   const conversationPanelHeight = Math.max(availableForConversation, 0);
+  const visibleLineCount = Math.max(conversationPanelHeight - panelOverhead, 1);
 
   const conversationRows = useMemo(
     () =>
@@ -178,16 +172,15 @@ export function EngineerChat({
   );
 
   const transcriptVersion = messages.length + (isStreaming ? 1 : 0);
-  const { scrollHint, visibleWindow } = useTranscriptViewport({
+  const { window } = useTranscriptViewport({
     rowCount: conversationRows.length,
-    panelHeight: conversationPanelHeight,
-    panelOverhead,
+    visibleLineCount,
     transcriptVersion,
   });
 
   const visibleRows = useMemo(
-    () => conversationRows.slice(visibleWindow.start, visibleWindow.end),
-    [conversationRows, visibleWindow.end, visibleWindow.start],
+    () => conversationRows.slice(window.start, window.end),
+    [conversationRows, window.end, window.start],
   );
 
   const activityEntries = useMemo(() => {
@@ -245,7 +238,6 @@ export function EngineerChat({
         <ConversationPanel
           visibleRows={visibleRows}
           height={conversationPanelHeight}
-          scrollHint={scrollHint}
           onRender={onConversationRender}
         />
         <AskInput onSend={onSend} height={inputPanelHeight} />

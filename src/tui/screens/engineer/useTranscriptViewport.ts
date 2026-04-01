@@ -1,5 +1,6 @@
 import { useInput } from 'ink';
-import { useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useLayoutEffect, useRef, useState } from 'react';
+import type { Dispatch, SetStateAction } from 'react';
 
 export function reconcilePausedOffset({
   previousRowCount,
@@ -57,35 +58,32 @@ export function getTranscriptScrollHint({
 
 export function useTranscriptViewport({
   rowCount,
-  panelHeight,
-  panelOverhead,
+  visibleLineCount,
   transcriptVersion,
 }: {
   rowCount: number;
-  panelHeight: number;
-  panelOverhead: number;
+  visibleLineCount: number;
   transcriptVersion: number;
 }): {
-  scrollOffsetLines: number;
-  effectiveScrollOffsetLines: number;
-  scrollHint: string | null;
-  visibleWindow: { start: number; end: number };
-  visibleLineCount: number;
+  window: { start: number; end: number };
+  setScrollOffsetLines: Dispatch<SetStateAction<number>>;
+  maxScrollLines: number;
+  markPaused: () => void;
+  jumpToLatest: () => void;
 } {
   const [scrollOffsetLines, setScrollOffsetLines] = useState(0);
   const previousRowCountRef = useRef(0);
   const pausedTranscriptVersionRef = useRef<number | null>(null);
-  const scrollHintLines = scrollOffsetLines > 0 ? 1 : 0;
-  const visibleLineCount = Math.max(
-    panelHeight - panelOverhead - scrollHintLines,
-    1,
-  );
   const maxScrollLines = Math.max(rowCount - visibleLineCount, 0);
   const effectiveScrollOffsetLines = Math.min(
     scrollOffsetLines,
     maxScrollLines,
   );
-  const isScrolledUp = effectiveScrollOffsetLines > 0;
+  const window = getTranscriptWindow({
+    rowCount,
+    visibleLineCount,
+    scrollOffsetLines: effectiveScrollOffsetLines,
+  });
 
   useLayoutEffect(() => {
     const previousRowCount = previousRowCountRef.current;
@@ -123,28 +121,20 @@ export function useTranscriptViewport({
     }
   });
 
-  const hasUpdatesBelow = useMemo(() => {
-    return (
-      isScrolledUp &&
-      pausedTranscriptVersionRef.current !== null &&
-      transcriptVersion > pausedTranscriptVersionRef.current
-    );
-  }, [isScrolledUp, transcriptVersion]);
+  const markPaused = () => {
+    pausedTranscriptVersionRef.current = transcriptVersion;
+  };
 
-  const scrollHint = getTranscriptScrollHint({
-    isScrolledUp,
-    hasUpdatesBelow,
-  });
+  const jumpToLatest = () => {
+    pausedTranscriptVersionRef.current = null;
+    setScrollOffsetLines(0);
+  };
 
   return {
-    scrollOffsetLines,
-    effectiveScrollOffsetLines,
-    scrollHint,
-    visibleWindow: getTranscriptWindow({
-      rowCount,
-      visibleLineCount,
-      scrollOffsetLines: effectiveScrollOffsetLines,
-    }),
-    visibleLineCount,
+    window,
+    setScrollOffsetLines,
+    maxScrollLines,
+    markPaused,
+    jumpToLatest,
   };
 }

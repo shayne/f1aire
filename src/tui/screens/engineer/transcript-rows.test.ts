@@ -14,11 +14,18 @@ describe('buildTranscriptRows', () => {
       messageWidth: 24,
     });
 
-    expect(rows.map((row) => row.plainText)).toContain('You');
-    expect(rows.map((row) => row.plainText)).toContain('Engineer');
+    expect(
+      rows.some((row) => row.kind === 'label' && row.plainText === 'You'),
+    ).toBe(true);
+    expect(
+      rows.some((row) => row.kind === 'label' && row.plainText === 'Engineer'),
+    ).toBe(true);
     expect(rows.some((row) => row.plainText.includes('Very strong'))).toBe(
       true,
     );
+    expect(
+      rows.some((row) => row.kind === 'spacer' && row.plainText === ''),
+    ).toBe(true);
   });
 
   it('adds a pending status block when streaming text is empty', () => {
