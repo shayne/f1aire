@@ -14,10 +14,7 @@ import {
 } from './engineer/transcript-rows.js';
 import { TranscriptViewport } from './engineer/TranscriptViewport.js';
 import { useComposerState } from './engineer/useComposerState.js';
-import {
-  getTranscriptScrollHint,
-  useTranscriptViewport,
-} from './engineer/useTranscriptViewport.js';
+import { useTranscriptViewport } from './engineer/useTranscriptViewport.js';
 
 type ConversationRow = TranscriptRow;
 
@@ -120,7 +117,7 @@ export function EngineerChat({
   );
 
   const transcriptVersion = messages.length + (isStreaming ? 1 : 0);
-  const { window, maxScrollLines } = useTranscriptViewport({
+  const { window, scrollHint } = useTranscriptViewport({
     rowCount: conversationRows.length,
     visibleLineCount,
     transcriptVersion,
@@ -135,11 +132,6 @@ export function EngineerChat({
     () => (activity.length ? activity : status ? [status] : ['Idle']),
     [activity, status],
   );
-  const isScrolledUp = maxScrollLines > 0 && window.end < conversationRows.length;
-  const scrollHint = getTranscriptScrollHint({
-    isScrolledUp,
-    hasUpdatesBelow: isScrolledUp,
-  });
   const handleComposerIntercept = (input: string, key: Key) => {
     if (key.tab || input === '\t') {
       setDetailsExpanded((current) => !current);

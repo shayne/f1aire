@@ -68,6 +68,7 @@ export function useTranscriptViewport({
   window: { start: number; end: number };
   setScrollOffsetLines: Dispatch<SetStateAction<number>>;
   maxScrollLines: number;
+  scrollHint: string | null;
   markPaused: () => void;
   jumpToLatest: () => void;
 } {
@@ -79,10 +80,18 @@ export function useTranscriptViewport({
     scrollOffsetLines,
     maxScrollLines,
   );
+  const isScrolledUp = effectiveScrollOffsetLines > 0;
+  const hasUpdatesBelow =
+    pausedTranscriptVersionRef.current !== null &&
+    pausedTranscriptVersionRef.current < transcriptVersion;
   const window = getTranscriptWindow({
     rowCount,
     visibleLineCount,
     scrollOffsetLines: effectiveScrollOffsetLines,
+  });
+  const scrollHint = getTranscriptScrollHint({
+    isScrolledUp,
+    hasUpdatesBelow,
   });
 
   useLayoutEffect(() => {
@@ -134,6 +143,7 @@ export function useTranscriptViewport({
     window,
     setScrollOffsetLines,
     maxScrollLines,
+    scrollHint,
     markPaused,
     jumpToLatest,
   };
