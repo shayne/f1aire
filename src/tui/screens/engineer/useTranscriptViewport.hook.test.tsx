@@ -38,6 +38,28 @@ function Harness({
 }
 
 describe('useTranscriptViewport', () => {
+  it('responds to PageUp and PageDown keyboard input', async () => {
+    const { stdin, lastFrame } = render(
+      <Harness
+        rowCount={18}
+        visibleLineCount={8}
+        transcriptVersion={1}
+        onRender={vi.fn()}
+      />,
+    );
+
+    await waitForTick();
+    expect(lastFrame()).toContain('10:18:10');
+
+    stdin.write('\u001b[5~');
+    await waitForTick();
+    expect(lastFrame()).toContain('5:13:10');
+
+    stdin.write('\u001b[6~');
+    await waitForTick();
+    expect(lastFrame()).toContain('10:18:10');
+  });
+
   it('preserves the same slice while paused, then jumps back to live', async () => {
     let viewport: ReturnType<typeof useTranscriptViewport> | null = null;
     const onRender = vi.fn(
