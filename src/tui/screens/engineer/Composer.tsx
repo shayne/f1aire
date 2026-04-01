@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo } from 'react';
-import { Box, Text, useInput } from 'ink';
+import { Box, Text, useInput, type Key } from 'ink';
 import { Panel } from '../../components/Panel.js';
 import { theme } from '../../theme.js';
 import {
@@ -89,14 +89,17 @@ export function Composer({
   isStreaming,
   width,
   onHeightChange,
+  onInterceptInput,
 }: {
   state: ComposerState;
   isStreaming: boolean;
   width: number;
   onHeightChange?: (visibleLineCount: number) => void;
+  onInterceptInput?: (input: string, key: Key) => boolean;
 }): React.JSX.Element {
   useInput(
     (input, key) => {
+      if (onInterceptInput?.(input, key)) return;
       state.handleInput(input, key);
     },
     { isActive: true },
@@ -151,7 +154,7 @@ export function Composer({
         })}
         <Box>
           <Text color={theme.muted}>
-            enter send · shift+enter newline
+            enter send · shift+enter newline · i details
             {isStreaming ? ' · streaming' : ''}
           </Text>
         </Box>

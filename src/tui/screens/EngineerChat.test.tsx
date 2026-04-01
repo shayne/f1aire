@@ -79,14 +79,20 @@ describe('EngineerChat', () => {
     expect(onConversationRender).toHaveBeenCalledTimes(1);
   });
 
-  it('renders a python code preview panel when pythonCode is present', () => {
-    const { lastFrame } = render(
+  it('renders a python code preview panel when pythonCode is present', async () => {
+    const { stdin, lastFrame } = render(
       <EngineerChat
         {...baseProps}
         maxHeight={44}
         pythonCode={'import numpy as np\nprint(\"hi\")\n2+2'}
       />,
     );
+
+    await tick();
+    expect(stripAnsi(lastFrame() ?? '')).not.toContain('Python');
+
+    stdin.write('i');
+    await tick();
 
     const frame = stripAnsi(lastFrame() ?? '');
     expect(frame).toContain('Python');

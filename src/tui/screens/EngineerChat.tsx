@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Box, useStdout } from 'ink';
+import { Box, type Key, useStdout } from 'ink';
 import type { Summary as SummaryData } from '../../core/summary.js';
 import type { Meeting, Session } from '../../core/types.js';
 import type { ChatMessage } from '../chat-state.js';
@@ -26,6 +26,7 @@ type ComposerPanelProps = {
   isStreaming: boolean;
   width: number;
   onHeightChange: (visibleLineCount: number) => void;
+  onInterceptInput?: (input: string, key: Key) => boolean;
 };
 
 const ComposerPanel = React.memo(function ComposerPanel({
@@ -33,6 +34,7 @@ const ComposerPanel = React.memo(function ComposerPanel({
   isStreaming,
   width,
   onHeightChange,
+  onInterceptInput,
 }: ComposerPanelProps) {
   const state = useComposerState({ onSend, isStreaming });
 
@@ -42,6 +44,7 @@ const ComposerPanel = React.memo(function ComposerPanel({
       isStreaming={isStreaming}
       width={width}
       onHeightChange={onHeightChange}
+      onInterceptInput={onInterceptInput}
     />
   );
 });
@@ -86,15 +89,11 @@ export function EngineerChat({
   const messageContentWidth = Math.max(10, columns - 2);
   const composerContentWidth = Math.max(12, columns - 4);
   const [composerVisibleLines, setComposerVisibleLines] = useState(1);
-  const [detailsExpanded, setDetailsExpanded] = useState(Boolean(pythonCode));
+  const [detailsExpanded, setDetailsExpanded] = useState(false);
 
   useEffect(() => {
     onRender?.();
   });
-
-  useEffect(() => {
-    if (pythonCode) setDetailsExpanded(true);
-  }, [pythonCode]);
 
   const inputPanelHeight = composerVisibleLines + 5;
   const sectionGap = compact ? 0 : 1;
@@ -141,6 +140,19 @@ export function EngineerChat({
     isScrolledUp,
     hasUpdatesBelow: isScrolledUp,
   });
+  const handleComposerIntercept = (input: string, key: Key) => {
+    if (
+      input === 'i' &&
+      !key.ctrl &&
+      !key.meta &&
+      !key.shift &&
+      !key.escape
+    ) {
+      setDetailsExpanded((current) => !current);
+      return true;
+    }
+    return false;
+  };
 
   return (
     <Box flexDirection="column" gap={sectionGap} height={rows}>
@@ -173,6 +185,7 @@ export function EngineerChat({
         isStreaming={isStreaming}
         width={composerContentWidth}
         onHeightChange={setComposerVisibleLines}
+        onInterceptInput={handleComposerIntercept}
       />
     </Box>
   );
