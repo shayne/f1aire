@@ -77,11 +77,11 @@ export function getTranscriptScrollHint({
 
 export function useTranscriptViewport({
   rowCount,
-  visibleLineCount,
+  transcriptHeight,
   transcriptVersion,
 }: {
   rowCount: number;
-  visibleLineCount: number;
+  transcriptHeight: number;
   transcriptVersion: string | number;
 }): {
   window: { start: number; end: number };
@@ -93,11 +93,11 @@ export function useTranscriptViewport({
 } {
   const [scrollOffsetLines, setScrollOffsetLines] = useState(0);
   const previousRowCountRef = useRef(0);
-  const previousVisibleLineCountRef = useRef(visibleLineCount);
+  const previousTranscriptHeightRef = useRef(transcriptHeight);
   const pausedTranscriptVersionRef = useRef<string | number | null>(null);
   const isPaused = scrollOffsetLines > 0;
   const maxScrollLines = Math.max(
-    rowCount - Math.max(visibleLineCount - (isPaused ? 1 : 0), 1),
+    rowCount - Math.max(transcriptHeight - (isPaused ? 1 : 0), 1),
     0,
   );
   const effectiveScrollOffsetLines = Math.min(
@@ -109,7 +109,7 @@ export function useTranscriptViewport({
     pausedTranscriptVersionRef.current !== null &&
     pausedTranscriptVersionRef.current !== transcriptVersion;
   const visibleLineCountForWindow = Math.max(
-    visibleLineCount - (isScrolledUp ? 1 : 0),
+    transcriptHeight - (isScrolledUp ? 1 : 0),
     1,
   );
   const window = getTranscriptWindow({
@@ -124,24 +124,24 @@ export function useTranscriptViewport({
 
   useLayoutEffect(() => {
     const previousRowCount = previousRowCountRef.current;
-    const previousVisibleLineCount = previousVisibleLineCountRef.current;
+    const previousTranscriptHeight = previousTranscriptHeightRef.current;
     previousRowCountRef.current = rowCount;
-    previousVisibleLineCountRef.current = visibleLineCount;
+    previousTranscriptHeightRef.current = transcriptHeight;
     setScrollOffsetLines((current) =>
       reconcilePausedOffset({
         previousRowCount,
         nextRowCount: rowCount,
-        previousVisibleLineCount,
-        nextVisibleLineCount: visibleLineCount,
+        previousVisibleLineCount: previousTranscriptHeight,
+        nextVisibleLineCount: transcriptHeight,
         currentScrollOffsetLines: current,
       }),
     );
     if (scrollOffsetLines === 0 || maxScrollLines === 0) {
       pausedTranscriptVersionRef.current = null;
     }
-  }, [maxScrollLines, rowCount, scrollOffsetLines, visibleLineCount]);
+  }, [maxScrollLines, rowCount, scrollOffsetLines, transcriptHeight]);
 
-  const scrollStep = Math.max(1, Math.floor(visibleLineCount * 0.7));
+  const scrollStep = Math.max(1, Math.floor(transcriptHeight * 0.7));
 
   useInput((_, key) => {
     if (key.pageUp) {

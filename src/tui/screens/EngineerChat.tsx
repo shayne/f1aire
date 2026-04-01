@@ -102,7 +102,6 @@ export function EngineerChat({
   const availableForTranscript =
     rows - inputPanelHeight - detailsHeight - sectionGap * 2;
   const transcriptHeight = Math.max(availableForTranscript, 1);
-  const visibleLineCount = Math.max(transcriptHeight - 1, 1);
 
   const conversationRows = useMemo(
     () =>
@@ -119,7 +118,7 @@ export function EngineerChat({
   const transcriptVersion = `${messages.length}:${isStreaming ? streamingText : ''}`;
   const { window, scrollHint } = useTranscriptViewport({
     rowCount: conversationRows.length,
-    visibleLineCount,
+    transcriptHeight,
     transcriptVersion,
   });
 

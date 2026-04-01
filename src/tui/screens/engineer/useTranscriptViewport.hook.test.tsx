@@ -13,18 +13,18 @@ const waitForTick = () => new Promise((resolve) => setTimeout(resolve, 0));
 
 function Harness({
   rowCount,
-  visibleLineCount,
+  transcriptHeight,
   transcriptVersion,
   onRender,
 }: {
   rowCount: number;
-  visibleLineCount: number;
+  transcriptHeight: number;
   transcriptVersion: number;
   onRender: (value: ReturnType<typeof useTranscriptViewport>) => void;
 }) {
   const value = useTranscriptViewport({
     rowCount,
-    visibleLineCount,
+    transcriptHeight,
     transcriptVersion,
   });
 
@@ -42,7 +42,7 @@ describe('useTranscriptViewport', () => {
     const { stdin, lastFrame } = render(
       <Harness
         rowCount={18}
-        visibleLineCount={8}
+        transcriptHeight={8}
         transcriptVersion={1}
         onRender={vi.fn()}
       />,
@@ -71,7 +71,7 @@ describe('useTranscriptViewport', () => {
     const { rerender, lastFrame } = render(
       <Harness
         rowCount={18}
-        visibleLineCount={8}
+        transcriptHeight={8}
         transcriptVersion={1}
         onRender={onRender}
       />,
@@ -89,7 +89,7 @@ describe('useTranscriptViewport', () => {
     rerender(
       <Harness
         rowCount={21}
-        visibleLineCount={8}
+        transcriptHeight={8}
         transcriptVersion={2}
         onRender={onRender}
       />,
@@ -116,7 +116,7 @@ describe('useTranscriptViewport', () => {
     const { rerender } = render(
       <Harness
         rowCount={20}
-        visibleLineCount={8}
+        transcriptHeight={8}
         transcriptVersion={1}
         onRender={onRender}
       />,
@@ -133,7 +133,7 @@ describe('useTranscriptViewport', () => {
     rerender(
       <Harness
         rowCount={20}
-        visibleLineCount={10}
+        transcriptHeight={10}
         transcriptVersion={1}
         onRender={onRender}
       />,

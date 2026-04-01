@@ -155,15 +155,15 @@ describe('EngineerChat', () => {
         messages={[
           {
             role: 'user',
-            content: 'intro',
+            content: 'alpha row',
           },
           {
             role: 'assistant',
-            content: 'middle',
+            content: 'beta row',
           },
           {
             role: 'user',
-            content: 'follow up',
+            content: 'gamma row\ndelta row',
           },
         ]}
       />,
@@ -172,7 +172,7 @@ describe('EngineerChat', () => {
     await tick();
 
     const liveFrame = stripAnsi(lastFrame() ?? '');
-    expect(liveFrame).toContain('intro');
+    expect(liveFrame).toContain('alpha row');
     expect(liveFrame).not.toContain('Viewing earlier output');
   });
 
