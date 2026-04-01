@@ -18,6 +18,24 @@ describe('buildTranscriptRows', () => {
     ).toBe(true);
   });
 
+  it('keeps the onboarding note visible before the first user turn', () => {
+    const rows = buildTranscriptRows({
+      messages: [
+        { role: 'assistant', content: 'Quick summary: pace looks stable.' },
+      ],
+      streamingText: '',
+      isStreaming: false,
+      status: null,
+      messageWidth: 48,
+    });
+
+    expect(
+      rows.some((row) =>
+        row.plainText.includes('Ask about pace, tyres, pit windows, or traffic.'),
+      ),
+    ).toBe(true);
+  });
+
   it('renders user and assistant messages into labeled transcript rows', () => {
     const rows = buildTranscriptRows({
       messages: [

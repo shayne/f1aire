@@ -219,13 +219,14 @@ export function buildTranscriptRows({
   messageWidth,
 }: BuildTranscriptRowsOptions): TranscriptRow[] {
   const rows: TranscriptRow[] = [];
-
-  if (messages.length === 0 && !isStreaming && !status) {
-    rows.push(...createOnboardingRows(messageWidth));
-  }
+  const hasUserTurn = messages.some((message) => message.role === 'user');
 
   for (let i = 0; i < messages.length; i += 1) {
     rows.push(...createMessageRows(messages[i], `m-${i}`, messageWidth));
+  }
+
+  if (!hasUserTurn && !isStreaming && !status) {
+    rows.push(...createOnboardingRows(messageWidth));
   }
 
   if (isStreaming) {

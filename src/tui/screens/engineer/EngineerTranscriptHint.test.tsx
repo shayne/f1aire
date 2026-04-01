@@ -49,9 +49,11 @@ describe('EngineerChat transcript hints', () => {
     stdin.write('\u001b[5~');
     await tick();
 
-    expect(stripAnsi(lastFrame() ?? '')).toContain(
-      'Viewing earlier output · pgdn to return live',
-    );
+    const pausedFrame = stripAnsi(lastFrame() ?? '');
+    expect(pausedFrame).toContain('Viewing earlier output · pgdn to return live');
+    expect(
+      pausedFrame.match(/Viewing earlier output · pgdn to return live/g)?.length,
+    ).toBe(1);
 
     rerender(
       <EngineerChat {...baseProps} maxHeight={14} messages={makeMessages(17)} />,

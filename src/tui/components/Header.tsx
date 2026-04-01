@@ -17,12 +17,21 @@ export function Header({
 
   return (
     <Box flexDirection="column" marginBottom={compact ? 0 : 1}>
-      <Text color={theme.brand} bold>
-        {brand}
-      </Text>
-      {!compact && tagline ? (
-        <Text color={theme.subtle}>{tagline}</Text>
-      ) : null}
+      {compact && tagline ? (
+        <Text wrap="truncate-end">
+          <Text color={theme.brand} bold>
+            {brand}
+          </Text>
+          <Text color={theme.subtle}>{` · ${tagline}`}</Text>
+        </Text>
+      ) : (
+        <>
+          <Text color={theme.brand} bold>
+            {brand}
+          </Text>
+          {tagline ? <Text color={theme.subtle}>{tagline}</Text> : null}
+        </>
+      )}
       {breadcrumb.length > 0 && (
         <Text color={theme.subtle} wrap="truncate-end">
           {breadcrumb.join(' / ')}

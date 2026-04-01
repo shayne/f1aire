@@ -33,7 +33,7 @@ describe('TranscriptViewport', () => {
     unmount();
   });
 
-  it('renders the scroll hint above the transcript when follow mode is paused', async () => {
+  it('keeps paused scroll chrome out of the transcript rows', async () => {
     const { lastFrame, unmount } = await renderTui(
       <TranscriptViewport
         rows={rows.slice(-1)}
@@ -43,7 +43,7 @@ describe('TranscriptViewport', () => {
 
     const frame = lastFrame() ?? '';
 
-    expect(frame).toContain('Viewing earlier output');
+    expect(frame).not.toContain('Viewing earlier output');
     expect(frame).not.toContain('Jump to bottom');
     expect(frame).toContain('newer update');
     unmount();

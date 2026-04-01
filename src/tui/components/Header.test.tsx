@@ -22,4 +22,17 @@ describe('Header', () => {
     expect(frame).not.toContain('╰');
     unmount();
   });
+
+  it('keeps the product framing visible in compact mode', async () => {
+    const { lastFrame, unmount } = await renderTui(
+      <Header title="f1aire - Virtual Race Engineer" compact />,
+      { columns: 72, rows: 6 },
+    );
+
+    const frame = lastFrame() ?? '';
+
+    expect(frame).toContain('f1aire');
+    expect(frame).toContain('Virtual Race Engineer');
+    unmount();
+  });
 });

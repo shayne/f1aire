@@ -120,7 +120,7 @@ export function Composer({
   return (
     <Panel
       title="Ask the engineer"
-      tone="muted"
+      tone="accent"
       boxProps={{ height: panelHeight, overflow: 'hidden' }}
     >
       <Box flexDirection="column">
@@ -130,7 +130,7 @@ export function Composer({
           const isEmptyDraft = state.draft.length === 0;
           const displayLine =
             isEmptyDraft && index === 0 ? (
-              <Text color={theme.subtle}>
+              <Text>
                 Ask the engineer about pace, tyres, traffic, or strategy...
               </Text>
             ) : (
