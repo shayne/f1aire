@@ -1,5 +1,6 @@
 import React from 'react';
 import { Box, Text } from '#ink';
+import { theme } from '../theme.js';
 
 type HeaderProps = {
   breadcrumb?: string[];
@@ -9,43 +10,23 @@ type HeaderProps = {
 
 export function Header({
   breadcrumb = [],
-  title = 'F1aire - Virtual Race Engineer',
+  title = 'f1aire - Virtual Race Engineer',
   compact = false,
 }: HeaderProps): React.JSX.Element {
   const [brand, tagline] = title.split(' - ');
 
   return (
     <Box flexDirection="column" marginBottom={compact ? 0 : 1}>
-      <Box
-        borderStyle="round"
-        borderColor="ansi:blackBright"
-        paddingX={1}
-      >
-        <Box flexGrow={1} gap={1}>
-          <Text color="ansi:green" bold>
-            {brand}
-          </Text>
-          {!compact && tagline ? (
-            <Text color="ansi:blackBright">{tagline}</Text>
-          ) : null}
-        </Box>
-      </Box>
+      <Text color={theme.brand} bold>
+        {brand}
+      </Text>
+      {!compact && tagline ? (
+        <Text color={theme.subtle}>{tagline}</Text>
+      ) : null}
       {breadcrumb.length > 0 && (
-        <Box marginTop={compact ? 0 : 1} flexWrap="wrap">
-          {breadcrumb.map((part, index) => (
-            <Text
-              key={`${part}-${index}`}
-              color={
-                index === breadcrumb.length - 1
-                  ? 'ansi:cyan'
-                  : 'ansi:blackBright'
-              }
-            >
-              {part}
-              {index < breadcrumb.length - 1 ? ' / ' : ''}
-            </Text>
-          ))}
-        </Box>
+        <Text color={theme.subtle} wrap="truncate-end">
+          {breadcrumb.join(' / ')}
+        </Text>
       )}
     </Box>
   );

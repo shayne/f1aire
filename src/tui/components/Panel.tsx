@@ -1,5 +1,6 @@
 import React from 'react';
 import { Box, Text, type BoxProps } from '#ink';
+import { theme } from '../theme.js';
 
 type PanelProps = {
   title: string;
@@ -18,21 +19,17 @@ export function Panel({
   paddingY = 0,
   boxProps,
 }: PanelProps): React.JSX.Element {
-  const borderColor =
-    tone === 'accent' ? 'ansi:cyan' : 'ansi:blackBright';
-  const titleColor = tone === 'accent' ? 'ansi:cyan' : 'ansi:blackBright';
+  const titleColor = tone === 'accent' ? theme.accent : theme.panelTitle;
 
   return (
     <Box
       flexDirection="column"
-      borderStyle="round"
-      borderColor={borderColor}
       paddingX={paddingX}
       paddingY={paddingY}
       {...boxProps}
     >
       <Text color={titleColor}>{title}</Text>
-      <Box flexDirection="column" marginTop={1}>
+      <Box flexDirection="column">
         {children}
       </Box>
     </Box>

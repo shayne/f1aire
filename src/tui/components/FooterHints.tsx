@@ -1,12 +1,13 @@
 import React from 'react';
 import { Text } from '#ink';
+import { theme } from '../theme.js';
 
 export function getFooterHintText(screen: string): string {
   if (screen === 'engineer') {
-    return 'enter send · shift+enter newline · TAB details · pgup/pgdn scroll/live · esc back · ctrl+c quit';
+    return 'enter send · shift+enter newline · tab details · pgup/pgdn scroll · esc back';
   }
   if (screen === 'apiKey') {
-    return 'enter save · esc back · ctrl+c quit';
+    return 'enter save · esc back';
   }
 
   const showSettings =
@@ -15,7 +16,7 @@ export function getFooterHintText(screen: string): string {
     screen === 'session' ||
     screen === 'summary';
 
-  return `enter select · ${showSettings ? 's settings · ' : ''}b/backspace/esc back · q quit`;
+  return `enter select · ${showSettings ? 's settings · ' : ''}esc back · q quit`;
 }
 
 export function getFooterHintRowCount(screen: string, width: number): number {
@@ -60,5 +61,5 @@ export function getFooterHintRowCount(screen: string, width: number): number {
 }
 
 export function FooterHints({ screen }: { screen: string }): React.JSX.Element {
-  return <Text color="ansi:blackBright">{getFooterHintText(screen)}</Text>;
+  return <Text color={theme.subtle}>{getFooterHintText(screen)}</Text>;
 }

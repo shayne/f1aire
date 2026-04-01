@@ -1,8 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Box, Text, useInput, type Key } from '#ink';
+import { theme } from '../theme.js';
 
-const menuBorderColor = 'ansi:blackBright';
-const menuAccentColor = 'ansi:cyan';
+const menuAccentColor = theme.accent;
 
 type MenuAction =
   | { type: 'move'; delta: -1 | 1 }
@@ -126,16 +126,11 @@ export function MenuList<V>({
   }, { isActive: isFocused });
 
   return (
-    <Box
-      flexDirection="column"
-      borderStyle="round"
-      borderColor={menuBorderColor}
-      paddingX={1}
-    >
+    <Box flexDirection="column">
       {items.map((item, itemIndex) => (
         <Text
           key={item.key ?? item.label}
-          color={itemIndex === index ? menuAccentColor : undefined}
+          color={itemIndex === index ? menuAccentColor : theme.subtle}
         >
           {itemIndex === index ? '› ' : '  '}
           {item.label}

@@ -152,4 +152,23 @@ describe('MenuList', () => {
     expect(ui.lastFrame()).toContain('› 2026');
     ui.unmount();
   });
+
+  it('renders a clean list without a surrounding box frame', async () => {
+    const ui = await renderTui(
+      <MenuList
+        items={[
+          { label: '2026', value: 2026 },
+          { label: '2025', value: 2025 },
+        ]}
+        onSelect={() => {}}
+      />,
+    );
+
+    await waitForTick();
+
+    expect(ui.lastFrame()).toContain('› 2026');
+    expect(ui.lastFrame()).not.toContain('╭');
+    expect(ui.lastFrame()).not.toContain('╰');
+    ui.unmount();
+  });
 });
