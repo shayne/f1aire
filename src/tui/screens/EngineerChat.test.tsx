@@ -212,6 +212,42 @@ describe('EngineerChat', () => {
     );
   });
 
+  it('shows new updates below when pending status changes while paused', async () => {
+    const { stdin, lastFrame, rerender } = render(
+      <EngineerChat
+        {...baseProps}
+        maxHeight={14}
+        messages={makeMessages(16)}
+        isStreaming
+        status="Thinking"
+      />,
+    );
+
+    await tick();
+
+    stdin.write('\u001b[5~');
+    await tick();
+
+    expect(stripAnsi(lastFrame() ?? '')).toContain(
+      'Viewing earlier output · pgdn to return live',
+    );
+
+    rerender(
+      <EngineerChat
+        {...baseProps}
+        maxHeight={14}
+        messages={makeMessages(16)}
+        isStreaming
+        status="Running tool"
+      />,
+    );
+    await tick();
+
+    expect(stripAnsi(lastFrame() ?? '')).toContain(
+      'New updates below · pgdn to catch up',
+    );
+  });
+
   it('does not re-render the root when typing', async () => {
     const onRender = vi.fn();
     const { stdin } = render(<EngineerChat {...baseProps} onRender={onRender} />);

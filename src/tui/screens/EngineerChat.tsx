@@ -115,7 +115,13 @@ export function EngineerChat({
     [isStreaming, messageContentWidth, messages, status, streamingText],
   );
 
-  const transcriptVersion = `${messages.length}:${isStreaming ? streamingText : ''}`;
+  const transcriptVersion = useMemo(
+    () =>
+      conversationRows
+        .map((row) => `${row.kind}:${row.plainText}`)
+        .join('\u0001'),
+    [conversationRows],
+  );
   const { window, scrollHint } = useTranscriptViewport({
     rowCount: conversationRows.length,
     transcriptHeight,
