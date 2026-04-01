@@ -1,6 +1,5 @@
 import React from 'react';
-import { Box, Text, type BoxProps } from 'ink';
-import { theme } from '../theme.js';
+import { Box, Text, type BoxProps } from '#ink';
 
 type PanelProps = {
   title: string;
@@ -20,8 +19,8 @@ export function Panel({
   boxProps,
 }: PanelProps): React.JSX.Element {
   const borderColor =
-    tone === 'accent' ? theme.accent : tone === 'muted' ? theme.muted : theme.border;
-  const titleColor = tone === 'accent' ? theme.accent : theme.panelTitle;
+    tone === 'accent' ? 'ansi:cyan' : 'ansi:blackBright';
+  const titleColor = tone === 'accent' ? 'ansi:cyan' : 'ansi:blackBright';
 
   return (
     <Box

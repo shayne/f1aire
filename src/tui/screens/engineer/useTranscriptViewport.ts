@@ -1,4 +1,4 @@
-import { useInput } from 'ink';
+import { useInput } from '#ink';
 import { useLayoutEffect, useRef, useState } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 

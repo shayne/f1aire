@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Box, Text } from 'ink';
+import { Box, Text } from '#ink';
 import type { Meeting } from '../../core/types.js';
 import { SelectList } from '../components/SelectList.js';
 import { Panel } from '../components/Panel.js';
@@ -42,12 +42,16 @@ export function MeetingPicker({
           {detailMeeting ? (
             <>
               <Text>{detailMeeting.Name}</Text>
-              <Text color="gray">{detailMeeting.Location}</Text>
+              <Text color="ansi:blackBright">{detailMeeting.Location}</Text>
               <Text>Sessions: {detailMeeting.Sessions.length}</Text>
-              <Text color="gray">Use arrows to choose, enter to continue.</Text>
+              <Text color="ansi:blackBright">
+                Use arrows to choose, enter to continue.
+              </Text>
             </>
           ) : (
-            <Text color="gray">Highlight a meeting for details.</Text>
+            <Text color="ansi:blackBright">
+              Highlight a meeting for details.
+            </Text>
           )}
         </Panel>
       </Box>

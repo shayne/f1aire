@@ -1,11 +1,11 @@
 import React from 'react';
-import { render } from 'ink-testing-library';
 import { describe, expect, it } from 'vitest';
+import { renderTui } from '#ink/testing';
 import { EngineerDetails } from './EngineerDetails.js';
 
 describe('EngineerDetails', () => {
-  it('renders a compact status strip and keeps expanded details hidden by default', () => {
-    const { lastFrame } = render(
+  it('renders a compact status strip and keeps expanded details hidden by default', async () => {
+    const { lastFrame, unmount } = await renderTui(
       <EngineerDetails
         year={2025}
         meetingName="Test GP"
@@ -17,18 +17,20 @@ describe('EngineerDetails', () => {
         pythonCode={'print("hi")\n2 + 2'}
         isExpanded={false}
       />,
+      { columns: 120, rows: 12 },
     );
 
     const frame = lastFrame() ?? '';
 
     expect(frame).toContain('Test GP');
-    expect(frame).toContain('Thinking');
+    expect(frame).toContain('Status: Thinking');
     expect(frame).not.toContain('Details');
     expect(frame).not.toContain('print("hi")');
+    unmount();
   });
 
-  it('renders the expanded panel with recent activity and python preview when requested', () => {
-    const { lastFrame } = render(
+  it('renders the expanded panel with recent activity and python preview when requested', async () => {
+    const { lastFrame, unmount } = await renderTui(
       <EngineerDetails
         year={2025}
         meetingName="Test GP"
@@ -40,6 +42,7 @@ describe('EngineerDetails', () => {
         pythonCode={'import math\nprint("hi")\n2 + 2'}
         isExpanded
       />,
+      { columns: 120, rows: 16 },
     );
 
     const frame = lastFrame() ?? '';
@@ -48,5 +51,6 @@ describe('EngineerDetails', () => {
     expect(frame).toContain('Running tool');
     expect(frame).toContain('Python');
     expect(frame).toContain('print("hi")');
+    unmount();
   });
 });

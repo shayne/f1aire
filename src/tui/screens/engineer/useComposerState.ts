@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useReducer, useRef } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
-import type { Key } from 'ink';
+import type { Key } from '#ink';
 
 export const COMPOSER_VISIBLE_LINE_CAP = 5;
 
@@ -19,6 +19,11 @@ export type ComposerEnterResult = {
   cursor: number;
   shouldSubmit: boolean;
 };
+
+type ParsedComposerInput =
+  | { type: 'insert'; text: string }
+  | { type: 'submit' }
+  | { type: 'newline' };
 
 function clampCursor(draft: string, cursor: number): number {
   return Math.max(0, Math.min(cursor, draft.length));
@@ -142,6 +147,48 @@ export function getComposerVisibleLines(
   return lines.slice(-COMPOSER_VISIBLE_LINE_CAP);
 }
 
+function parseComposerInput(input: string): ParsedComposerInput[] {
+  const actions: ParsedComposerInput[] = [];
+  let buffer = '';
+
+  const flushBuffer = () => {
+    if (buffer.length === 0) return;
+    actions.push({ type: 'insert', text: buffer });
+    buffer = '';
+  };
+
+  for (let index = 0; index < input.length; ) {
+    if (
+      input.startsWith('\u001b[13;2u', index) ||
+      input.startsWith('\u001b[13;2~', index) ||
+      input.startsWith('[13;2u', index)
+    ) {
+      flushBuffer();
+      actions.push({ type: 'newline' });
+      index += input.startsWith('[13;2u', index) ? 6 : 8;
+      continue;
+    }
+
+    const char = input[index];
+    if (char === '\r' || char === '\n') {
+      flushBuffer();
+      actions.push({ type: 'submit' });
+      if (char === '\r' && input[index + 1] === '\n') {
+        index += 2;
+      } else {
+        index += 1;
+      }
+      continue;
+    }
+
+    buffer += char;
+    index += 1;
+  }
+
+  flushBuffer();
+  return actions;
+}
+
 export function useComposerState({
   onSend,
   isStreaming,
@@ -178,11 +225,6 @@ export function useComposerState({
     (input: string, key: Key) => {
       if (key.ctrl && input === 'c') return;
 
-      if (isModifiedEnterSequence(input)) {
-        commit({ type: 'insert', text: '\n' });
-        return;
-      }
-
       if (key.return) {
         const next = applyComposerEnter(stateRef.current, key.shift);
         if (next.shouldSubmit) {
@@ -190,6 +232,23 @@ export function useComposerState({
           return;
         }
         commit({ type: 'insert', text: '\n' });
+        return;
+      }
+
+      if (input.length > 0) {
+        for (const action of parseComposerInput(input)) {
+          if (action.type === 'insert') {
+            commit({ type: 'insert', text: action.text });
+            continue;
+          }
+
+          if (action.type === 'newline') {
+            commit({ type: 'insert', text: '\n' });
+            continue;
+          }
+
+          submit();
+        }
         return;
       }
 
@@ -207,12 +266,8 @@ export function useComposerState({
         commit({ type: 'move', delta: 1 });
         return;
       }
-
-      if (input.length > 0) {
-        commit({ type: 'insert', text: input });
-      }
     },
-    [commit, isModifiedEnterSequence, submit],
+    [commit, submit],
   );
 
   const visibleLines = useMemo(

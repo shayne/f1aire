@@ -1,7 +1,6 @@
 import React, { useEffect, useMemo } from 'react';
-import { Box, Text, useInput, type Key } from 'ink';
+import { Box, Text, useInput, type Key } from '#ink';
 import { Panel } from '../../components/Panel.js';
-import { theme } from '../../theme.js';
 import {
   getComposerVisibleLines,
   type ComposerState,
@@ -78,7 +77,7 @@ function renderVisibleLine(
   return (
     <Text>
       {before}
-      <Text color={theme.accent}>▌</Text>
+      <Text color="ansi:cyan">▌</Text>
       {after}
     </Text>
   );
@@ -136,7 +135,9 @@ export function Composer({
           const isEmptyDraft = state.draft.length === 0;
           const displayLine =
             isEmptyDraft && index === 0 ? (
-              <Text color={theme.muted}>Ask about pace, gaps, tyres...</Text>
+              <Text color="ansi:blackBright">
+                Ask about pace, gaps, tyres...
+              </Text>
             ) : (
               renderVisibleLine(
                 line,
@@ -147,13 +148,13 @@ export function Composer({
 
           return (
             <Box key={`${index}-${line}`}>
-              <Text color={theme.muted}>{index === 0 ? '› ' : '  '}</Text>
+              <Text color="ansi:blackBright">{index === 0 ? '› ' : '  '}</Text>
               <Text wrap="truncate-end">{displayLine}</Text>
             </Box>
           );
         })}
         <Box>
-          <Text color={theme.muted}>
+          <Text color="ansi:blackBright">
             enter send · shift+enter newline · TAB details
             {isStreaming ? ' · streaming' : ''}
           </Text>

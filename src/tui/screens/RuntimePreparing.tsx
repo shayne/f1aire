@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { Text, Box } from 'ink';
+import { Text, Box } from '#ink';
 import { Panel } from '../components/Panel.js';
-import { theme } from '../theme.js';
 
 const SPINNER_FRAMES = ['|', '/', '-', '\\'];
 const BAR_WIDTH = 20;
@@ -23,7 +22,7 @@ function Spinner({ active }: { active: boolean }) {
     return () => clearInterval(id);
   }, [active]);
   if (!active) return null;
-  return <Text color={theme.muted}>{SPINNER_FRAMES[index]}</Text>;
+  return <Text color="ansi:blackBright">{SPINNER_FRAMES[index]}</Text>;
 }
 
 function formatBytes(bytes: number) {
@@ -69,8 +68,8 @@ export function RuntimePreparing({
         </Box>
         {hasTotal ? (
           <Box flexDirection="column">
-            <Text color={theme.accent}>{renderBar(percent)}</Text>
-            <Text color={theme.muted}>
+            <Text color="ansi:cyan">{renderBar(percent)}</Text>
+            <Text color="ansi:blackBright">
               {`${Math.round(percent * 100)}% (${formatBytes(downloadedBytes)} / ${formatBytes(totalBytes)})`}
             </Text>
           </Box>

@@ -1,9 +1,8 @@
 import React from 'react';
-import { Box, Text } from 'ink';
+import { Box, Text } from '#ink';
 import type { Summary as SummaryData } from '../../core/summary.js';
 import { Panel } from '../components/Panel.js';
 import { createTerminalLink } from '../terminal-chrome.js';
-import { theme } from '../theme.js';
 
 export function Summary({
   summary,
@@ -14,9 +13,9 @@ export function Summary({
 }): React.JSX.Element {
   return (
     <Box flexDirection="column" gap={1}>
-      <Text color={theme.brand}>Download complete</Text>
+      <Text color="ansi:green">Download complete</Text>
       <Panel title="Session summary" tone="accent">
-        <Text color={theme.muted}>Data path</Text>
+        <Text color="ansi:blackBright">Data path</Text>
         <Text>{createTerminalLink(dir)}</Text>
         <Box marginTop={1} flexDirection="column">
           <Text>

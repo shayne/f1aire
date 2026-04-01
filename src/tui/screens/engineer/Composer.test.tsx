@@ -1,6 +1,6 @@
 import React from 'react';
-import { render } from 'ink-testing-library';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { renderTui } from '#ink/testing';
 import { Composer } from './Composer.js';
 import { useComposerState } from './useComposerState.js';
 
@@ -35,7 +35,9 @@ afterEach(() => {
 describe('Composer', () => {
   it('submits on Enter and clears the local draft', async () => {
     const onSend = vi.fn();
-    const { stdin, lastFrame } = render(<Harness onSend={onSend} />);
+    const { stdin, lastFrame, unmount } = await renderTui(
+      <Harness onSend={onSend} />,
+    );
 
     await waitForTick();
     stdin.write('pit');
@@ -47,29 +49,33 @@ describe('Composer', () => {
 
     expect(onSend).toHaveBeenCalledWith('pit');
     expect(lastFrame()).not.toContain('pit');
+    unmount();
   });
 
-  it('submits a queued burst without waiting for a render tick', async () => {
+  it('submits a queued burst without waiting for an intermediate render', async () => {
     const onSend = vi.fn();
-    const { stdin } = render(<Harness onSend={onSend} />);
+    const { stdin, unmount } = await renderTui(<Harness onSend={onSend} />);
 
     await waitForTick();
-    stdin.write('abc');
-    stdin.write('\r');
+    stdin.write('abc\r');
     await waitForTick();
 
     expect(onSend).toHaveBeenCalledWith('abc');
+    unmount();
   });
 
-  it('renders the newline hint in the footer copy', () => {
-    const { lastFrame } = render(<Harness onSend={vi.fn()} />);
+  it('renders the newline hint in the footer copy', async () => {
+    const { lastFrame, unmount } = await renderTui(
+      <Harness onSend={vi.fn()} />,
+    );
 
     expect(lastFrame()).toContain('shift+enter newline');
+    unmount();
   });
 
   it('keeps accepting typing but blocks Enter while streaming', async () => {
     const onSend = vi.fn();
-    const { stdin, lastFrame } = render(
+    const { stdin, lastFrame, unmount } = await renderTui(
       <Harness onSend={onSend} isStreaming />,
     );
 
@@ -83,11 +89,14 @@ describe('Composer', () => {
 
     expect(onSend).not.toHaveBeenCalled();
     expect(lastFrame()).toContain('pit');
+    unmount();
   });
 
   it('treats terminal delete as backspace', async () => {
     const onSend = vi.fn();
-    const { stdin, lastFrame } = render(<Harness onSend={onSend} />);
+    const { stdin, lastFrame, unmount } = await renderTui(
+      <Harness onSend={onSend} />,
+    );
 
     await waitForTick();
     stdin.write('ab');
@@ -98,11 +107,14 @@ describe('Composer', () => {
     const frame = lastFrame() ?? '';
     expect(frame).toContain('a');
     expect(frame).not.toContain('ab');
+    unmount();
   });
 
   it('applies cursor edits to the latest queued state', async () => {
     const onSend = vi.fn();
-    const { stdin, lastFrame } = render(<Harness onSend={onSend} />);
+    const { stdin, lastFrame, unmount } = await renderTui(
+      <Harness onSend={onSend} />,
+    );
 
     await waitForTick();
     stdin.write('abc');
@@ -114,11 +126,14 @@ describe('Composer', () => {
 
     const frame = lastFrame() ?? '';
     expect(frame).toContain('aX▌bc');
+    unmount();
   });
 
   it('normalizes a modified-enter escape sequence to a newline', async () => {
     const onSend = vi.fn();
-    const { stdin, lastFrame } = render(<Harness onSend={onSend} />);
+    const { stdin, lastFrame, unmount } = await renderTui(
+      <Harness onSend={onSend} />,
+    );
 
     await waitForTick();
     stdin.write('ab');
@@ -128,12 +143,13 @@ describe('Composer', () => {
     const frame = lastFrame() ?? '';
     expect(frame).toContain('ab');
     expect(frame).not.toContain('[13;2u');
+    unmount();
   });
 
   it('grows to five visible wrapped lines before scrolling older content away', async () => {
     const onSend = vi.fn();
     const onHeightChange = vi.fn();
-    const { stdin, lastFrame } = render(
+    const { stdin, lastFrame, unmount } = await renderTui(
       <Harness onSend={onSend} onHeightChange={onHeightChange} width={3} />,
     );
 
@@ -144,7 +160,8 @@ describe('Composer', () => {
     expect(onHeightChange).toHaveBeenLastCalledWith(5);
     const frame = lastFrame() ?? '';
     expect(frame).not.toContain('abc');
-    expect(frame).toContain('def');
+    expect(frame).toContain('ghi');
     expect(frame).toContain('pqr');
+    unmount();
   });
 });

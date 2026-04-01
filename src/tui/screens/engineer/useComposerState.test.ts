@@ -1,6 +1,6 @@
 import React from 'react';
-import { render } from 'ink-testing-library';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { renderTui } from '#ink/testing';
 import {
   applyComposerEnter,
   getComposerVisibleLines,
@@ -70,7 +70,7 @@ describe('applyComposerEnter', () => {
 describe('useComposerState', () => {
   it('normalizes a modified-enter escape sequence to a newline', async () => {
     let state: ReturnType<typeof useComposerState> | null = null;
-    render(
+    const app = await renderTui(
       React.createElement(Harness, {
         onSend: vi.fn(),
         onState: (nextState: ReturnType<typeof useComposerState>) => {
@@ -117,5 +117,6 @@ describe('useComposerState', () => {
     await waitForTick();
     expect(state?.draft).toBe('ab\n');
     expect(state?.cursor).toBe(3);
+    app.unmount();
   });
 });

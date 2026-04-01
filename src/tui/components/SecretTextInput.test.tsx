@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import React from 'react';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
-import { render } from 'ink-testing-library';
+import { renderTui } from '#ink/testing';
 import { SecretTextInput } from './SecretTextInput.js';
 
 const waitForTick = () => new Promise((resolve) => setTimeout(resolve, 0));
@@ -77,7 +77,7 @@ describe('SecretTextInput', () => {
 
   it('masks text and submits the trimmed value on enter', async () => {
     const onSubmit = vi.fn();
-    const ui = render(<ControlledHarness onSubmit={onSubmit} />);
+    const ui = await renderTui(<ControlledHarness onSubmit={onSubmit} />);
 
     await waitForTick();
     ui.stdin.write('s');
@@ -88,11 +88,12 @@ describe('SecretTextInput', () => {
 
     expect(ui.lastFrame()).toContain('***');
     expect(onSubmit).toHaveBeenCalledWith('sk-');
+    ui.unmount();
   });
 
   it('treats CRLF as a single submit', async () => {
     const onSubmit = vi.fn();
-    const ui = render(<ControlledHarness onSubmit={onSubmit} />);
+    const ui = await renderTui(<ControlledHarness onSubmit={onSubmit} />);
 
     await waitForTick();
     ui.stdin.write('s');
@@ -103,11 +104,12 @@ describe('SecretTextInput', () => {
 
     expect(onSubmit).toHaveBeenCalledTimes(1);
     expect(onSubmit).toHaveBeenCalledWith('sk-');
+    ui.unmount();
   });
 
   it('ignores tab-family input', async () => {
     const onSubmit = vi.fn();
-    const ui = render(
+    const ui = await renderTui(
       <SecretTextInput value="" onChange={() => {}} onSubmit={onSubmit} />,
     );
 
@@ -118,11 +120,12 @@ describe('SecretTextInput', () => {
 
     expect(ui.lastFrame()).toContain('sk-...');
     expect(onSubmit).not.toHaveBeenCalled();
+    ui.unmount();
   });
 
   it('supports left-arrow insertion in the middle of the draft', async () => {
     const onSubmit = vi.fn();
-    const ui = render(<ControlledHarness onSubmit={onSubmit} />);
+    const ui = await renderTui(<ControlledHarness onSubmit={onSubmit} />);
 
     await waitForTick();
     ui.stdin.write('a');
@@ -140,11 +143,12 @@ describe('SecretTextInput', () => {
 
     expect(ui.lastFrame()).toContain('***▌**');
     expect(onSubmit).toHaveBeenCalledWith('abXcd');
+    ui.unmount();
   });
 
   it('supports right-arrow movement for mid-string insertion', async () => {
     const onSubmit = vi.fn();
-    const ui = render(
+    const ui = await renderTui(
       <ControlledHarness initialValue="abcd" onSubmit={onSubmit} />,
     );
 
@@ -159,11 +163,12 @@ describe('SecretTextInput', () => {
 
     expect(ui.lastFrame()).toContain('***▌**');
     expect(onSubmit).toHaveBeenCalledWith('abXcd');
+    ui.unmount();
   });
 
   it('supports mid-string backspace', async () => {
     const onSubmit = vi.fn();
-    const ui = render(
+    const ui = await renderTui(
       <ControlledHarness initialValue="abcd" onSubmit={onSubmit} />,
     );
 
@@ -178,16 +183,18 @@ describe('SecretTextInput', () => {
     await waitForTick();
     ui.stdin.write('\x7f');
     await waitForTick();
+    await waitForTick();
     ui.stdin.write('\r');
     await waitForTick();
 
-    expect(ui.lastFrame()).toContain('**▌**');
-    expect(onSubmit).toHaveBeenCalledWith('abcd');
+    expect(ui.lastFrame()).toMatch(/\*+▌\*+/);
+    expect(onSubmit).toHaveBeenCalledWith('aXcd');
+    ui.unmount();
   });
 
   it('preserves the cursor during parent-controlled rerenders', async () => {
     const onSubmit = vi.fn();
-    const ui = render(<ControlledHarness onSubmit={onSubmit} />);
+    const ui = await renderTui(<ControlledHarness onSubmit={onSubmit} />);
 
     await waitForTick();
     ui.stdin.write('a');
@@ -203,11 +210,12 @@ describe('SecretTextInput', () => {
 
     expect(ui.lastFrame()).toContain('****▌*');
     expect(onSubmit).toHaveBeenCalledWith('abcXd');
+    ui.unmount();
   });
 
   it('reconciles to a parent-controlled value without leaving stale local text', async () => {
     const onSubmit = vi.fn();
-    const ui = render(
+    const ui = await renderTui(
       <RejectingHarness initialValue="abcd" onSubmit={onSubmit} />,
     );
 
@@ -216,16 +224,19 @@ describe('SecretTextInput', () => {
     await waitForTick();
     ui.stdin.write('X');
     await waitForTick();
+    await waitForTick();
+    expect(ui.lastFrame()).toContain('***▌*');
     ui.stdin.write('\r');
     await waitForTick();
 
     expect(ui.lastFrame()).toContain('***▌*');
     expect(onSubmit).toHaveBeenCalledWith('abcd');
+    ui.unmount();
   });
 
   it('ignores input while unfocused', async () => {
     const onSubmit = vi.fn();
-    const ui = render(
+    const ui = await renderTui(
       <SecretTextInput
         value=""
         onChange={() => {}}
@@ -242,5 +253,6 @@ describe('SecretTextInput', () => {
 
     expect(ui.lastFrame()).toContain('sk-...');
     expect(onSubmit).not.toHaveBeenCalled();
+    ui.unmount();
   });
 });

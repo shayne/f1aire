@@ -1,6 +1,6 @@
 import React from 'react';
-import { render } from 'ink-testing-library';
 import { describe, expect, it, vi } from 'vitest';
+import { renderTui } from '#ink/testing';
 import { EngineerChat } from '../EngineerChat.js';
 
 const baseProps = {
@@ -40,7 +40,7 @@ function makeMessages(count: number) {
 
 describe('EngineerChat transcript hints', () => {
   it('shows the paused hint first, then the updates-below hint after new output arrives', async () => {
-    const { stdin, lastFrame, rerender } = render(
+    const { stdin, lastFrame, rerender, unmount } = await renderTui(
       <EngineerChat {...baseProps} maxHeight={14} messages={makeMessages(16)} />,
     );
 
@@ -61,5 +61,6 @@ describe('EngineerChat transcript hints', () => {
     expect(stripAnsi(lastFrame() ?? '')).toContain(
       'New updates below · pgdn to catch up',
     );
+    unmount();
   });
 });

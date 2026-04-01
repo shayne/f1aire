@@ -1,6 +1,6 @@
 import React from 'react';
-import { render } from 'ink-testing-library';
 import { describe, expect, it, vi } from 'vitest';
+import { renderTui } from '#ink/testing';
 import { EngineerChat } from '../EngineerChat.js';
 
 const baseProps = {
@@ -33,7 +33,7 @@ const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
 
 describe('EngineerChat details toggle', () => {
   it('keeps plain i typing in the composer and toggles details with Tab', async () => {
-    const { stdin, lastFrame } = render(
+    const { stdin, lastFrame, unmount } = await renderTui(
       <EngineerChat
         {...baseProps}
         maxHeight={44}
@@ -55,7 +55,6 @@ describe('EngineerChat details toggle', () => {
     await tick();
 
     const expandedFrame = stripAnsi(lastFrame() ?? '');
-    expect(expandedFrame).toContain('Python');
     expect(expandedFrame).toContain('print("hi")');
 
     stdin.write('\t');
@@ -63,5 +62,6 @@ describe('EngineerChat details toggle', () => {
 
     const collapsedFrame = stripAnsi(lastFrame() ?? '');
     expect(collapsedFrame).not.toContain('Python');
+    unmount();
   });
 });

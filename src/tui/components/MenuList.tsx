@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Box, Text, useInput, type Key } from 'ink';
+import { Box, Text, useInput, type Key } from '#ink';
 
 const menuBorderColor = 'ansi:blackBright';
 const menuAccentColor = 'ansi:cyan';

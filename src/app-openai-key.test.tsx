@@ -3,7 +3,7 @@ import path from 'node:path';
 import { tmpdir } from 'node:os';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import React from 'react';
-import { render } from 'ink-testing-library';
+import { renderTui } from '#ink/testing';
 
 const originalEnv = { ...process.env };
 
@@ -30,7 +30,7 @@ const waitFor = async (
 };
 
 describe('App OpenAI key prompt', () => {
-  it('prompts for key after download when env and stored key are missing', async () => {
+  it('prompts for key after download when env and stored key are missing and writes titles to the renderer stdout', async () => {
     delete process.env.OPENAI_API_KEY;
     const base = path.join(tmpdir(), `f1aire-app-${Date.now()}`);
     process.env.XDG_DATA_HOME = base;
@@ -42,6 +42,29 @@ describe('App OpenAI key prompt', () => {
         onProgress?.({ phase: 'ready', message: 'Python runtime ready.' });
         return { ready: true };
       },
+    }));
+    vi.doMock('@ai-sdk/openai', () => ({
+      createOpenAI: () => () => ({}),
+    }));
+    vi.doMock('./agent/engineer.js', () => ({
+      createEngineerSession: () => ({
+        close: vi.fn(),
+        sendUserMessage: vi.fn(),
+      }),
+    }));
+    vi.doMock('./agent/engineer-logger.js', () => ({
+      createEngineerLogger: () => ({
+        logSessionStart: vi.fn(),
+        logSessionEnd: vi.fn(),
+        logTurn: vi.fn(),
+        logEvent: vi.fn(),
+      }),
+    }));
+    vi.doMock('./agent/tools.js', () => ({
+      makeTools: () => ({}),
+    }));
+    vi.doMock('./agent/prompt.js', () => ({
+      systemPrompt: 'test prompt',
     }));
 
     vi.doMock('./tui/screens/SeasonPicker.js', () => ({
@@ -105,11 +128,28 @@ describe('App OpenAI key prompt', () => {
       },
     }));
 
+    const processWriteSpy = vi.spyOn(process.stdout, 'write');
     const { App } = await import('./app.js');
 
-    const { lastFrame } = render(<App />);
-    await waitFor(() => (lastFrame() ?? '').includes('OpenAI API Key'), {
-      debug: () => lastFrame() ?? '',
+    const app = await renderTui(<App />);
+    const rendererWrites: string[] = [];
+    const originalRendererWrite = app.stdout.write.bind(app.stdout);
+    app.stdout.write = ((chunk: any, ...args: any[]) => {
+      rendererWrites.push(String(chunk));
+      return originalRendererWrite(chunk, ...args);
+    }) as typeof app.stdout.write;
+
+    await waitFor(() => (app.lastFrame() ?? '').includes('OpenAI API Key'), {
+      debug: () => app.lastFrame() ?? '',
     });
+    await waitFor(() =>
+      rendererWrites.some((chunk) => chunk.includes('OpenAI API Key')),
+    );
+    expect(
+      processWriteSpy.mock.calls.some((call) =>
+        String(call[0]).includes('OpenAI API Key'),
+      ),
+    ).toBe(false);
+    app.unmount();
   });
 });

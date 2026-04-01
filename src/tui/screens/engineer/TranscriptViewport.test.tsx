@@ -1,7 +1,7 @@
 import React from 'react';
-import { Text } from 'ink';
-import { render } from 'ink-testing-library';
 import { describe, expect, it } from 'vitest';
+import { Text } from '#ink';
+import { renderTui } from '#ink/testing';
 import type { TranscriptRow } from './transcript-rows.js';
 import { TranscriptViewport } from './TranscriptViewport.js';
 
@@ -21,8 +21,8 @@ const rows: TranscriptRow[] = [
 ];
 
 describe('TranscriptViewport', () => {
-  it('renders the visible transcript rows in the main transcript surface', () => {
-    const { lastFrame } = render(
+  it('renders the visible transcript rows in the main transcript surface', async () => {
+    const { lastFrame, unmount } = await renderTui(
       <TranscriptViewport visibleRows={rows} scrollHint={null} />,
     );
 
@@ -30,10 +30,11 @@ describe('TranscriptViewport', () => {
 
     expect(frame).toContain('older update');
     expect(frame).toContain('newer update');
+    unmount();
   });
 
-  it('renders the scroll hint above the transcript when follow mode is paused', () => {
-    const { lastFrame } = render(
+  it('renders the scroll hint above the transcript when follow mode is paused', async () => {
+    const { lastFrame, unmount } = await renderTui(
       <TranscriptViewport
         visibleRows={rows.slice(-1)}
         scrollHint="Viewing earlier output · pgdn to return live"
@@ -44,5 +45,6 @@ describe('TranscriptViewport', () => {
 
     expect(frame).toContain('Viewing earlier output');
     expect(frame).toContain('newer update');
+    unmount();
   });
 });

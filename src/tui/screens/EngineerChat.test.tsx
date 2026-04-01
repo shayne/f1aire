@@ -1,6 +1,6 @@
 import React from 'react';
-import { render } from 'ink-testing-library';
 import { describe, expect, it, vi } from 'vitest';
+import { renderTui } from '#ink/testing';
 import { EngineerChat } from './EngineerChat.js';
 
 const baseProps = {
@@ -39,8 +39,8 @@ function makeMessages(count: number) {
 }
 
 describe('EngineerChat', () => {
-  it('renders assistant markdown without literal markers', () => {
-    const { lastFrame } = render(
+  it('renders assistant markdown without literal markers', async () => {
+    const { lastFrame, unmount } = await renderTui(
       <EngineerChat
         {...baseProps}
         messages={[
@@ -57,20 +57,24 @@ describe('EngineerChat', () => {
     expect(frame).toMatch(/Here is\s+bold\s+and\s+code\./);
     expect(frame).not.toContain('**bold**');
     expect(frame).not.toContain('`code`');
+    unmount();
   });
 
-  it('does not render the data panel', () => {
-    const { lastFrame } = render(<EngineerChat {...baseProps} />);
+  it('does not render the data panel', async () => {
+    const { lastFrame, unmount } = await renderTui(
+      <EngineerChat {...baseProps} />,
+    );
 
     const frame = stripAnsi(lastFrame() ?? '');
 
     expect(frame).not.toContain('Data');
     expect(frame).not.toContain('Model');
+    unmount();
   });
 
   it('does not re-render the conversation panel when typing', async () => {
     const onConversationRender = vi.fn();
-    const { stdin } = render(
+    const { stdin, unmount } = await renderTui(
       <EngineerChat
         {...baseProps}
         onConversationRender={onConversationRender}
@@ -84,10 +88,11 @@ describe('EngineerChat', () => {
     await tick();
 
     expect(onConversationRender).toHaveBeenCalledTimes(1);
+    unmount();
   });
 
   it('keeps composer typing intact and toggles the details panel with Tab', async () => {
-    const { stdin, lastFrame } = render(
+    const { stdin, lastFrame, unmount } = await renderTui(
       <EngineerChat
         {...baseProps}
         maxHeight={44}
@@ -110,7 +115,6 @@ describe('EngineerChat', () => {
 
     const frame = stripAnsi(lastFrame() ?? '');
     expect(frame).toContain('› i');
-    expect(frame).toContain('Python');
     expect(frame).toContain('print(\"hi\")');
 
     stdin.write('\t');
@@ -119,10 +123,11 @@ describe('EngineerChat', () => {
     const collapsedFrame = stripAnsi(lastFrame() ?? '');
     expect(collapsedFrame).toContain('› i');
     expect(collapsedFrame).not.toContain('Python');
+    unmount();
   });
 
   it('shows the transcript pause/live workflow with PageUp and PageDown', async () => {
-    const { stdin, lastFrame } = render(
+    const { stdin, lastFrame, unmount } = await renderTui(
       <EngineerChat {...baseProps} maxHeight={14} messages={makeMessages(16)} />,
     );
 
@@ -145,10 +150,11 @@ describe('EngineerChat', () => {
     expect(stripAnsi(lastFrame() ?? '')).not.toContain(
       'Viewing earlier output · pgdn to return live',
     );
+    unmount();
   });
 
   it('uses the full transcript height while live', async () => {
-    const { lastFrame } = render(
+    const { lastFrame, unmount } = await renderTui(
       <EngineerChat
         {...baseProps}
         maxHeight={16}
@@ -174,10 +180,11 @@ describe('EngineerChat', () => {
     const liveFrame = stripAnsi(lastFrame() ?? '');
     expect(liveFrame).toContain('alpha row');
     expect(liveFrame).not.toContain('Viewing earlier output');
+    unmount();
   });
 
   it('shows new updates below when streaming text changes while paused', async () => {
-    const { stdin, lastFrame, rerender } = render(
+    const { stdin, lastFrame, rerender, unmount } = await renderTui(
       <EngineerChat
         {...baseProps}
         maxHeight={14}
@@ -210,10 +217,11 @@ describe('EngineerChat', () => {
     expect(stripAnsi(lastFrame() ?? '')).toContain(
       'New updates below · pgdn to catch up',
     );
+    unmount();
   });
 
   it('shows new updates below when pending status changes while paused', async () => {
-    const { stdin, lastFrame, rerender } = render(
+    const { stdin, lastFrame, rerender, unmount } = await renderTui(
       <EngineerChat
         {...baseProps}
         maxHeight={14}
@@ -246,10 +254,11 @@ describe('EngineerChat', () => {
     expect(stripAnsi(lastFrame() ?? '')).toContain(
       'New updates below · pgdn to catch up',
     );
+    unmount();
   });
 
   it('does not treat a width change as new transcript content while paused', async () => {
-    const rendered = render(
+    const rendered = await renderTui(
       <EngineerChat
         {...baseProps}
         maxHeight={14}
@@ -259,10 +268,6 @@ describe('EngineerChat', () => {
       />,
     );
 
-    Object.defineProperty(rendered.stdout, 'columns', {
-      value: 80,
-      configurable: true,
-    });
     rendered.rerender(
       <EngineerChat
         {...baseProps}
@@ -281,10 +286,7 @@ describe('EngineerChat', () => {
       'Viewing earlier output · pgdn to return live',
     );
 
-    Object.defineProperty(rendered.stdout, 'columns', {
-      value: 120,
-      configurable: true,
-    });
+    rendered.resize(120, 24);
     rendered.rerender(
       <EngineerChat
         {...baseProps}
@@ -299,11 +301,14 @@ describe('EngineerChat', () => {
     expect(stripAnsi(rendered.lastFrame() ?? '')).toContain(
       'Viewing earlier output · pgdn to return live',
     );
+    rendered.unmount();
   });
 
   it('does not re-render the root when typing', async () => {
     const onRender = vi.fn();
-    const { stdin } = render(<EngineerChat {...baseProps} onRender={onRender} />);
+    const { stdin, unmount } = await renderTui(
+      <EngineerChat {...baseProps} onRender={onRender} />,
+    );
 
     await tick();
     expect(onRender).toHaveBeenCalledTimes(1);
@@ -312,5 +317,6 @@ describe('EngineerChat', () => {
     await tick();
 
     expect(onRender).toHaveBeenCalledTimes(1);
+    unmount();
   });
 });

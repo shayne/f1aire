@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Text, useInput, type Key } from 'ink';
+import { Text, useInput, type Key } from '#ink';
 
 type SecretAction =
   | { type: 'append'; text: string }

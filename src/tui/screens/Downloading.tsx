@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Text } from 'ink';
+import { Text } from '#ink';
 import type { Meeting, Session } from '../../core/types.js';
 
 export function Downloading({

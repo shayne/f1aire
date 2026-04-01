@@ -1,6 +1,5 @@
 import React, { useEffect } from 'react';
-import { Box, Text } from 'ink';
-import { theme } from '../../theme.js';
+import { Box, Text } from '#ink';
 import type { TranscriptRow } from './transcript-rows.js';
 
 type TranscriptViewportProps = {
@@ -28,7 +27,7 @@ export const TranscriptViewport = React.memo(function TranscriptViewport({
       height={height}
     >
       {scrollHint ? (
-        <Text color={theme.muted} wrap="truncate-end">
+        <Text color="ansi:blackBright" wrap="truncate-end">
           {scrollHint}
         </Text>
       ) : null}

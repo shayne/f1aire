@@ -1,11 +1,10 @@
 import React from 'react';
-import { render, cleanup } from 'ink-testing-library';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { Text } from 'ink';
+import { Text } from '#ink';
+import { renderTui } from '#ink/testing';
 import { useTranscriptViewport } from './useTranscriptViewport.js';
 
 afterEach(() => {
-  cleanup();
   vi.restoreAllMocks();
 });
 
@@ -39,7 +38,7 @@ function Harness({
 
 describe('useTranscriptViewport', () => {
   it('responds to PageUp and PageDown keyboard input', async () => {
-    const { stdin, lastFrame } = render(
+    const { stdin, lastFrame, unmount } = await renderTui(
       <Harness
         rowCount={18}
         transcriptHeight={8}
@@ -58,6 +57,7 @@ describe('useTranscriptViewport', () => {
     stdin.write('\u001b[6~');
     await waitForTick();
     expect(lastFrame()).toContain('10:18:10');
+    unmount();
   });
 
   it('preserves the same slice while paused, then jumps back to live', async () => {
@@ -68,7 +68,7 @@ describe('useTranscriptViewport', () => {
       },
     );
 
-    const { rerender, lastFrame } = render(
+    const { rerender, lastFrame, unmount } = await renderTui(
       <Harness
         rowCount={18}
         transcriptHeight={8}
@@ -103,6 +103,7 @@ describe('useTranscriptViewport', () => {
     await waitForTick();
 
     expect(viewport?.window).toEqual({ start: 13, end: 21 });
+    unmount();
   });
 
   it('keeps the same top row anchored when the visible height changes while paused', async () => {
@@ -113,7 +114,7 @@ describe('useTranscriptViewport', () => {
       },
     );
 
-    const { rerender } = render(
+    const { rerender, unmount } = await renderTui(
       <Harness
         rowCount={20}
         transcriptHeight={8}
@@ -142,5 +143,6 @@ describe('useTranscriptViewport', () => {
 
     expect(viewport?.window).toEqual({ start: 7, end: 16 });
     expect(viewport?.maxScrollLines).toBe(11);
+    unmount();
   });
 });

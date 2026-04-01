@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Box, Text } from 'ink';
+import { Box, Text } from '#ink';
 import { SelectList } from '../components/SelectList.js';
 import { Panel } from '../components/Panel.js';
 import { getSeasonOptions } from '../season-utils.js';
@@ -39,10 +39,12 @@ export function SeasonPicker({
           {detailYear !== null ? (
             <>
               <Text>Year: {detailYear}</Text>
-              <Text color="gray">Use arrows to choose, enter to load meetings.</Text>
+              <Text color="ansi:blackBright">
+                Use arrows to choose, enter to load meetings.
+              </Text>
             </>
           ) : (
-            <Text color="gray">Pick a year to load meetings.</Text>
+            <Text color="ansi:blackBright">Pick a year to load meetings.</Text>
           )}
         </Panel>
       </Box>

@@ -1,9 +1,8 @@
 import React, { useState } from 'react';
-import { Box, Text } from 'ink';
+import { Box, Text } from '#ink';
 import { Panel } from '../components/Panel.js';
 import { SecretTextInput } from '../components/SecretTextInput.js';
 import { createTerminalLink } from '../terminal-chrome.js';
-import { theme } from '../theme.js';
 
 export function ApiKeyPrompt({
   configPath,
@@ -27,16 +26,16 @@ export function ApiKeyPrompt({
     <Panel title="OpenAI API Key" tone="accent" paddingY={1}>
       <Box flexDirection="column" gap={1}>
         <Text>Paste your OpenAI API key to continue.</Text>
-        <Text color={theme.muted}>
+        <Text color="ansi:blackBright">
           {`Stored (plaintext) at: ${createTerminalLink(configPath)}`}
         </Text>
-        <Text color={theme.muted}>
+        <Text color="ansi:blackBright">
           If <Text bold>OPENAI_API_KEY</Text> is set in your environment, it
           will be used instead.
         </Text>
-        {error ? <Text color={theme.status.error}>Error: {error}</Text> : null}
+        {error ? <Text color="ansi:red">Error: {error}</Text> : null}
         <Box>
-          <Text color={theme.muted}>› </Text>
+          <Text color="ansi:blackBright">› </Text>
           <SecretTextInput
             value={input}
             onChange={setInput}

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Box, Text } from 'ink';
+import { Box, Text } from '#ink';
 import type { Meeting, Session } from '../../core/types.js';
 import { SelectList } from '../components/SelectList.js';
 import { Panel } from '../components/Panel.js';
@@ -41,13 +41,17 @@ export function SessionPicker({
           {detailSession ? (
             <>
               <Text>{detailSession.Name}</Text>
-              <Text color="gray">Type: {detailSession.Type}</Text>
+              <Text color="ansi:blackBright">Type: {detailSession.Type}</Text>
               <Text>Start: {detailSession.StartDate}</Text>
               <Text>End: {detailSession.EndDate}</Text>
-              <Text color="gray">Use arrows to choose, enter to continue.</Text>
+              <Text color="ansi:blackBright">
+                Use arrows to choose, enter to continue.
+              </Text>
             </>
           ) : (
-            <Text color="gray">Highlight a session for details.</Text>
+            <Text color="ansi:blackBright">
+              Highlight a session for details.
+            </Text>
           )}
         </Panel>
       </Box>

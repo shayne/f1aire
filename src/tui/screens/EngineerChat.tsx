@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Box, type Key, useStdout } from 'ink';
+import { Box, type Key, useTerminalSize } from '#ink';
 import type { Summary as SummaryData } from '../../core/summary.js';
 import type { Meeting, Session } from '../../core/types.js';
 import type { ChatMessage } from '../chat-state.js';
@@ -103,9 +103,8 @@ export function EngineerChat({
   onConversationRender?: () => void;
   onRender?: () => void;
 }) {
-  const { stdout } = useStdout();
-  const columns = stdout?.columns ?? 100;
-  const rows = maxHeight ?? stdout?.rows ?? 40;
+  const { columns = 100, rows: terminalRows = 40 } = useTerminalSize();
+  const rows = maxHeight ?? terminalRows;
   const compact = rows < 32;
   const messageContentWidth = Math.max(10, columns - 2);
   const composerContentWidth = Math.max(12, columns - 4);

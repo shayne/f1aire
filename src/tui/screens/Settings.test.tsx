@@ -1,11 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
 import React from 'react';
-import { render } from 'ink-testing-library';
+import { renderTui } from '#ink/testing';
 import { Settings } from './Settings.js';
 
 describe('Settings', () => {
-  it('renders key status', () => {
-    const { lastFrame } = render(
+  it('renders key status', async () => {
+    const { lastFrame, unmount } = await renderTui(
       <Settings
         status={{
           envKeyPresent: false,
@@ -21,6 +21,6 @@ describe('Settings', () => {
     expect(frame).toContain('Stored key');
     expect(frame).toContain('In use');
     expect(frame).toContain('stored');
+    unmount();
   });
 });
-

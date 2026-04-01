@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import React from 'react';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
-import { render } from 'ink-testing-library';
+import { renderTui } from '#ink/testing';
 import { MenuList } from './MenuList.js';
 
 const waitForTick = () => new Promise((resolve) => setTimeout(resolve, 0));
@@ -45,7 +45,7 @@ describe('MenuList', () => {
 
   it('moves the highlight with arrow keys and submits on enter', async () => {
     const onSelect = vi.fn();
-    const ui = render(
+    const ui = await renderTui(
       <MenuList
         items={[
           { label: '2026', value: 2026 },
@@ -61,11 +61,12 @@ describe('MenuList', () => {
     await waitForTick();
 
     expect(onSelect).toHaveBeenCalledWith(2025);
+    ui.unmount();
   });
 
   it('supports vim keys with wrap-around navigation', async () => {
     const onSelect = vi.fn();
-    const ui = render(
+    const ui = await renderTui(
       <MenuList
         items={[
           { label: '2026', value: 2026 },
@@ -82,11 +83,12 @@ describe('MenuList', () => {
     await waitForTick();
 
     expect(onSelect).toHaveBeenCalledWith(2024);
+    ui.unmount();
   });
 
   it('supports direct digit selection and submission', async () => {
     const onSelect = vi.fn();
-    const ui = render(
+    const ui = await renderTui(
       <MenuList
         items={[
           { label: '2026', value: 2026 },
@@ -102,11 +104,12 @@ describe('MenuList', () => {
     await waitForTick();
 
     expect(onSelect).toHaveBeenCalledWith(2025);
+    ui.unmount();
   });
 
   it('treats CRLF as a single submit', async () => {
     const onSelect = vi.fn();
-    const ui = render(
+    const ui = await renderTui(
       <MenuList
         items={[
           { label: '2026', value: 2026 },
@@ -123,11 +126,12 @@ describe('MenuList', () => {
 
     expect(onSelect).toHaveBeenCalledTimes(1);
     expect(onSelect).toHaveBeenCalledWith(2025);
+    ui.unmount();
   });
 
   it('ignores input while unfocused', async () => {
     const onSelect = vi.fn();
-    const ui = render(
+    const ui = await renderTui(
       <MenuList
         items={[
           { label: '2026', value: 2026 },
@@ -146,5 +150,6 @@ describe('MenuList', () => {
 
     expect(onSelect).not.toHaveBeenCalled();
     expect(ui.lastFrame()).toContain('› 2026');
+    ui.unmount();
   });
 });

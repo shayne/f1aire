@@ -1,21 +1,21 @@
 import React from 'react';
-import { Box, Text } from 'ink';
+import { Box, Text } from '#ink';
+import type { Color } from '../../../vendor/ink/styles.js';
 import { Panel } from '../../components/Panel.js';
 import { getSessionItems, type SessionSummary } from '../../layout.js';
-import { theme } from '../../theme.js';
 
 const MAX_ACTIVITY_LINES = 3;
 const MAX_PYTHON_PREVIEW_LINES = 3;
 const PANEL_OVERHEAD_LINES = 4;
 
-function activityColor(entry: string) {
+function activityColor(entry: string): Color {
   const lower = entry.toLowerCase();
-  if (lower.startsWith('error')) return theme.status.error;
-  if (lower.includes('running tool')) return theme.status.tool;
-  if (lower.includes('processing')) return theme.status.tool;
-  if (lower.includes('thinking')) return theme.status.thinking;
-  if (lower.includes('ready')) return theme.status.ok;
-  return theme.muted;
+  if (lower.startsWith('error')) return 'ansi:red';
+  if (lower.includes('running tool')) return 'ansi:magenta';
+  if (lower.includes('processing')) return 'ansi:magenta';
+  if (lower.includes('thinking')) return 'ansi:yellow';
+  if (lower.includes('ready')) return 'ansi:green';
+  return 'ansi:blackBright';
 }
 
 function getRecentActivity(activity: string[]): string[] {
@@ -85,7 +85,7 @@ export function EngineerDetails({
 
   return (
     <Box flexDirection="column">
-      <Text color={theme.muted} wrap="truncate-end">
+      <Text color="ansi:blackBright" wrap="truncate-end">
         {sessionItems.map((item) => `${item.label}: ${item.value}`).join(' · ')}
         {` · Status: ${latestActivity}`}
       </Text>
@@ -100,11 +100,11 @@ export function EngineerDetails({
             ))}
             {pythonPreview.length > 0 ? (
               <Box flexDirection="column">
-                <Text color={theme.panelTitle}>Python</Text>
+                <Text color="ansi:blackBright">Python</Text>
                 {pythonPreview.map((line, index) => (
                   <Text
                     key={`${index}-${line}`}
-                    color={theme.muted}
+                    color="ansi:blackBright"
                     wrap="truncate-end"
                   >
                     {line}

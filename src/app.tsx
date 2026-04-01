@@ -3,7 +3,7 @@ import path from 'node:path';
 import { performance } from 'node:perf_hooks';
 import { createOpenAI } from '@ai-sdk/openai';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Box, useInput, useStdout } from 'ink';
+import { Box, useInput, useStdout, useTerminalSize } from '#ink';
 import { createEngineerLogger } from './agent/engineer-logger.js';
 import { createEngineerSession } from './agent/engineer.js';
 import { formatUnknownError } from './agent/error-utils.js';
@@ -194,8 +194,8 @@ export function App(): React.JSX.Element {
   const toolInputPreviewRef = useRef(new Map<string, string>());
   const perfStopRef = useRef<(() => void) | null>(null);
   const { stdout } = useStdout();
-  const terminalColumns = stdout?.columns ?? 100;
-  const terminalRows = stdout?.rows ?? 40;
+  const { columns: terminalColumns = 100, rows: terminalRows = 40 } =
+    useTerminalSize();
   const isShort = terminalRows < 32;
   const configPath = useMemo(() => getAppConfigPath('f1aire'), []);
   const envApiKey =

@@ -1769,31 +1769,39 @@ export default class Ink {
     // terminals that don't support them.
     /* eslint-disable custom-rules/no-sync-fs -- process exiting; async writes would be dropped */
     if (this.options.stdout.isTTY) {
+      const writeCleanup = (data: string) => {
+        if (this.options.stdout === process.stdout) {
+          writeSync(1, data)
+          return
+        }
+        this.options.stdout.write(data)
+      }
+
       if (this.altScreenActive) {
         // <AlternateScreen>'s unmount effect won't run during signal-exit.
         // Exit alt screen FIRST so other cleanup sequences go to the main screen.
-        writeSync(1, EXIT_ALT_SCREEN)
+        writeCleanup(EXIT_ALT_SCREEN)
       }
       // Disable mouse tracking — unconditional because altScreenActive can be
       // stale if AlternateScreen's unmount (which flips the flag) raced a
       // blocked event loop + SIGINT. No-op if tracking was never enabled.
-      writeSync(1, DISABLE_MOUSE_TRACKING)
+      writeCleanup(DISABLE_MOUSE_TRACKING)
       // Drain stdin so in-flight mouse events don't leak to the shell
       this.drainStdin()
       // Disable extended key reporting (both kitty and modifyOtherKeys)
-      writeSync(1, DISABLE_MODIFY_OTHER_KEYS)
-      writeSync(1, DISABLE_KITTY_KEYBOARD)
+      writeCleanup(DISABLE_MODIFY_OTHER_KEYS)
+      writeCleanup(DISABLE_KITTY_KEYBOARD)
       // Disable focus events (DECSET 1004)
-      writeSync(1, DFE)
+      writeCleanup(DFE)
       // Disable bracketed paste mode
-      writeSync(1, DBP)
+      writeCleanup(DBP)
       // Show cursor
-      writeSync(1, SHOW_CURSOR)
+      writeCleanup(SHOW_CURSOR)
       // Clear iTerm2 progress bar
-      writeSync(1, CLEAR_ITERM2_PROGRESS)
+      writeCleanup(CLEAR_ITERM2_PROGRESS)
       // Clear tab status (OSC 21337) so a stale dot doesn't linger
       if (supportsTabStatus())
-        writeSync(1, wrapForMultiplexer(CLEAR_TAB_STATUS))
+        writeCleanup(wrapForMultiplexer(CLEAR_TAB_STATUS))
     }
     /* eslint-enable custom-rules/no-sync-fs */
 

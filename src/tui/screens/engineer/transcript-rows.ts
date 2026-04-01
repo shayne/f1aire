@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { Box, Text } from 'ink';
+import { Box, Text } from '#ink';
+import type { Color } from '../../../vendor/ink/styles.js';
 import type { ChatMessage } from '../../chat-state.js';
-import { theme } from '../../theme.js';
 import { renderMarkdownToTerminal } from '../../terminal-markdown.js';
 
 const ANSI_SGR_REGEX = /\x1b\[[0-9;]*m/g;
@@ -96,7 +96,7 @@ function Spinner({ active }: { active: boolean }) {
   if (!active) return null;
   return React.createElement(
     Text,
-    { color: theme.muted },
+    { color: 'ansi:blackBright' },
     ['|', '/', '-', '\\'][index],
   );
 }
@@ -104,7 +104,7 @@ function Spinner({ active }: { active: boolean }) {
 function createLabelRow(
   key: string,
   label: string,
-  color: string,
+  color: Color,
 ): TranscriptRow {
   return {
     key,
@@ -129,7 +129,8 @@ function createMessageRows(
   messageWidth: number,
 ): TranscriptRow[] {
   const label = message.role === 'assistant' ? 'Engineer' : 'You';
-  const color = message.role === 'assistant' ? theme.assistant : theme.user;
+  const color: Color =
+    message.role === 'assistant' ? 'ansi:cyan' : 'ansi:green';
 
   const renderedLines =
     message.role === 'assistant'
@@ -168,7 +169,7 @@ function createMessageRows(
 
 function createPendingRows(status: string): TranscriptRow[] {
   return [
-    createLabelRow('pending-label', 'Engineer', theme.assistant),
+    createLabelRow('pending-label', 'Engineer', 'ansi:cyan'),
     {
       key: 'pending-status',
       kind: 'pending-status',
@@ -179,7 +180,7 @@ function createPendingRows(status: string): TranscriptRow[] {
         React.createElement(Spinner, { active: true }),
         React.createElement(
           Text,
-          { color: theme.muted, wrap: 'truncate-end' },
+          { color: 'ansi:blackBright', wrap: 'truncate-end' },
           status,
         ),
       ),
