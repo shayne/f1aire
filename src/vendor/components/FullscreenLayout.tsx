@@ -45,6 +45,7 @@ export const ScrollChromeContext = createContext<{
 }>({ setStickyPrompt: () => {} })
 
 type Props = {
+  top?: ReactNode
   scrollable: ReactNode
   bottom: ReactNode
   overlay?: ReactNode
@@ -193,6 +194,7 @@ export function computeUnseenDivider(
 }
 
 export function FullscreenLayout({
+  top,
   scrollable,
   bottom,
   overlay,
@@ -229,6 +231,7 @@ export function FullscreenLayout({
   if (!isFullscreenEnvEnabled()) {
     return (
       <>
+        {top}
         {scrollable}
         {bottom}
         {overlay}
@@ -242,6 +245,11 @@ export function FullscreenLayout({
   return (
     <>
       <Box flexGrow={1} flexDirection="column" overflow="hidden">
+        {top ? (
+          <Box flexShrink={0} width="100%">
+            {top}
+          </Box>
+        ) : null}
         {headerPrompt && (
           <StickyPromptHeader
             text={headerPrompt.text}

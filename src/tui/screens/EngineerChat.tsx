@@ -8,6 +8,8 @@ import {
   EngineerDetails,
   getEngineerDetailsHeight,
 } from './engineer/EngineerDetails.js';
+import { EngineerSessionStrip } from './engineer/EngineerSessionStrip.js';
+import { EngineerShell } from './engineer/EngineerShell.js';
 import {
   buildTranscriptRows,
   type TranscriptRow,
@@ -17,6 +19,26 @@ import { useComposerState } from './engineer/useComposerState.js';
 import { useTranscriptViewport } from './engineer/useTranscriptViewport.js';
 
 type ConversationRow = TranscriptRow;
+
+function getSessionStripLabel({
+  year,
+  meeting,
+  session,
+  asOfLabel,
+  latestActivity,
+}: {
+  year: number;
+  meeting: Meeting;
+  session: Session;
+  asOfLabel: string | null | undefined;
+  latestActivity: string;
+}): string {
+  return [
+    `${year} ${meeting.Name}`,
+    session.Name,
+    asOfLabel ?? latestActivity,
+  ].join(' · ');
+}
 
 function getTranscriptVersion({
   messages,
@@ -163,6 +185,18 @@ export function EngineerChat({
     () => (activity.length ? activity : status ? [status] : ['Idle']),
     [activity, status],
   );
+  const latestActivity = activityEntries[activityEntries.length - 1] ?? 'Idle';
+  const sessionStripLabel = useMemo(
+    () =>
+      getSessionStripLabel({
+        year,
+        meeting,
+        session,
+        asOfLabel,
+        latestActivity,
+      }),
+    [asOfLabel, latestActivity, meeting, session, year],
+  );
   const handleComposerIntercept = (input: string, key: Key) => {
     if (key.tab || input === '\t') {
       setDetailsExpanded((current) => !current);
@@ -172,38 +206,40 @@ export function EngineerChat({
   };
 
   return (
-    <Box flexDirection="column" gap={sectionGap} height={rows}>
-      <Box
-        flexDirection="column"
-        flexGrow={1}
-        height={transcriptHeight}
-        overflow="hidden"
-      >
-        <TranscriptViewport
-          visibleRows={visibleRows}
-          scrollHint={scrollHint}
+    <EngineerShell
+      fullscreen={maxHeight === undefined}
+      top={<EngineerSessionStrip label={sessionStripLabel} />}
+      scrollable={
+        <Box
+          flexDirection="column"
+          flexGrow={1}
           height={transcriptHeight}
-          onRender={onConversationRender}
-        />
-      </Box>
-      <EngineerDetails
-        year={year}
-        meetingName={meeting.Name}
-        sessionName={session.Name}
-        sessionType={session.Type}
-        summary={summary}
-        asOfLabel={asOfLabel ?? null}
-        activity={activityEntries}
-        pythonCode={pythonCode ?? ''}
-        isExpanded={detailsExpanded}
-      />
-      <ComposerPanel
-        onSend={onSend}
-        isStreaming={isStreaming}
-        width={composerContentWidth}
-        onHeightChange={setComposerVisibleLines}
-        onInterceptInput={handleComposerIntercept}
-      />
-    </Box>
+          overflow="hidden"
+        >
+          <TranscriptViewport
+            visibleRows={visibleRows}
+            scrollHint={scrollHint}
+            height={transcriptHeight}
+            onRender={onConversationRender}
+          />
+        </Box>
+      }
+      bottom={
+        <Box flexDirection="column" gap={sectionGap}>
+          <EngineerDetails
+            activity={activityEntries}
+            pythonCode={pythonCode ?? ''}
+            isExpanded={detailsExpanded}
+          />
+          <ComposerPanel
+            onSend={onSend}
+            isStreaming={isStreaming}
+            width={composerContentWidth}
+            onHeightChange={setComposerVisibleLines}
+            onInterceptInput={handleComposerIntercept}
+          />
+        </Box>
+      }
+    />
   );
 }

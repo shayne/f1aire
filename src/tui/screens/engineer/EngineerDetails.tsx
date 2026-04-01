@@ -2,7 +2,6 @@ import React from 'react';
 import { Box, Text } from '#ink';
 import type { Color } from '../../../vendor/ink/styles.js';
 import { Panel } from '../../components/Panel.js';
-import { getSessionItems, type SessionSummary } from '../../layout.js';
 
 const MAX_ACTIVITY_LINES = 3;
 const MAX_PYTHON_PREVIEW_LINES = 3;
@@ -50,35 +49,14 @@ export function getEngineerDetailsHeight({
 }
 
 export function EngineerDetails({
-  year,
-  meetingName,
-  sessionName,
-  sessionType,
-  summary,
-  asOfLabel,
   activity,
   pythonCode,
   isExpanded,
 }: {
-  year: number;
-  meetingName: string;
-  sessionName: string;
-  sessionType: string;
-  summary: SessionSummary | null;
-  asOfLabel: string | null;
   activity: string[];
   pythonCode: string;
   isExpanded: boolean;
 }): React.JSX.Element {
-  const sessionItems = getSessionItems({
-    mode: 'compact',
-    year,
-    meetingName,
-    sessionName,
-    sessionType,
-    summary,
-    asOfLabel,
-  });
   const recentActivity = getRecentActivity(activity);
   const latestActivity = recentActivity[recentActivity.length - 1] ?? 'Idle';
   const pythonPreview = getPythonPreview(pythonCode);
@@ -86,8 +64,7 @@ export function EngineerDetails({
   return (
     <Box flexDirection="column">
       <Text color="ansi:blackBright" wrap="truncate-end">
-        {sessionItems.map((item) => `${item.label}: ${item.value}`).join(' · ')}
-        {` · Status: ${latestActivity}`}
+        {`Status: ${latestActivity}`}
       </Text>
       {isExpanded ? (
         <Panel title="Details" tone="muted">
