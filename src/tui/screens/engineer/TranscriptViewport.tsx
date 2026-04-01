@@ -1,6 +1,7 @@
 import React, { useContext, useEffect } from 'react';
 import { Box, Text } from '#ink';
 import { ScrollChromeContext } from '../../../vendor/components/FullscreenLayout.js';
+import { theme } from '../../theme.js';
 import type { TranscriptRow } from './transcript-rows.js';
 
 type TranscriptViewportProps = {
@@ -41,7 +42,7 @@ export const TranscriptViewport = React.memo(function TranscriptViewport({
   return (
     <Box flexDirection="column">
       {scrollHint ? (
-        <Text color="ansi:blackBright" wrap="truncate-end">
+        <Text color={theme.subtle} wrap="truncate-end">
           {scrollHint}
         </Text>
       ) : null}

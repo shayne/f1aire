@@ -2,6 +2,22 @@ import { describe, expect, it } from 'vitest';
 import { buildTranscriptRows } from './transcript-rows.js';
 
 describe('buildTranscriptRows', () => {
+  it('adds an onboarding note when the conversation is empty and idle', () => {
+    const rows = buildTranscriptRows({
+      messages: [],
+      streamingText: '',
+      isStreaming: false,
+      status: null,
+      messageWidth: 48,
+    });
+
+    expect(
+      rows.some((row) =>
+        row.plainText.includes('Ask about pace, tyres, pit windows, or traffic.'),
+      ),
+    ).toBe(true);
+  });
+
   it('renders user and assistant messages into labeled transcript rows', () => {
     const rows = buildTranscriptRows({
       messages: [

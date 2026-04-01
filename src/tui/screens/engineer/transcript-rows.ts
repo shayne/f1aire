@@ -3,6 +3,7 @@ import { Box, Text } from '#ink';
 import type { Color } from '../../../vendor/ink/styles.js';
 import type { ChatMessage } from '../../chat-state.js';
 import { renderMarkdownToTerminal } from '../../terminal-markdown.js';
+import { theme } from '../../theme.js';
 
 const ANSI_SGR_REGEX = /\x1b\[[0-9;]*m/g;
 
@@ -130,7 +131,7 @@ function createMessageRows(
 ): TranscriptRow[] {
   const label = message.role === 'assistant' ? 'Engineer' : 'You';
   const color: Color =
-    message.role === 'assistant' ? 'ansi:cyan' : 'ansi:green';
+    message.role === 'assistant' ? theme.assistant : theme.user;
 
   const renderedLines =
     message.role === 'assistant'
@@ -167,9 +168,30 @@ function createMessageRows(
   return rows;
 }
 
+function createOnboardingRows(messageWidth: number): TranscriptRow[] {
+  const lines = wrapPlainTextLine(
+    'Ask about pace, tyres, pit windows, or traffic.',
+    messageWidth,
+  );
+
+  return [
+    ...lines.map((line, index) => ({
+      key: `intro-line-${index}`,
+      kind: 'message-line' as const,
+      plainText: line,
+      node: React.createElement(
+        Text,
+        { color: theme.subtle, wrap: 'truncate-end' },
+        line,
+      ),
+    })),
+    createSpacerRow('intro-spacer'),
+  ];
+}
+
 function createPendingRows(status: string): TranscriptRow[] {
   return [
-    createLabelRow('pending-label', 'Engineer', 'ansi:cyan'),
+    createLabelRow('pending-label', 'Engineer', theme.assistant),
     {
       key: 'pending-status',
       kind: 'pending-status',
@@ -180,7 +202,7 @@ function createPendingRows(status: string): TranscriptRow[] {
         React.createElement(Spinner, { active: true }),
         React.createElement(
           Text,
-          { color: 'ansi:blackBright', wrap: 'truncate-end' },
+          { color: theme.subtle, wrap: 'truncate-end' },
           status,
         ),
       ),
@@ -197,6 +219,10 @@ export function buildTranscriptRows({
   messageWidth,
 }: BuildTranscriptRowsOptions): TranscriptRow[] {
   const rows: TranscriptRow[] = [];
+
+  if (messages.length === 0 && !isStreaming && !status) {
+    rows.push(...createOnboardingRows(messageWidth));
+  }
 
   for (let i = 0; i < messages.length; i += 1) {
     rows.push(...createMessageRows(messages[i], `m-${i}`, messageWidth));

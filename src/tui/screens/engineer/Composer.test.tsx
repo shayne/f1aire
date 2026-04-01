@@ -30,6 +30,17 @@ afterEach(() => {
 });
 
 describe('Composer', () => {
+  it('shows a prompt-oriented placeholder when the draft is empty', async () => {
+    const { lastFrame, unmount } = await renderTui(
+      <Harness onSend={vi.fn()} />,
+    );
+
+    expect(lastFrame()).toContain(
+      'Ask the engineer about pace, tyres, traffic, or strategy...',
+    );
+    unmount();
+  });
+
   it('submits on Enter and clears the local draft', async () => {
     const onSend = vi.fn();
     const { stdin, lastFrame, unmount } = await renderTui(
@@ -67,6 +78,7 @@ describe('Composer', () => {
     );
 
     expect(lastFrame()).toContain('shift+enter newline');
+    expect(lastFrame()).toContain('tab details');
     unmount();
   });
 
@@ -102,8 +114,8 @@ describe('Composer', () => {
     await waitForTick();
 
     const frame = lastFrame() ?? '';
-    expect(frame).toContain('a');
-    expect(frame).not.toContain('ab');
+    expect(frame).toContain('› a▌');
+    expect(frame).not.toContain('› ab');
     unmount();
   });
 

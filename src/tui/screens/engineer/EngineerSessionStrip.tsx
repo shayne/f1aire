@@ -1,9 +1,10 @@
 import React from 'react';
 import { Text } from '#ink';
+import { theme } from '../../theme.js';
 
 export function EngineerSessionStrip({ label }: { label: string }) {
   return (
-    <Text color="ansi:blackBright" wrap="truncate-end">
+    <Text color={theme.subtle} wrap="truncate-end">
       {label}
     </Text>
   );

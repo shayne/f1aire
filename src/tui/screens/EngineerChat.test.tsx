@@ -39,6 +39,20 @@ function makeMessages(count: number) {
 }
 
 describe('EngineerChat', () => {
+  it('shows an onboarding note and prompt-focused composer on first render', async () => {
+    const { lastFrame, unmount } = await renderTui(
+      <EngineerChat {...baseProps} maxHeight={18} />,
+    );
+
+    const frame = stripAnsi(lastFrame() ?? '');
+
+    expect(frame).toContain('Ask about pace, tyres, pit windows, or traffic.');
+    expect(frame).toContain(
+      'Ask the engineer about pace, tyres, traffic, or strategy...',
+    );
+    unmount();
+  });
+
   it('renders assistant markdown without literal markers', async () => {
     const { lastFrame, unmount } = await renderTui(
       <EngineerChat
@@ -134,7 +148,9 @@ describe('EngineerChat', () => {
     await tick();
 
     const initialFrame = stripAnsi(lastFrame() ?? '');
-    expect(initialFrame).toContain('enter send · shift+enter newline · TAB details');
+    expect(initialFrame).toContain(
+      'enter send · shift+enter newline · tab details',
+    );
     expect(initialFrame).not.toContain('Viewing earlier output');
 
     stdin.write('\u001b[5~');

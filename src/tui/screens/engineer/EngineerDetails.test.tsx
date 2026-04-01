@@ -16,7 +16,7 @@ describe('EngineerDetails', () => {
 
     const frame = lastFrame() ?? '';
 
-    expect(frame).toContain('Status: Thinking');
+    expect(frame).toContain('Status · Thinking');
     expect(frame).not.toContain('Details');
     expect(frame).not.toContain('print("hi")');
     unmount();

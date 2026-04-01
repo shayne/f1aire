@@ -2,6 +2,7 @@ import React from 'react';
 import { Box, Text } from '#ink';
 import type { Color } from '../../../vendor/ink/styles.js';
 import { Panel } from '../../components/Panel.js';
+import { theme } from '../../theme.js';
 
 const MAX_ACTIVITY_LINES = 3;
 const MAX_PYTHON_PREVIEW_LINES = 3;
@@ -14,7 +15,7 @@ function activityColor(entry: string): Color {
   if (lower.includes('processing')) return 'ansi:magenta';
   if (lower.includes('thinking')) return 'ansi:yellow';
   if (lower.includes('ready')) return 'ansi:green';
-  return 'ansi:blackBright';
+  return theme.subtle;
 }
 
 function getRecentActivity(activity: string[]): string[] {
@@ -63,8 +64,8 @@ export function EngineerDetails({
 
   return (
     <Box flexDirection="column">
-      <Text color="ansi:blackBright" wrap="truncate-end">
-        {`Status: ${latestActivity}`}
+      <Text color={theme.subtle} wrap="truncate-end">
+        {`Status · ${latestActivity}`}
       </Text>
       {isExpanded ? (
         <Panel title="Details" tone="muted">
@@ -77,14 +78,14 @@ export function EngineerDetails({
             ))}
             {pythonPreview.length > 0 ? (
               <Box flexDirection="column">
-                <Text color="ansi:blackBright">Python</Text>
+                <Text color={theme.subtle}>Python</Text>
                 {pythonPreview.map((line, index) => (
                   <Text
                     key={`${index}-${line}`}
-                    color="ansi:blackBright"
-                    wrap="truncate-end"
-                  >
-                    {line}
+                  color={theme.subtle}
+                  wrap="truncate-end"
+                >
+                  {line}
                   </Text>
                 ))}
               </Box>

@@ -1,6 +1,7 @@
 import React, { useMemo } from 'react';
 import { Box, Text, useInput, type Key } from '#ink';
 import { Panel } from '../../components/Panel.js';
+import { theme } from '../../theme.js';
 import {
   getComposerVisibleLines,
   type ComposerState,
@@ -129,8 +130,8 @@ export function Composer({
           const isEmptyDraft = state.draft.length === 0;
           const displayLine =
             isEmptyDraft && index === 0 ? (
-              <Text color="ansi:blackBright">
-                Ask about pace, gaps, tyres...
+              <Text color={theme.subtle}>
+                Ask the engineer about pace, tyres, traffic, or strategy...
               </Text>
             ) : (
               renderVisibleLine(
@@ -142,14 +143,14 @@ export function Composer({
 
           return (
             <Box key={`${index}-${line}`}>
-              <Text color="ansi:blackBright">{index === 0 ? '› ' : '  '}</Text>
+              <Text color={theme.subtle}>{index === 0 ? '› ' : '  '}</Text>
               <Text wrap="truncate-end">{displayLine}</Text>
             </Box>
           );
         })}
         <Box>
-          <Text color="ansi:blackBright">
-            enter send · shift+enter newline · TAB details
+          <Text color={theme.subtle}>
+            enter send · shift+enter newline · tab details
             {isStreaming ? ' · streaming' : ''}
           </Text>
         </Box>
