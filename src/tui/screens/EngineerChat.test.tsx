@@ -31,6 +31,13 @@ const baseProps = {
 const stripAnsi = (value: string) => value.replace(/\u001b\[[0-9;]*m/g, '');
 const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
 
+function makeMessages(count: number) {
+  return Array.from({ length: count }, (_, index) => ({
+    role: index % 2 === 0 ? ('user' as const) : ('assistant' as const),
+    content: `message ${index + 1}`,
+  }));
+}
+
 describe('EngineerChat', () => {
   it('renders assistant markdown without literal markers', () => {
     const { lastFrame } = render(
@@ -79,7 +86,7 @@ describe('EngineerChat', () => {
     expect(onConversationRender).toHaveBeenCalledTimes(1);
   });
 
-  it('renders a python code preview panel when pythonCode is present', async () => {
+  it('keeps composer typing intact and toggles the details panel with Tab', async () => {
     const { stdin, lastFrame } = render(
       <EngineerChat
         {...baseProps}
@@ -91,6 +98,13 @@ describe('EngineerChat', () => {
     await tick();
     expect(stripAnsi(lastFrame() ?? '')).not.toContain('Python');
 
+    stdin.write('i');
+    await tick();
+
+    const typedFrame = stripAnsi(lastFrame() ?? '');
+    expect(typedFrame).toContain('› i');
+    expect(typedFrame).not.toContain('Python');
+
     stdin.write('\t');
     await tick();
 
@@ -98,16 +112,36 @@ describe('EngineerChat', () => {
     expect(frame).toContain('Python');
     expect(frame).toContain('print(\"hi\")');
   });
-});
+
+  it('shows the transcript pause/live workflow with PageUp and PageDown', async () => {
+    const { stdin, lastFrame } = render(
+      <EngineerChat {...baseProps} maxHeight={14} messages={makeMessages(16)} />,
+    );
+
+    await tick();
+
+    const initialFrame = stripAnsi(lastFrame() ?? '');
+    expect(initialFrame).toContain('enter send · shift+enter newline · TAB details');
+    expect(initialFrame).not.toContain('Viewing earlier output');
+
+    stdin.write('\u001b[5~');
+    await tick();
+
+    expect(stripAnsi(lastFrame() ?? '')).toContain(
+      'Viewing earlier output · pgdn to return live',
+    );
+
+    stdin.write('\u001b[6~');
+    await tick();
+
+    expect(stripAnsi(lastFrame() ?? '')).not.toContain(
+      'Viewing earlier output · pgdn to return live',
+    );
+  });
 
   it('does not re-render the root when typing', async () => {
     const onRender = vi.fn();
-    const { stdin } = render(
-      <EngineerChat
-        {...baseProps}
-        onRender={onRender}
-      />,
-    );
+    const { stdin } = render(<EngineerChat {...baseProps} onRender={onRender} />);
 
     await tick();
     expect(onRender).toHaveBeenCalledTimes(1);
@@ -117,3 +151,4 @@ describe('EngineerChat', () => {
 
     expect(onRender).toHaveBeenCalledTimes(1);
   });
+});
