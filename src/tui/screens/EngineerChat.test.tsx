@@ -248,6 +248,59 @@ describe('EngineerChat', () => {
     );
   });
 
+  it('does not treat a width change as new transcript content while paused', async () => {
+    const rendered = render(
+      <EngineerChat
+        {...baseProps}
+        maxHeight={14}
+        messages={makeMessages(16)}
+        streamingText="first streaming chunk"
+        isStreaming
+      />,
+    );
+
+    Object.defineProperty(rendered.stdout, 'columns', {
+      value: 80,
+      configurable: true,
+    });
+    rendered.rerender(
+      <EngineerChat
+        {...baseProps}
+        maxHeight={14}
+        messages={makeMessages(16)}
+        streamingText="first streaming chunk"
+        isStreaming
+      />,
+    );
+    await tick();
+
+    rendered.stdin.write('\u001b[5~');
+    await tick();
+
+    expect(stripAnsi(rendered.lastFrame() ?? '')).toContain(
+      'Viewing earlier output · pgdn to return live',
+    );
+
+    Object.defineProperty(rendered.stdout, 'columns', {
+      value: 120,
+      configurable: true,
+    });
+    rendered.rerender(
+      <EngineerChat
+        {...baseProps}
+        maxHeight={14}
+        messages={makeMessages(16)}
+        streamingText="first streaming chunk"
+        isStreaming
+      />,
+    );
+    await tick();
+
+    expect(stripAnsi(rendered.lastFrame() ?? '')).toContain(
+      'Viewing earlier output · pgdn to return live',
+    );
+  });
+
   it('does not re-render the root when typing', async () => {
     const onRender = vi.fn();
     const { stdin } = render(<EngineerChat {...baseProps} onRender={onRender} />);

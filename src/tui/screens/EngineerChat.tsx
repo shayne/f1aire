@@ -18,6 +18,30 @@ import { useTranscriptViewport } from './engineer/useTranscriptViewport.js';
 
 type ConversationRow = TranscriptRow;
 
+function getTranscriptVersion({
+  messages,
+  streamingText,
+  isStreaming,
+  status,
+}: {
+  messages: ChatMessage[];
+  streamingText: string;
+  isStreaming: boolean;
+  status: string | null;
+}): string {
+  const parts = messages.map(({ role, content }) => `${role}:${content}`);
+
+  if (isStreaming) {
+    if (streamingText) {
+      parts.push(`stream:${streamingText}`);
+    } else if (status) {
+      parts.push(`pending:${status}`);
+    }
+  }
+
+  return parts.join('\u0001');
+}
+
 type ComposerPanelProps = {
   onSend: (text: string) => void;
   isStreaming: boolean;
@@ -117,10 +141,13 @@ export function EngineerChat({
 
   const transcriptVersion = useMemo(
     () =>
-      conversationRows
-        .map((row) => `${row.kind}:${row.plainText}`)
-        .join('\u0001'),
-    [conversationRows],
+      getTranscriptVersion({
+        messages,
+        streamingText,
+        isStreaming,
+        status,
+      }),
+    [isStreaming, messages, status, streamingText],
   );
   const { window, scrollHint } = useTranscriptViewport({
     rowCount: conversationRows.length,
