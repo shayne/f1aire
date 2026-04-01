@@ -73,6 +73,37 @@ describe('Composer', () => {
     expect(lastFrame()).toContain('pit');
   });
 
+  it('treats terminal delete as backspace', async () => {
+    const onSend = vi.fn();
+    const { stdin, lastFrame } = render(<Harness onSend={onSend} />);
+
+    await waitForTick();
+    stdin.write('ab');
+    await waitForTick();
+    stdin.write('\x7f');
+    await waitForTick();
+
+    const frame = lastFrame() ?? '';
+    expect(frame).toContain('a');
+    expect(frame).not.toContain('ab');
+  });
+
+  it('applies cursor edits to the latest queued state', async () => {
+    const onSend = vi.fn();
+    const { stdin, lastFrame } = render(<Harness onSend={onSend} />);
+
+    await waitForTick();
+    stdin.write('abc');
+    await waitForTick();
+    stdin.write('\u001b[D');
+    stdin.write('\u001b[D');
+    stdin.write('X');
+    await waitForTick();
+
+    const frame = lastFrame() ?? '';
+    expect(frame).toContain('aX▌bc');
+  });
+
   it('grows to five visible wrapped lines before scrolling older content away', async () => {
     const onSend = vi.fn();
     const onHeightChange = vi.fn();
