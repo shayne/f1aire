@@ -109,8 +109,16 @@ describe('EngineerChat', () => {
     await tick();
 
     const frame = stripAnsi(lastFrame() ?? '');
+    expect(frame).toContain('› i');
     expect(frame).toContain('Python');
     expect(frame).toContain('print(\"hi\")');
+
+    stdin.write('\t');
+    await tick();
+
+    const collapsedFrame = stripAnsi(lastFrame() ?? '');
+    expect(collapsedFrame).toContain('› i');
+    expect(collapsedFrame).not.toContain('Python');
   });
 
   it('shows the transcript pause/live workflow with PageUp and PageDown', async () => {

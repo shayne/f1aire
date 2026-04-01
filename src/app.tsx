@@ -25,7 +25,7 @@ import { hydrateTimingServiceFromStore, TimingService } from './core/timing-serv
 import type { TimeCursor } from './core/time-cursor.js';
 import { getDataDir } from './core/xdg.js';
 import { appendUserMessage, type ChatMessage } from './tui/chat-state.js';
-import { FooterHints } from './tui/components/FooterHints.js';
+import { FooterHints, getFooterHintRowCount } from './tui/components/FooterHints.js';
 import { Header } from './tui/components/Header.js';
 import { getBackScreen, type Screen } from './tui/navigation.js';
 import { startEventLoopLagMonitor } from './tui/perf.js';
@@ -179,6 +179,7 @@ export function App(): React.JSX.Element {
   const toolInputPreviewRef = useRef(new Map<string, string>());
   const perfStopRef = useRef<(() => void) | null>(null);
   const { stdout } = useStdout();
+  const terminalColumns = stdout?.columns ?? 100;
   const terminalRows = stdout?.rows ?? 40;
   const isShort = terminalRows < 32;
   const configPath = useMemo(() => getAppConfigPath('f1aire'), []);
@@ -715,7 +716,7 @@ export function App(): React.JSX.Element {
   });
 
   const headerRows = breadcrumb.length ? (isShort ? 4 : 6) : isShort ? 3 : 4;
-  const footerRows = 1;
+  const footerRows = getFooterHintRowCount(screen.name, terminalColumns);
   const contentHeight = Math.max(terminalRows - headerRows - footerRows, 10);
   const asOfLabel = timeCursor?.latest
     ? 'Latest'
