@@ -13,6 +13,6 @@ export default defineConfig({
         replacement: path.resolve(__dirname, 'src/ink/index.ts'),
       },
     ],
-    conditions: ['source'],
+    conditions: ['f1aire-source'],
   },
 });

@@ -19,12 +19,12 @@
   "imports": {
     "#ink": {
       "types": "./src/ink/index.ts",
-      "source": "./src/ink/index.ts",
+      "f1aire-source": "./src/ink/index.ts",
       "default": "./dist/ink/index.js"
     },
     "#ink/testing": {
       "types": "./src/ink/testing.tsx",
-      "source": "./src/ink/testing.tsx",
+      "f1aire-source": "./src/ink/testing.tsx",
       "default": "./dist/ink/testing.js"
     }
   },
@@ -35,15 +35,15 @@
     "f1aire": "dist/index.js"
   },
   "scripts": {
-    "dev": "NODE_OPTIONS=--conditions=source tsx src/index.tsx",
+    "dev": "NODE_OPTIONS=--conditions=f1aire-source tsx src/index.tsx",
     "build": "tsc -p tsconfig.build.json",
     "prepack": "npm run build",
     "typecheck": "tsc -p tsconfig.build.json --noEmit",
     "lint": "eslint .",
     "format": "prettier --write .",
-    "test": "NODE_OPTIONS=--conditions=source vitest run",
+    "test": "NODE_OPTIONS=--conditions=f1aire-source vitest run",
     "check:openai": "tsx scripts/check-openai.ts",
-    "test:e2e": "NODE_OPTIONS=--conditions=source F1AIRE_E2E=1 vitest run src/agent/openai-stream.e2e.test.ts"
+    "test:e2e": "NODE_OPTIONS=--conditions=f1aire-source F1AIRE_E2E=1 vitest run src/agent/openai-stream.e2e.test.ts"
   },
   "dependencies": {
     "@ai-sdk/openai": "^3.0.24",
