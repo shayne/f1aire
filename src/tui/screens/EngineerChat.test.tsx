@@ -147,6 +147,71 @@ describe('EngineerChat', () => {
     );
   });
 
+  it('uses the full transcript height while live', async () => {
+    const { lastFrame } = render(
+      <EngineerChat
+        {...baseProps}
+        maxHeight={16}
+        messages={[
+          {
+            role: 'user',
+            content: 'intro',
+          },
+          {
+            role: 'assistant',
+            content: 'middle',
+          },
+          {
+            role: 'user',
+            content: 'follow up',
+          },
+        ]}
+      />,
+    );
+
+    await tick();
+
+    const liveFrame = stripAnsi(lastFrame() ?? '');
+    expect(liveFrame).toContain('intro');
+    expect(liveFrame).not.toContain('Viewing earlier output');
+  });
+
+  it('shows new updates below when streaming text changes while paused', async () => {
+    const { stdin, lastFrame, rerender } = render(
+      <EngineerChat
+        {...baseProps}
+        maxHeight={14}
+        messages={makeMessages(16)}
+        streamingText="first streaming chunk"
+        isStreaming
+      />,
+    );
+
+    await tick();
+
+    stdin.write('\u001b[5~');
+    await tick();
+
+    expect(stripAnsi(lastFrame() ?? '')).toContain(
+      'Viewing earlier output · pgdn to return live',
+    );
+
+    rerender(
+      <EngineerChat
+        {...baseProps}
+        maxHeight={14}
+        messages={makeMessages(16)}
+        streamingText="updated streaming chunk"
+        isStreaming
+      />,
+    );
+    await tick();
+
+    expect(stripAnsi(lastFrame() ?? '')).toContain(
+      'New updates below · pgdn to catch up',
+    );
+  });
+
   it('does not re-render the root when typing', async () => {
     const onRender = vi.fn();
     const { stdin } = render(<EngineerChat {...baseProps} onRender={onRender} />);

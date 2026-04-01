@@ -116,7 +116,7 @@ export function EngineerChat({
     [isStreaming, messageContentWidth, messages, status, streamingText],
   );
 
-  const transcriptVersion = messages.length + (isStreaming ? 1 : 0);
+  const transcriptVersion = `${messages.length}:${isStreaming ? streamingText : ''}`;
   const { window, scrollHint } = useTranscriptViewport({
     rowCount: conversationRows.length,
     visibleLineCount,

@@ -11,10 +11,23 @@ describe('reconcilePausedOffset', () => {
       reconcilePausedOffset({
         previousRowCount: 18,
         nextRowCount: 21,
+        previousVisibleLineCount: 8,
+        nextVisibleLineCount: 8,
         currentScrollOffsetLines: 6,
-        visibleLineCount: 8,
       }),
     ).toBe(9);
+  });
+
+  it('keeps the same top row when the paused viewport height changes', () => {
+    expect(
+      reconcilePausedOffset({
+        previousRowCount: 20,
+        nextRowCount: 20,
+        previousVisibleLineCount: 8,
+        nextVisibleLineCount: 10,
+        currentScrollOffsetLines: 6,
+      }),
+    ).toBe(4);
   });
 });
 

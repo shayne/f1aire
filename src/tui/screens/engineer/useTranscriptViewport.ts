@@ -5,23 +5,42 @@ import type { Dispatch, SetStateAction } from 'react';
 export function reconcilePausedOffset({
   previousRowCount,
   nextRowCount,
+  previousVisibleLineCount,
+  nextVisibleLineCount,
   currentScrollOffsetLines,
-  visibleLineCount,
 }: {
   previousRowCount: number;
   nextRowCount: number;
+  previousVisibleLineCount: number;
+  nextVisibleLineCount: number;
   currentScrollOffsetLines: number;
-  visibleLineCount: number;
 }): number {
-  const nextMaxScrollLines = Math.max(nextRowCount - visibleLineCount, 0);
+  const isPaused = currentScrollOffsetLines > 0;
+  const previousRenderedVisibleLineCount = Math.max(
+    previousVisibleLineCount - (isPaused ? 1 : 0),
+    1,
+  );
+  const nextRenderedVisibleLineCount = Math.max(
+    nextVisibleLineCount - (isPaused ? 1 : 0),
+    1,
+  );
+  const nextMaxScrollLines = Math.max(
+    nextRowCount - nextRenderedVisibleLineCount,
+    0,
+  );
 
-  if (
-    previousRowCount > 0 &&
-    nextRowCount > previousRowCount &&
-    currentScrollOffsetLines > 0
-  ) {
+  if (previousRowCount > 0 && isPaused) {
+    const previousTopRow = Math.max(
+      previousRowCount -
+        previousRenderedVisibleLineCount -
+        currentScrollOffsetLines,
+      0,
+    );
     return Math.min(
-      currentScrollOffsetLines + (nextRowCount - previousRowCount),
+      Math.max(
+        nextRowCount - nextRenderedVisibleLineCount - previousTopRow,
+        0,
+      ),
       nextMaxScrollLines,
     );
   }
@@ -63,7 +82,7 @@ export function useTranscriptViewport({
 }: {
   rowCount: number;
   visibleLineCount: number;
-  transcriptVersion: number;
+  transcriptVersion: string | number;
 }): {
   window: { start: number; end: number };
   setScrollOffsetLines: Dispatch<SetStateAction<number>>;
@@ -74,8 +93,13 @@ export function useTranscriptViewport({
 } {
   const [scrollOffsetLines, setScrollOffsetLines] = useState(0);
   const previousRowCountRef = useRef(0);
-  const pausedTranscriptVersionRef = useRef<number | null>(null);
-  const maxScrollLines = Math.max(rowCount - visibleLineCount, 0);
+  const previousVisibleLineCountRef = useRef(visibleLineCount);
+  const pausedTranscriptVersionRef = useRef<string | number | null>(null);
+  const isPaused = scrollOffsetLines > 0;
+  const maxScrollLines = Math.max(
+    rowCount - Math.max(visibleLineCount - (isPaused ? 1 : 0), 1),
+    0,
+  );
   const effectiveScrollOffsetLines = Math.min(
     scrollOffsetLines,
     maxScrollLines,
@@ -83,10 +107,14 @@ export function useTranscriptViewport({
   const isScrolledUp = effectiveScrollOffsetLines > 0;
   const hasUpdatesBelow =
     pausedTranscriptVersionRef.current !== null &&
-    pausedTranscriptVersionRef.current < transcriptVersion;
+    pausedTranscriptVersionRef.current !== transcriptVersion;
+  const visibleLineCountForWindow = Math.max(
+    visibleLineCount - (isScrolledUp ? 1 : 0),
+    1,
+  );
   const window = getTranscriptWindow({
     rowCount,
-    visibleLineCount,
+    visibleLineCount: visibleLineCountForWindow,
     scrollOffsetLines: effectiveScrollOffsetLines,
   });
   const scrollHint = getTranscriptScrollHint({
@@ -96,13 +124,16 @@ export function useTranscriptViewport({
 
   useLayoutEffect(() => {
     const previousRowCount = previousRowCountRef.current;
+    const previousVisibleLineCount = previousVisibleLineCountRef.current;
     previousRowCountRef.current = rowCount;
+    previousVisibleLineCountRef.current = visibleLineCount;
     setScrollOffsetLines((current) =>
       reconcilePausedOffset({
         previousRowCount,
         nextRowCount: rowCount,
+        previousVisibleLineCount,
+        nextVisibleLineCount: visibleLineCount,
         currentScrollOffsetLines: current,
-        visibleLineCount,
       }),
     );
     if (scrollOffsetLines === 0 || maxScrollLines === 0) {
