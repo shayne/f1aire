@@ -44,6 +44,7 @@ export function MeetingPicker({
               <Text>{detailMeeting.Name}</Text>
               <Text color="gray">{detailMeeting.Location}</Text>
               <Text>Sessions: {detailMeeting.Sessions.length}</Text>
+              <Text color="gray">Use arrows to choose, enter to continue.</Text>
             </>
           ) : (
             <Text color="gray">Highlight a meeting for details.</Text>

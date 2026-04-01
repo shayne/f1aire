@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Box, Text } from 'ink';
-import TextInput from 'ink-text-input';
 import { Panel } from '../components/Panel.js';
+import { SecretTextInput } from '../components/SecretTextInput.js';
 import { createTerminalLink } from '../terminal-chrome.js';
 import { theme } from '../theme.js';
 
@@ -37,11 +37,10 @@ export function ApiKeyPrompt({
         {error ? <Text color={theme.status.error}>Error: {error}</Text> : null}
         <Box>
           <Text color={theme.muted}>› </Text>
-          <TextInput
+          <SecretTextInput
             value={input}
             onChange={setInput}
             onSubmit={handleSubmit}
-            mask="*"
             placeholder="sk-..."
           />
         </Box>

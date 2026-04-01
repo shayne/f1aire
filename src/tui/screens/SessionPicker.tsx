@@ -44,6 +44,7 @@ export function SessionPicker({
               <Text color="gray">Type: {detailSession.Type}</Text>
               <Text>Start: {detailSession.StartDate}</Text>
               <Text>End: {detailSession.EndDate}</Text>
+              <Text color="gray">Use arrows to choose, enter to continue.</Text>
             </>
           ) : (
             <Text color="gray">Highlight a session for details.</Text>

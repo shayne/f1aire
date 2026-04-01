@@ -39,7 +39,7 @@ export function SeasonPicker({
           {detailYear !== null ? (
             <>
               <Text>Year: {detailYear}</Text>
-              <Text color="gray">Press enter to load meetings.</Text>
+              <Text color="gray">Use arrows to choose, enter to load meetings.</Text>
             </>
           ) : (
             <Text color="gray">Pick a year to load meetings.</Text>

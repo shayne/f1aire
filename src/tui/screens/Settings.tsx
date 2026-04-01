@@ -54,11 +54,10 @@ export function Settings({
               <Text color={theme.muted}>In use</Text>
               {`: ${status.inUse}`}
             </Text>
-            <Text color={theme.muted}>Press enter to select.</Text>
+            <Text color={theme.muted}>Use arrows to choose, enter to select.</Text>
           </Box>
         </Panel>
       </Box>
     </Box>
   );
 }
-
