@@ -23,7 +23,7 @@ const rows: TranscriptRow[] = [
 describe('TranscriptViewport', () => {
   it('renders the visible transcript rows in the main transcript surface', async () => {
     const { lastFrame, unmount } = await renderTui(
-      <TranscriptViewport visibleRows={rows} scrollHint={null} />,
+      <TranscriptViewport rows={rows} scrollHint={null} />,
     );
 
     const frame = lastFrame() ?? '';
@@ -36,7 +36,7 @@ describe('TranscriptViewport', () => {
   it('renders the scroll hint above the transcript when follow mode is paused', async () => {
     const { lastFrame, unmount } = await renderTui(
       <TranscriptViewport
-        visibleRows={rows.slice(-1)}
+        rows={rows.slice(-1)}
         scrollHint="Viewing earlier output · pgdn to return live"
       />,
     );

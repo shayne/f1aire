@@ -3,16 +3,14 @@ import { Box, Text } from '#ink';
 import type { TranscriptRow } from './transcript-rows.js';
 
 type TranscriptViewportProps = {
-  visibleRows: TranscriptRow[];
+  rows: TranscriptRow[];
   scrollHint: string | null;
-  height?: number;
   onRender?: () => void;
 };
 
 export const TranscriptViewport = React.memo(function TranscriptViewport({
-  visibleRows,
+  rows,
   scrollHint,
-  height,
   onRender,
 }: TranscriptViewportProps): React.JSX.Element {
   useEffect(() => {
@@ -20,18 +18,18 @@ export const TranscriptViewport = React.memo(function TranscriptViewport({
   });
 
   return (
-    <Box
-      flexDirection="column"
-      flexGrow={1}
-      overflow="hidden"
-      height={height}
-    >
+    <Box flexDirection="column">
       {scrollHint ? (
-        <Text color="ansi:blackBright" wrap="truncate-end">
-          {scrollHint}
-        </Text>
+        <Box flexDirection="column">
+          <Text color="ansi:blackBright" wrap="truncate-end">
+            {scrollHint}
+          </Text>
+          <Text color="ansi:blackBright" wrap="truncate-end">
+            Jump to bottom
+          </Text>
+        </Box>
       ) : null}
-      {visibleRows.map((row) => (
+      {rows.map((row) => (
         <Box key={row.key}>{row.node}</Box>
       ))}
     </Box>

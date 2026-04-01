@@ -4,21 +4,13 @@ import type { Summary as SummaryData } from '../../core/summary.js';
 import type { Meeting, Session } from '../../core/types.js';
 import type { ChatMessage } from '../chat-state.js';
 import { Composer } from './engineer/Composer.js';
-import {
-  EngineerDetails,
-  getEngineerDetailsHeight,
-} from './engineer/EngineerDetails.js';
+import { EngineerDetails } from './engineer/EngineerDetails.js';
 import { EngineerSessionStrip } from './engineer/EngineerSessionStrip.js';
 import { EngineerShell } from './engineer/EngineerShell.js';
-import {
-  buildTranscriptRows,
-  type TranscriptRow,
-} from './engineer/transcript-rows.js';
+import { buildTranscriptRows } from './engineer/transcript-rows.js';
 import { TranscriptViewport } from './engineer/TranscriptViewport.js';
+import { useEngineerScrollState } from './engineer/useEngineerScrollState.js';
 import { useComposerState } from './engineer/useComposerState.js';
-import { useTranscriptViewport } from './engineer/useTranscriptViewport.js';
-
-type ConversationRow = TranscriptRow;
 
 function getSessionStripLabel({
   year,
@@ -130,23 +122,14 @@ export function EngineerChat({
   const compact = rows < 32;
   const messageContentWidth = Math.max(10, columns - 2);
   const composerContentWidth = Math.max(12, columns - 4);
-  const [composerVisibleLines, setComposerVisibleLines] = useState(1);
+  const [, setComposerVisibleLines] = useState(1);
   const [detailsExpanded, setDetailsExpanded] = useState(false);
 
   useEffect(() => {
     onRender?.();
   });
 
-  const inputPanelHeight = composerVisibleLines + 5;
   const sectionGap = compact ? 0 : 1;
-  const detailsHeight = getEngineerDetailsHeight({
-    isExpanded: detailsExpanded,
-    activity,
-    pythonCode: pythonCode ?? '',
-  });
-  const availableForTranscript =
-    rows - inputPanelHeight - detailsHeight - sectionGap * 2;
-  const transcriptHeight = Math.max(availableForTranscript, 1);
 
   const conversationRows = useMemo(
     () =>
@@ -170,16 +153,11 @@ export function EngineerChat({
       }),
     [isStreaming, messages, status, streamingText],
   );
-  const { window, scrollHint } = useTranscriptViewport({
-    rowCount: conversationRows.length,
-    transcriptHeight,
-    transcriptVersion,
-  });
-
-  const visibleRows = useMemo(
-    () => conversationRows.slice(window.start, window.end),
-    [conversationRows, window.end, window.start],
-  );
+  const { scrollRef, dividerYRef, scrollHint, newMessageCount, jumpToLatest } =
+    useEngineerScrollState({
+      messageCount: messages.length,
+      transcriptVersion,
+    });
 
   const activityEntries = useMemo(
     () => (activity.length ? activity : status ? [status] : ['Idle']),
@@ -209,20 +187,16 @@ export function EngineerChat({
     <EngineerShell
       fullscreen={maxHeight === undefined}
       top={<EngineerSessionStrip label={sessionStripLabel} />}
+      scrollRef={scrollRef}
+      dividerYRef={dividerYRef}
+      newMessageCount={newMessageCount}
+      onPillClick={jumpToLatest}
       scrollable={
-        <Box
-          flexDirection="column"
-          flexGrow={1}
-          height={transcriptHeight}
-          overflow="hidden"
-        >
-          <TranscriptViewport
-            visibleRows={visibleRows}
-            scrollHint={scrollHint}
-            height={transcriptHeight}
-            onRender={onConversationRender}
-          />
-        </Box>
+        <TranscriptViewport
+          rows={conversationRows}
+          scrollHint={scrollHint}
+          onRender={onConversationRender}
+        />
       }
       bottom={
         <Box flexDirection="column" gap={sectionGap}>
