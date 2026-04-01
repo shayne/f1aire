@@ -50,10 +50,12 @@ describe('EngineerChat transcript scroll', () => {
 
     stdin.write('\u001b[5~');
     await tick();
+    await tick();
 
     expect(stripAnsi(lastFrame() ?? '')).toContain('Jump to bottom');
 
     stdin.write('\u001b[6~');
+    await tick();
     await tick();
 
     expect(stripAnsi(lastFrame() ?? '')).not.toContain('Jump to bottom');

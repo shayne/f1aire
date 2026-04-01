@@ -44,6 +44,7 @@ describe('TranscriptViewport', () => {
     const frame = lastFrame() ?? '';
 
     expect(frame).toContain('Viewing earlier output');
+    expect(frame).not.toContain('Jump to bottom');
     expect(frame).toContain('newer update');
     unmount();
   });

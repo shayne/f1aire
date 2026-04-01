@@ -91,14 +91,12 @@ export function useUnseenDivider(messageCount: number): {
   }, [])
 
   const onScrollAway = useCallback((handle: ScrollBoxHandle) => {
-    const max = Math.max(
-      0,
-      handle.getScrollHeight() - handle.getViewportHeight(),
-    )
+    const scrollHeight = handle.getFreshScrollHeight()
+    const max = Math.max(0, scrollHeight - handle.getViewportHeight())
     if (handle.getScrollTop() + handle.getPendingDelta() >= max) return
 
     if (dividerYRef.current === null) {
-      dividerYRef.current = handle.getScrollHeight()
+      dividerYRef.current = scrollHeight
       setDividerIndex(countRef.current)
     }
   }, [])

@@ -71,7 +71,7 @@ export function isFullscreenEnvEnabled(): boolean {
     return false;
   }
 
-  return false;
+  return true;
 }
 
 export function isMouseTrackingEnabled(): boolean {

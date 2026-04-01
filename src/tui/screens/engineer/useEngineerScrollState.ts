@@ -1,5 +1,11 @@
-import { useRef, useState, type RefObject } from 'react';
-import { type ScrollBoxHandle, useInput } from '#ink';
+import {
+  useEffect,
+  useRef,
+  useState,
+  type RefObject,
+} from 'react';
+import { type ScrollBoxHandle } from '#ink';
+import { useUnseenDivider } from '../../../vendor/components/FullscreenLayout.js';
 
 export function useEngineerScrollState({
   messageCount,
@@ -13,58 +19,77 @@ export function useEngineerScrollState({
   scrollHint: string | null;
   newMessageCount: number;
   jumpToLatest: () => void;
+  handlePageUp: () => boolean;
+  handlePageDown: () => boolean;
 } {
   const scrollRef = useRef<ScrollBoxHandle | null>(null);
-  const dividerYRef = useRef<number | null>(null);
+  const { dividerIndex, dividerYRef, onScrollAway, onRepin, jumpToNew } =
+    useUnseenDivider(messageCount);
   const pausedTranscriptVersionRef = useRef<string | null>(null);
   const pausedMessageCountRef = useRef(0);
   const [isScrolledUp, setIsScrolledUp] = useState(false);
 
-  useInput((_, key) => {
-    const handle = scrollRef.current;
-    const pageStep = Math.max(
-      1,
-      Math.floor((handle?.getViewportHeight() ?? 0) * 0.7),
-    );
+  useEffect(() => {
+    if (dividerIndex === null) {
+      pausedTranscriptVersionRef.current = null;
+      pausedMessageCountRef.current = 0;
+      setIsScrolledUp(false);
+    }
+  }, [dividerIndex]);
 
-    if (key.pageUp) {
-      if (!isScrolledUp) {
-        pausedTranscriptVersionRef.current = transcriptVersion;
-        pausedMessageCountRef.current = messageCount;
-      }
-      setIsScrolledUp(true);
-      handle?.scrollBy(-pageStep);
-      return;
+  const handlePageUp = () => {
+    const handle = scrollRef.current;
+    if (!handle) return false;
+
+    const pageStep = Math.max(1, Math.floor(handle.getViewportHeight() * 0.7));
+
+    if (!isScrolledUp) {
+      pausedTranscriptVersionRef.current = transcriptVersion;
+      pausedMessageCountRef.current = messageCount;
     }
 
-    if (key.pageDown) {
+    setIsScrolledUp(true);
+    handle.scrollBy(-pageStep);
+    onScrollAway(handle);
+    return true;
+  };
+
+  const handlePageDown = () => {
+    const handle = scrollRef.current;
+    if (!isScrolledUp || !handle) {
       if (!handle) {
         pausedTranscriptVersionRef.current = null;
         pausedMessageCountRef.current = 0;
         setIsScrolledUp(false);
-        return;
+        onRepin();
       }
-
-      const maxScrollTop = Math.max(
-        handle.getFreshScrollHeight() - handle.getViewportHeight(),
-        0,
-      );
-      const nextScrollTop = Math.min(
-        handle.getScrollTop() + handle.getPendingDelta() + pageStep,
-        maxScrollTop,
-      );
-
-      if (nextScrollTop >= maxScrollTop) {
-        handle.scrollToBottom();
-        pausedTranscriptVersionRef.current = null;
-        pausedMessageCountRef.current = 0;
-        setIsScrolledUp(false);
-        return;
-      }
-
-      handle.scrollBy(pageStep);
+      return false;
     }
-  });
+
+    jumpToNew(handle);
+    pausedTranscriptVersionRef.current = null;
+    pausedMessageCountRef.current = 0;
+    setIsScrolledUp(false);
+    onRepin();
+    return true;
+  };
+
+  const jumpToLatest = () => {
+    const handle = scrollRef.current;
+    if (!handle) {
+      pausedTranscriptVersionRef.current = null;
+      pausedMessageCountRef.current = 0;
+      setIsScrolledUp(false);
+      onRepin();
+      return;
+    }
+
+    jumpToNew(handle);
+    pausedTranscriptVersionRef.current = null;
+    pausedMessageCountRef.current = 0;
+    setIsScrolledUp(false);
+    onRepin();
+  };
 
   const hasUpdatesBelow =
     pausedTranscriptVersionRef.current !== null &&
@@ -79,18 +104,13 @@ export function useEngineerScrollState({
       ? Math.max(messageCount - pausedMessageCountRef.current, 1)
       : 0;
 
-  const jumpToLatest = () => {
-    scrollRef.current?.scrollToBottom();
-    pausedTranscriptVersionRef.current = null;
-    pausedMessageCountRef.current = 0;
-    setIsScrolledUp(false);
-  };
-
   return {
     scrollRef,
     dividerYRef,
     scrollHint,
     newMessageCount,
     jumpToLatest,
+    handlePageUp,
+    handlePageDown,
   };
 }

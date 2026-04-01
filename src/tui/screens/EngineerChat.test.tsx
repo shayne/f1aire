@@ -153,7 +153,7 @@ describe('EngineerChat', () => {
     unmount();
   });
 
-  it('uses the full transcript height while live', async () => {
+  it('keeps the latest transcript rows visible while live', async () => {
     const { lastFrame, unmount } = await renderTui(
       <EngineerChat
         {...baseProps}
@@ -178,7 +178,8 @@ describe('EngineerChat', () => {
     await tick();
 
     const liveFrame = stripAnsi(lastFrame() ?? '');
-    expect(liveFrame).toContain('alpha row');
+    expect(liveFrame).toContain('beta row');
+    expect(liveFrame).toContain('delta row');
     expect(liveFrame).not.toContain('Viewing earlier output');
     unmount();
   });

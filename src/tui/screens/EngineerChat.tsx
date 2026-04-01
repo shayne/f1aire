@@ -153,8 +153,15 @@ export function EngineerChat({
       }),
     [isStreaming, messages, status, streamingText],
   );
-  const { scrollRef, dividerYRef, scrollHint, newMessageCount, jumpToLatest } =
-    useEngineerScrollState({
+  const {
+    scrollRef,
+    dividerYRef,
+    scrollHint,
+    newMessageCount,
+    jumpToLatest,
+    handlePageUp,
+    handlePageDown,
+  } = useEngineerScrollState({
       messageCount: messages.length,
       transcriptVersion,
     });
@@ -176,6 +183,14 @@ export function EngineerChat({
     [asOfLabel, latestActivity, meeting, session, year],
   );
   const handleComposerIntercept = (input: string, key: Key) => {
+    if (key.pageUp) {
+      return handlePageUp();
+    }
+
+    if (key.pageDown) {
+      return handlePageDown();
+    }
+
     if (key.tab || input === '\t') {
       setDetailsExpanded((current) => !current);
       return true;
@@ -186,6 +201,7 @@ export function EngineerChat({
   return (
     <EngineerShell
       fullscreen={maxHeight === undefined}
+      height={rows}
       top={<EngineerSessionStrip label={sessionStripLabel} />}
       scrollRef={scrollRef}
       dividerYRef={dividerYRef}
@@ -195,6 +211,7 @@ export function EngineerChat({
         <TranscriptViewport
           rows={conversationRows}
           scrollHint={scrollHint}
+          onScrollHintClick={jumpToLatest}
           onRender={onConversationRender}
         />
       }

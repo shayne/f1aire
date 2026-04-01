@@ -10,6 +10,7 @@ export function EngineerShell({
   dividerYRef,
   newMessageCount,
   onPillClick,
+  height,
   fullscreen = true,
 }: {
   top?: React.ReactNode;
@@ -19,10 +20,11 @@ export function EngineerShell({
   dividerYRef?: React.RefObject<number | null>;
   newMessageCount?: number;
   onPillClick?: () => void;
+  height?: number | string;
   fullscreen?: boolean;
 }) {
   const content = (
-    <Box flexDirection="column" height="100%">
+    <Box flexDirection="column" height={height ?? '100%'}>
       <FullscreenLayout
         top={top}
         scrollable={scrollable}
