@@ -1,6 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Text } from '#ink';
+import { Box, Text } from '#ink';
 import type { Meeting, Session } from '../../core/types.js';
+import { Panel } from '../components/Panel.js';
+import { theme } from '../theme.js';
 
 export function Downloading({
   meeting,
@@ -43,5 +45,13 @@ export function Downloading({
     };
   }, [runKey, meeting.Name, session.Name]);
 
-  return <Text>{status}</Text>;
+  return (
+    <Panel title="Preparing session" tone="accent" paddingY={1}>
+      <Box flexDirection="column">
+        <Text>{meeting.Name}</Text>
+        <Text color={theme.subtle}>{session.Name}</Text>
+        <Text color={theme.subtle}>{status}</Text>
+      </Box>
+    </Panel>
+  );
 }

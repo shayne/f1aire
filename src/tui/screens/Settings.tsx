@@ -1,7 +1,9 @@
 import React from 'react';
-import { Box, Text } from '#ink';
+import { Text } from '#ink';
 import { Panel } from '../components/Panel.js';
+import { ScreenLayout } from '../components/ScreenLayout.js';
 import { SelectList } from '../components/SelectList.js';
+import { theme } from '../theme.js';
 
 export type KeyStatus = {
   envKeyPresent: boolean;
@@ -21,9 +23,10 @@ export function Settings({
   const presentLabel = (value: boolean) => (value ? 'present' : 'absent');
 
   return (
-    <Box flexDirection="row" gap={2}>
-      <Box flexDirection="column" flexGrow={1}>
-        <Text>Settings</Text>
+    <ScreenLayout
+      title="Settings"
+      description="Manage the OpenAI API key used by the race engineer."
+      main={
         <SelectList
           items={[
             { label: 'Paste OpenAI API key', value: 'paste' as const },
@@ -37,28 +40,23 @@ export function Settings({
           ]}
           onSelect={onAction}
         />
-      </Box>
-      <Box width={38}>
+      }
+      detail={
         <Panel title="OpenAI">
-          <Box flexDirection="column" gap={1}>
-            <Text>
-              <Text color="ansi:blackBright">Env key</Text>
-              {`: ${presentLabel(status.envKeyPresent)}`}
-            </Text>
-            <Text>
-              <Text color="ansi:blackBright">Stored key</Text>
-              {`: ${presentLabel(status.storedKeyPresent)}`}
-            </Text>
-            <Text>
-              <Text color="ansi:blackBright">In use</Text>
-              {`: ${status.inUse}`}
-            </Text>
-            <Text color="ansi:blackBright">
-              Use arrows to choose, enter to select.
-            </Text>
-          </Box>
+          <Text>
+            <Text color={theme.subtle}>Env key</Text>
+            {`: ${presentLabel(status.envKeyPresent)}`}
+          </Text>
+          <Text>
+            <Text color={theme.subtle}>Stored key</Text>
+            {`: ${presentLabel(status.storedKeyPresent)}`}
+          </Text>
+          <Text>
+            <Text color={theme.subtle}>In use</Text>
+            {`: ${status.inUse}`}
+          </Text>
         </Panel>
-      </Box>
-    </Box>
+      }
+    />
   );
 }

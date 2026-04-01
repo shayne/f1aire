@@ -1,8 +1,10 @@
 import React, { useEffect, useState } from 'react';
-import { Box, Text } from '#ink';
+import { Text } from '#ink';
 import type { Meeting, Session } from '../../core/types.js';
 import { SelectList } from '../components/SelectList.js';
 import { Panel } from '../components/Panel.js';
+import { ScreenLayout } from '../components/ScreenLayout.js';
+import { theme } from '../theme.js';
 
 export function SessionPicker({
   meeting,
@@ -23,9 +25,10 @@ export function SessionPicker({
   const detailSession = highlighted ?? sessions[0] ?? null;
 
   return (
-    <Box flexDirection="row" gap={2}>
-      <Box flexDirection="column" flexGrow={1}>
-        <Text>Select a session for {meeting.Name}</Text>
+    <ScreenLayout
+      title={`Select a session for ${meeting.Name}`}
+      description="Choose the session to download and hand off to the engineer."
+      main={
         <SelectList
           items={sessions.map((session) => ({
             key: String(session.Key),
@@ -35,26 +38,21 @@ export function SessionPicker({
           onSelect={onSelect}
           onHighlight={setHighlighted}
         />
-      </Box>
-      <Box width={38}>
+      }
+      detail={
         <Panel title="Session">
           {detailSession ? (
             <>
               <Text>{detailSession.Name}</Text>
-              <Text color="ansi:blackBright">Type: {detailSession.Type}</Text>
-              <Text>Start: {detailSession.StartDate}</Text>
-              <Text>End: {detailSession.EndDate}</Text>
-              <Text color="ansi:blackBright">
-                Use arrows to choose, enter to continue.
-              </Text>
+              <Text color={theme.subtle}>{detailSession.Type}</Text>
+              <Text color={theme.subtle}>Start {detailSession.StartDate}</Text>
+              <Text color={theme.subtle}>End {detailSession.EndDate}</Text>
             </>
           ) : (
-            <Text color="ansi:blackBright">
-              Highlight a session for details.
-            </Text>
+            <Text color={theme.subtle}>Highlight a session for details.</Text>
           )}
         </Panel>
-      </Box>
-    </Box>
+      }
+    />
   );
 }

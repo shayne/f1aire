@@ -1,8 +1,10 @@
 import React, { useEffect, useState } from 'react';
-import { Box, Text } from '#ink';
+import { Text } from '#ink';
 import type { Meeting } from '../../core/types.js';
 import { SelectList } from '../components/SelectList.js';
 import { Panel } from '../components/Panel.js';
+import { ScreenLayout } from '../components/ScreenLayout.js';
+import { theme } from '../theme.js';
 
 export function MeetingPicker({
   year,
@@ -24,9 +26,10 @@ export function MeetingPicker({
   const detailMeeting = highlighted ?? meetings[0] ?? null;
 
   return (
-    <Box flexDirection="row" gap={2}>
-      <Box flexDirection="column" flexGrow={1}>
-        <Text>Select a meeting for {year}</Text>
+    <ScreenLayout
+      title={`Select a meeting for ${year}`}
+      description="Pick the race weekend or test event you want to analyze."
+      main={
         <SelectList
           items={meetings.map((meeting) => ({
             key: String(meeting.Key),
@@ -36,25 +39,22 @@ export function MeetingPicker({
           onSelect={onSelect}
           onHighlight={setHighlighted}
         />
-      </Box>
-      <Box width={38}>
+      }
+      detail={
         <Panel title="Meeting">
           {detailMeeting ? (
             <>
               <Text>{detailMeeting.Name}</Text>
-              <Text color="ansi:blackBright">{detailMeeting.Location}</Text>
-              <Text>Sessions: {detailMeeting.Sessions.length}</Text>
-              <Text color="ansi:blackBright">
-                Use arrows to choose, enter to continue.
+              <Text color={theme.subtle}>{detailMeeting.Location}</Text>
+              <Text color={theme.subtle}>
+                {detailMeeting.Sessions.length} sessions available
               </Text>
             </>
           ) : (
-            <Text color="ansi:blackBright">
-              Highlight a meeting for details.
-            </Text>
+            <Text color={theme.subtle}>Highlight a meeting for details.</Text>
           )}
         </Panel>
-      </Box>
-    </Box>
+      }
+    />
   );
 }

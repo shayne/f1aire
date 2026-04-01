@@ -1,7 +1,9 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Box, Text } from '#ink';
+import { Text } from '#ink';
 import { SelectList } from '../components/SelectList.js';
 import { Panel } from '../components/Panel.js';
+import { ScreenLayout } from '../components/ScreenLayout.js';
+import { theme } from '../theme.js';
 import { getSeasonOptions } from '../season-utils.js';
 
 export function SeasonPicker({
@@ -25,29 +27,30 @@ export function SeasonPicker({
   const detailYear = highlighted ?? seasons[0] ?? null;
 
   return (
-    <Box flexDirection="row" gap={2}>
-      <Box flexDirection="column" flexGrow={1}>
-        <Text>Select a season</Text>
+    <ScreenLayout
+      title="Select a season"
+      description="Start with a season, then choose an event and session."
+      main={
         <SelectList
           items={seasons.map((year) => ({ label: String(year), value: year }))}
           onSelect={onSelect}
           onHighlight={setHighlighted}
         />
-      </Box>
-      <Box width={38}>
+      }
+      detail={
         <Panel title="Season">
           {detailYear !== null ? (
             <>
-              <Text>Year: {detailYear}</Text>
-              <Text color="ansi:blackBright">
-                Use arrows to choose, enter to load meetings.
+              <Text>{detailYear}</Text>
+              <Text color={theme.subtle}>
+                Load the list of championship weekends for this season.
               </Text>
             </>
           ) : (
-            <Text color="ansi:blackBright">Pick a year to load meetings.</Text>
+            <Text color={theme.subtle}>Pick a year to continue.</Text>
           )}
         </Panel>
-      </Box>
-    </Box>
+      }
+    />
   );
 }
