@@ -11,10 +11,7 @@ import {
   type TranscriptRow,
 } from './engineer/transcript-rows.js';
 import { Composer } from './engineer/Composer.js';
-import {
-  COMPOSER_VISIBLE_LINE_CAP,
-  useComposerState,
-} from './engineer/useComposerState.js';
+import { useComposerState } from './engineer/useComposerState.js';
 import { useTranscriptViewport } from './engineer/useTranscriptViewport.js';
 
 type ConversationRow = TranscriptRow;
@@ -71,17 +68,26 @@ const ConversationPanel = React.memo(function ConversationPanel({
 type ComposerPanelProps = {
   onSend: (text: string) => void;
   isStreaming: boolean;
-  height: number;
+  width: number;
+  onHeightChange: (visibleLineCount: number) => void;
 };
 
 const ComposerPanel = React.memo(function ComposerPanel({
   onSend,
   isStreaming,
-  height,
+  width,
+  onHeightChange,
 }: ComposerPanelProps) {
   const state = useComposerState({ onSend, isStreaming });
 
-  return <Composer state={state} isStreaming={isStreaming} height={height} />;
+  return (
+    <Composer
+      state={state}
+      isStreaming={isStreaming}
+      width={width}
+      onHeightChange={onHeightChange}
+    />
+  );
 });
 
 export function EngineerChat({
@@ -130,12 +136,14 @@ export function EngineerChat({
   const leftPaneWidth = Math.max(20, columns - (rightWidth ?? 0) - gutter);
   const contentWidth = Math.max(12, leftPaneWidth - 6);
   const messageContentWidth = Math.max(10, contentWidth - 2);
+  const composerContentWidth = Math.max(12, leftPaneWidth - 4);
+  const [composerVisibleLines, setComposerVisibleLines] = useState(1);
 
   useEffect(() => {
     onRender?.();
   });
 
-  const inputPanelHeight = COMPOSER_VISIBLE_LINE_CAP + 5;
+  const inputPanelHeight = composerVisibleLines + 5;
   const panelOverhead = 4;
   const gapBetweenPanels = compact ? 0 : 1;
   const availableForConversation = rows - inputPanelHeight - gapBetweenPanels;
@@ -226,7 +234,8 @@ export function EngineerChat({
         <ComposerPanel
           onSend={onSend}
           isStreaming={isStreaming}
-          height={inputPanelHeight}
+          width={composerContentWidth}
+          onHeightChange={setComposerVisibleLines}
         />
       </Box>
       <Box

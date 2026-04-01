@@ -1,34 +1,69 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo } from 'react';
 import { Box, Text, useInput } from 'ink';
 import { Panel } from '../../components/Panel.js';
 import { theme } from '../../theme.js';
 import {
-  COMPOSER_VISIBLE_LINE_CAP,
+  getComposerVisibleLines,
   type ComposerState,
 } from './useComposerState.js';
 
-function getCursorLineMeta(draft: string, cursor: number): {
+function wrapComposerLine(line: string, width: number): string[] {
+  if (width <= 0) return [line];
+  if (line.length === 0) return [''];
+  const segments: string[] = [];
+  for (let i = 0; i < line.length; i += width) {
+    segments.push(line.slice(i, i + width));
+  }
+  return segments;
+}
+
+function getComposerLayout(
+  draft: string,
+  cursor: number,
+  width: number,
+): {
   lineIndex: number;
   column: number;
   lines: string[];
 } {
-  const lines = draft.length > 0 ? draft.split('\n') : [''];
+  const rawLines = draft.split('\n');
+  const lines = rawLines.flatMap((line) => wrapComposerLine(line, width));
   const safeCursor = Math.max(0, Math.min(cursor, draft.length));
-  let offset = 0;
+  let draftOffset = 0;
+  let wrappedOffset = 0;
 
-  for (let i = 0; i < lines.length; i += 1) {
-    const line = lines[i] ?? '';
-    const lineEnd = offset + line.length;
+  for (let i = 0; i < rawLines.length; i += 1) {
+    const line = rawLines[i] ?? '';
+    const wrappedLines = wrapComposerLine(line, width);
+    const lineEnd = draftOffset + line.length;
+
     if (safeCursor <= lineEnd) {
-      return { lineIndex: i, column: safeCursor - offset, lines };
+      const offsetInLine = safeCursor - draftOffset;
+      const lineWrapIndex =
+        width > 0
+          ? Math.min(Math.floor(offsetInLine / width), wrappedLines.length - 1)
+          : 0;
+      const isAtLineEnd = safeCursor === lineEnd;
+      const column =
+        isAtLineEnd && width > 0
+          ? line.length % width || Math.min(width, line.length)
+          : offsetInLine;
+
+      return {
+        lineIndex: wrappedOffset + lineWrapIndex,
+        column,
+        lines: lines.length ? lines : [''],
+      };
     }
-    offset = lineEnd + 1;
+
+    draftOffset = lineEnd + 1;
+    wrappedOffset += wrappedLines.length;
   }
 
   return {
-    lineIndex: lines.length - 1,
+    lineIndex: Math.max(lines.length - 1, 0),
     column: lines[lines.length - 1]?.length ?? 0,
-    lines,
+    lines: lines.length ? lines : [''],
   };
 }
 
@@ -52,11 +87,13 @@ function renderVisibleLine(
 export function Composer({
   state,
   isStreaming,
-  height,
+  width,
+  onHeightChange,
 }: {
   state: ComposerState;
   isStreaming: boolean;
-  height?: number;
+  width: number;
+  onHeightChange?: (visibleLineCount: number) => void;
 }): React.JSX.Element {
   useInput(
     (input, key) => {
@@ -66,22 +103,22 @@ export function Composer({
   );
 
   const lineMeta = useMemo(
-    () => getCursorLineMeta(state.draft, state.cursor),
-    [state.cursor, state.draft],
+    () => getComposerLayout(state.draft, state.cursor, width),
+    [state.cursor, state.draft, width],
   );
 
   const visibleLines = useMemo(() => {
-    if (lineMeta.lines.length <= COMPOSER_VISIBLE_LINE_CAP) {
-      return lineMeta.lines;
-    }
-    return lineMeta.lines.slice(-COMPOSER_VISIBLE_LINE_CAP);
-  }, [lineMeta.lines]);
+    return getComposerVisibleLines(state.draft, width);
+  }, [state.draft, width]);
 
   const visibleStart = lineMeta.lines.length - visibleLines.length;
   const cursorVisibleIndex = lineMeta.lineIndex - visibleStart;
 
-  const contentHeight = visibleLines.length + 1;
-  const panelHeight = height ?? contentHeight + 4;
+  useEffect(() => {
+    onHeightChange?.(visibleLines.length);
+  }, [onHeightChange, visibleLines.length]);
+
+  const panelHeight = visibleLines.length + 5;
 
   return (
     <Panel
@@ -91,15 +128,19 @@ export function Composer({
     >
       <Box flexDirection="column">
         {visibleLines.map((line, index) => {
-          const isCursorLine = index === cursorVisibleIndex;
+          const absoluteIndex = visibleStart + index;
+          const isCursorLine = absoluteIndex === cursorVisibleIndex;
           const isEmptyDraft = state.draft.length === 0;
-          const displayLine = isEmptyDraft
-            ? <Text color={theme.muted}>Ask about pace, gaps, tyres...</Text>
-            : renderVisibleLine(
+          const displayLine =
+            isEmptyDraft && index === 0 ? (
+              <Text color={theme.muted}>Ask about pace, gaps, tyres...</Text>
+            ) : (
+              renderVisibleLine(
                 line,
                 isCursorLine,
                 isCursorLine ? lineMeta.column : 0,
-              );
+              )
+            );
 
           return (
             <Box key={`${index}-${line}`}>

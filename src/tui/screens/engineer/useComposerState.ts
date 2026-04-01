@@ -14,6 +14,12 @@ export type ComposerState = {
   submit: () => void;
 };
 
+export type ComposerEnterResult = {
+  draft: string;
+  cursor: number;
+  shouldSubmit: boolean;
+};
+
 function clampCursor(draft: string, cursor: number): number {
   return Math.max(0, Math.min(cursor, draft.length));
 }
@@ -57,20 +63,49 @@ function removeTextAtCursor(
   };
 }
 
-export function getComposerVisibleLines(draft: string): string[] {
-  const lines = draft.split('\n');
-  if (lines.length <= COMPOSER_VISIBLE_LINE_CAP) return lines;
-  return lines.slice(-COMPOSER_VISIBLE_LINE_CAP);
+function wrapComposerLine(line: string, width: number): string[] {
+  if (width <= 0) return [line];
+  if (line.length === 0) return [''];
+  const segments: string[] = [];
+  for (let i = 0; i < line.length; i += width) {
+    segments.push(line.slice(i, i + width));
+  }
+  return segments;
 }
 
 export function applyComposerEnter({
   draft,
   cursor,
+  shift,
 }: {
   draft: string;
   cursor: number;
-}): { draft: string; cursor: number } {
-  return insertText(draft, cursor, '\n');
+  shift: boolean;
+}): ComposerEnterResult {
+  if (!shift) {
+    return {
+      draft,
+      cursor,
+      shouldSubmit: true,
+    };
+  }
+
+  const next = insertText(draft, cursor, '\n');
+  return {
+    ...next,
+    shouldSubmit: false,
+  };
+}
+
+export function getComposerVisibleLines(
+  draft: string,
+  width: number,
+): string[] {
+  const lines = draft
+    .split('\n')
+    .flatMap((line) => wrapComposerLine(line, width));
+  if (lines.length <= COMPOSER_VISIBLE_LINE_CAP) return lines;
+  return lines.slice(-COMPOSER_VISIBLE_LINE_CAP);
 }
 
 export function useComposerState({
@@ -97,18 +132,17 @@ export function useComposerState({
       if (key.ctrl && input === 'c') return;
 
       if (key.return) {
-        if (key.shift) {
-          setDraft((currentDraft) => {
-            const next = applyComposerEnter({
-              draft: currentDraft,
-              cursor: clampCursor(currentDraft, cursor),
-            });
-            setCursor(next.cursor);
-            return next.draft;
-          });
+        const next = applyComposerEnter({
+          draft,
+          cursor,
+          shift: key.shift,
+        });
+        if (next.shouldSubmit) {
+          submit();
           return;
         }
-        submit();
+        setDraft(next.draft);
+        setCursor(next.cursor);
         return;
       }
 
@@ -136,9 +170,7 @@ export function useComposerState({
       }
 
       if (key.rightArrow) {
-        setCursor((currentCursor) =>
-          Math.min(currentCursor + 1, draft.length),
-        );
+        setCursor((currentCursor) => Math.min(currentCursor + 1, draft.length));
         return;
       }
 
@@ -153,7 +185,10 @@ export function useComposerState({
     [cursor, draft, submit],
   );
 
-  const visibleLines = useMemo(() => getComposerVisibleLines(draft), [draft]);
+  const visibleLines = useMemo(
+    () => getComposerVisibleLines(draft, 48),
+    [draft],
+  );
 
   return {
     draft,

@@ -1,19 +1,47 @@
 import { describe, expect, it } from 'vitest';
-import { applyComposerEnter, getComposerVisibleLines } from './useComposerState.js';
+import {
+  applyComposerEnter,
+  getComposerVisibleLines,
+} from './useComposerState.js';
 
 describe('getComposerVisibleLines', () => {
-  it('keeps only the last five lines', () => {
-    expect(
-      getComposerVisibleLines('line 1\nline 2\nline 3\nline 4\nline 5\nline 6'),
-    ).toEqual(['line 2', 'line 3', 'line 4', 'line 5', 'line 6']);
+  it('wraps long lines by width', () => {
+    expect(getComposerVisibleLines('abcdefghi', 3)).toEqual([
+      'abc',
+      'def',
+      'ghi',
+    ]);
+  });
+
+  it('keeps only the last five visible wrapped lines', () => {
+    expect(getComposerVisibleLines('abcdefghijklmnopqr', 3)).toEqual([
+      'def',
+      'ghi',
+      'jkl',
+      'mno',
+      'pqr',
+    ]);
   });
 });
 
 describe('applyComposerEnter', () => {
-  it('inserts a newline at the cursor and advances the cursor', () => {
-    expect(applyComposerEnter({ draft: 'pit wall', cursor: 3 })).toEqual({
+  it('submits on plain Enter without mutating the draft', () => {
+    expect(
+      applyComposerEnter({ draft: 'pit wall', cursor: 3, shift: false }),
+    ).toEqual({
+      draft: 'pit wall',
+      cursor: 3,
+      shouldSubmit: true,
+    });
+  });
+
+  it('inserts a newline on Shift+Enter and advances the cursor', () => {
+    expect(
+      applyComposerEnter({ draft: 'pit wall', cursor: 3, shift: true }),
+    ).toEqual({
       draft: 'pit\n wall',
       cursor: 4,
+      shouldSubmit: false,
     });
   });
 });
