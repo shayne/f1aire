@@ -4,6 +4,11 @@
     "lib": ["ES2022"],
     "module": "nodenext",
     "moduleResolution": "nodenext",
+    "baseUrl": ".",
+    "paths": {
+      "#ink": ["./src/ink/index.ts"],
+      "#ink/testing": ["./src/ink/testing.tsx"]
+    },
     "jsx": "react-jsx",
     "strict": true,
     "esModuleInterop": true,
