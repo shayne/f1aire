@@ -40,4 +40,26 @@ describe('buildTranscriptRows', () => {
     expect(rows.some((row) => row.kind === 'pending-status')).toBe(true);
     expect(rows.some((row) => row.plainText.includes('Thinking'))).toBe(true);
   });
+
+  it('renders live assistant streaming text into transcript rows', () => {
+    const rows = buildTranscriptRows({
+      messages: [],
+      streamingText: 'Pit wall says the pace is strong.',
+      isStreaming: true,
+      status: 'Thinking',
+      messageWidth: 24,
+    });
+
+    expect(
+      rows.some((row) => row.kind === 'label' && row.plainText === 'Engineer'),
+    ).toBe(true);
+    expect(
+      rows.some(
+        (row) =>
+          row.kind === 'message-line' &&
+          row.plainText.includes('Pit wall says'),
+      ),
+    ).toBe(true);
+    expect(rows.some((row) => row.kind === 'pending-status')).toBe(false);
+  });
 });
