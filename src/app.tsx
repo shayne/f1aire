@@ -19,16 +19,29 @@ import {
 } from './core/config.js';
 import { downloadSession } from './core/download.js';
 import { getMeetings } from './core/f1-api.js';
-import { summarizeFromLines, type Summary as SummaryData } from './core/summary.js';
+import {
+  summarizeFromLines,
+  type Summary as SummaryData,
+} from './core/summary.js';
 import { loadSessionStore } from './core/session-store.js';
-import { hydrateTimingServiceFromStore, TimingService } from './core/timing-service.js';
+import {
+  hydrateTimingServiceFromStore,
+  TimingService,
+} from './core/timing-service.js';
 import type { TimeCursor } from './core/time-cursor.js';
 import { getDataDir } from './core/xdg.js';
 import { appendUserMessage, type ChatMessage } from './tui/chat-state.js';
-import { FooterHints, getFooterHintRowCount } from './tui/components/FooterHints.js';
+import {
+  FooterHints,
+  getFooterHintRowCount,
+} from './tui/components/FooterHints.js';
 import { Header } from './tui/components/Header.js';
 import { getBackScreen, type Screen } from './tui/navigation.js';
 import { startEventLoopLagMonitor } from './tui/perf.js';
+import {
+  buildTerminalTitle,
+  writeTerminalTitle,
+} from './tui/terminal-chrome.js';
 import { Downloading } from './tui/screens/Downloading.js';
 import { EngineerChat } from './tui/screens/EngineerChat.js';
 import { MeetingPicker } from './tui/screens/MeetingPicker.js';
@@ -61,7 +74,10 @@ type DownloadScreen = Extract<Screen, { name: 'downloading' }>;
 
 type PendingEngineer = Omit<DownloadScreen, 'name'> & { dir: string };
 
-function tryExtractJsonStringField(value: string, fieldName: string): string | null {
+function tryExtractJsonStringField(
+  value: string,
+  fieldName: string,
+): string | null {
   const key = `"${fieldName}"`;
   const keyIndex = value.indexOf(key);
   if (keyIndex < 0) return null;
@@ -124,9 +140,7 @@ const getToolName = (part: ToolPart): string =>
 
 const getToolCallId = (part: ToolPart): string | undefined => {
   const id =
-    (part as any).toolCallId ??
-    (part as any).toolCall?.id ??
-    (part as any).id;
+    (part as any).toolCallId ?? (part as any).toolCall?.id ?? (part as any).id;
   return typeof id === 'string' ? id : undefined;
 };
 
@@ -152,9 +166,8 @@ export function App(): React.JSX.Element {
   const [runtimeMessage, setRuntimeMessage] = useState(
     'Checking Python runtime...',
   );
-  const [runtimeProgress, setRuntimeProgress] = useState<RuntimeProgress | null>(
-    null,
-  );
+  const [runtimeProgress, setRuntimeProgress] =
+    useState<RuntimeProgress | null>(null);
   const [storedApiKey, setStoredApiKey] = useState<string | null>(null);
   const [apiKeyError, setApiKeyError] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -166,11 +179,13 @@ export function App(): React.JSX.Element {
   const [pythonCodeTarget, setPythonCodeTarget] = useState('');
   const [summary, setSummary] = useState<SummaryData | null>(null);
   const [timeCursor, setTimeCursor] = useState<TimeCursor>({ latest: true });
-  const engineerRef = useRef<ReturnType<typeof createEngineerSession> | null>(null);
-  const pendingEngineerRef = useRef<PendingEngineer | null>(null);
-  const engineerLoggerRef = useRef<ReturnType<typeof createEngineerLogger> | null>(
+  const engineerRef = useRef<ReturnType<typeof createEngineerSession> | null>(
     null,
   );
+  const pendingEngineerRef = useRef<PendingEngineer | null>(null);
+  const engineerLoggerRef = useRef<ReturnType<
+    typeof createEngineerLogger
+  > | null>(null);
   const toolTimingRef = useRef({
     byId: new Map<string, ToolTimingEntry>(),
     inputQueue: [] as ToolTimingEntry[],
@@ -214,7 +229,8 @@ export function App(): React.JSX.Element {
         const cfg = await readAppConfig('f1aire');
         if (cancelled) return;
         const key =
-          typeof cfg.openaiApiKey === 'string' && cfg.openaiApiKey.trim().length > 0
+          typeof cfg.openaiApiKey === 'string' &&
+          cfg.openaiApiKey.trim().length > 0
             ? cfg.openaiApiKey.trim()
             : null;
         setStoredApiKey(key);
@@ -342,7 +358,8 @@ export function App(): React.JSX.Element {
     try {
       const cfg = await readAppConfig('f1aire');
       const key =
-        typeof cfg.openaiApiKey === 'string' && cfg.openaiApiKey.trim().length > 0
+        typeof cfg.openaiApiKey === 'string' &&
+        cfg.openaiApiKey.trim().length > 0
           ? cfg.openaiApiKey.trim()
           : null;
       if (key) setStoredApiKey(key);
@@ -440,8 +457,7 @@ export function App(): React.JSX.Element {
           return;
         }
         if (event.type === 'stream-error') {
-          const msg =
-            typeof event.error === 'string' ? event.error : 'error';
+          const msg = typeof event.error === 'string' ? event.error : 'error';
           setStreamStatus(`Error: ${msg}`);
           pushActivity(`Error: ${msg}`);
           return;
@@ -456,10 +472,7 @@ export function App(): React.JSX.Element {
           pushActivity('Streaming response');
           return;
         }
-        if (
-          partType === 'reasoning-start' ||
-          partType === 'start-step'
-        ) {
+        if (partType === 'reasoning-start' || partType === 'start-step') {
           setStreamStatus('Thinking...');
           pushActivity('Thinking...');
           return;
@@ -505,15 +518,16 @@ export function App(): React.JSX.Element {
               : typeof (part as any)?.delta === 'string'
                 ? ((part as any).delta as string)
                 : undefined;
-          if (typeof toolCallId !== 'string' || typeof delta !== 'string') return;
-          const previous =
-            toolInputPreviewRef.current.get(toolCallId) ?? '';
+          if (typeof toolCallId !== 'string' || typeof delta !== 'string')
+            return;
+          const previous = toolInputPreviewRef.current.get(toolCallId) ?? '';
           const next = previous + delta;
           toolInputPreviewRef.current.set(toolCallId, next);
           const toolName =
             toolTimingRef.current.byId.get(toolCallId)?.toolName ??
-            toolTimingRef.current.inputQueue.find((e) => e.toolCallId === toolCallId)
-              ?.toolName;
+            toolTimingRef.current.inputQueue.find(
+              (e) => e.toolCallId === toolCallId,
+            )?.toolName;
           if (toolName === 'run_py') {
             const extracted = tryExtractJsonStringField(next, 'code');
             if (extracted != null) setPythonCodeTarget(extracted);
@@ -524,7 +538,11 @@ export function App(): React.JSX.Element {
           const toolName = getToolName(part);
           if (toolName === 'run_py') {
             const input = (part as any)?.input;
-            if (input && typeof input === 'object' && typeof input.code === 'string') {
+            if (
+              input &&
+              typeof input === 'object' &&
+              typeof input.code === 'string'
+            ) {
               setPythonCodeTarget(input.code);
             }
           }
@@ -564,7 +582,11 @@ export function App(): React.JSX.Element {
               (part as any).toolCall?.args ??
               (part as any).tool?.args ??
               (part as any).toolInput;
-            if (args && typeof args === 'object' && typeof args.code === 'string') {
+            if (
+              args &&
+              typeof args === 'object' &&
+              typeof args.code === 'string'
+            ) {
               setPythonCodeTarget(args.code);
             }
           }
@@ -576,8 +598,9 @@ export function App(): React.JSX.Element {
           const toolName = getToolName(part);
           const toolCallId = getToolCallId(part);
           const toolTiming = toolTimingRef.current;
-          let entry: ToolTimingEntry | undefined =
-            toolCallId ? toolTiming.byId.get(toolCallId) : undefined;
+          let entry: ToolTimingEntry | undefined = toolCallId
+            ? toolTiming.byId.get(toolCallId)
+            : undefined;
           if (!entry && toolTiming.callQueue.length > 0) {
             entry = toolTiming.callQueue.shift();
           }
@@ -725,13 +748,34 @@ export function App(): React.JSX.Element {
       : timeCursor?.iso
         ? `Time ${timeCursor.iso}`
         : 'Latest';
+  const terminalTitle = useMemo(
+    () =>
+      buildTerminalTitle({
+        screenName: screen.name,
+        breadcrumb,
+        isStreaming: screen.name === 'engineer' && isStreaming,
+      }),
+    [screen.name, breadcrumb, isStreaming],
+  );
+
+  useEffect(() => {
+    writeTerminalTitle(terminalTitle, stdout ?? undefined);
+  }, [stdout, terminalTitle]);
 
   return (
     <Box flexDirection="column" height={terminalRows}>
       <Header breadcrumb={breadcrumb} compact={isShort} />
-      <Box flexGrow={1} flexDirection="column" marginLeft={1} height={contentHeight}>
+      <Box
+        flexGrow={1}
+        flexDirection="column"
+        marginLeft={1}
+        height={contentHeight}
+      >
         {!runtimeReady ? (
-          <RuntimePreparing message={runtimeMessage} progress={runtimeProgress ?? undefined} />
+          <RuntimePreparing
+            message={runtimeMessage}
+            progress={runtimeProgress ?? undefined}
+          />
         ) : (
           <>
             {screen.name === 'season' && (

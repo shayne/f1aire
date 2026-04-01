@@ -2,6 +2,7 @@ import React from 'react';
 import { Box, Text } from 'ink';
 import type { Summary as SummaryData } from '../../core/summary.js';
 import { Panel } from '../components/Panel.js';
+import { createTerminalLink } from '../terminal-chrome.js';
 import { theme } from '../theme.js';
 
 export function Summary({
@@ -16,7 +17,7 @@ export function Summary({
       <Text color={theme.brand}>Download complete</Text>
       <Panel title="Session summary" tone="accent">
         <Text color={theme.muted}>Data path</Text>
-        <Text>{dir}</Text>
+        <Text>{createTerminalLink(dir)}</Text>
         <Box marginTop={1} flexDirection="column">
           <Text>
             Winner: {summary.winner ? summary.winner.name : 'Unknown'}
