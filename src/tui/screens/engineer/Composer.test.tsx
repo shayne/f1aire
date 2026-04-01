@@ -49,6 +49,18 @@ describe('Composer', () => {
     expect(lastFrame()).not.toContain('pit');
   });
 
+  it('submits a queued burst without waiting for a render tick', async () => {
+    const onSend = vi.fn();
+    const { stdin } = render(<Harness onSend={onSend} />);
+
+    await waitForTick();
+    stdin.write('abc');
+    stdin.write('\r');
+    await waitForTick();
+
+    expect(onSend).toHaveBeenCalledWith('abc');
+  });
+
   it('renders the newline hint in the footer copy', () => {
     const { lastFrame } = render(<Harness onSend={vi.fn()} />);
 
@@ -102,6 +114,20 @@ describe('Composer', () => {
 
     const frame = lastFrame() ?? '';
     expect(frame).toContain('aX▌bc');
+  });
+
+  it('normalizes a modified-enter escape sequence to a newline', async () => {
+    const onSend = vi.fn();
+    const { stdin, lastFrame } = render(<Harness onSend={onSend} />);
+
+    await waitForTick();
+    stdin.write('ab');
+    stdin.write('\u001b[13;2u');
+    await waitForTick();
+
+    const frame = lastFrame() ?? '';
+    expect(frame).toContain('ab');
+    expect(frame).not.toContain('[13;2u');
   });
 
   it('grows to five visible wrapped lines before scrolling older content away', async () => {

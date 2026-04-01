@@ -68,7 +68,7 @@ describe('applyComposerEnter', () => {
 });
 
 describe('useComposerState', () => {
-  it('handles Shift+Enter through the composer handler', async () => {
+  it('normalizes a modified-enter escape sequence to a newline', async () => {
     let state: ReturnType<typeof useComposerState> | null = null;
     render(
       React.createElement(Harness, {
@@ -97,17 +97,17 @@ describe('useComposerState', () => {
       meta: false,
     });
     await waitForTick();
-    state?.handleInput('', {
+    state?.handleInput('\u001b[13;2u', {
       upArrow: false,
       downArrow: false,
       leftArrow: false,
       rightArrow: false,
       pageDown: false,
       pageUp: false,
-      return: true,
+      return: false,
       escape: false,
       ctrl: false,
-      shift: true,
+      shift: false,
       tab: false,
       backspace: false,
       delete: false,

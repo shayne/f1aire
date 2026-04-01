@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useReducer, useRef } from 'react';
+import { useCallback, useMemo, useReducer, useRef } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 import type { Key } from 'ink';
 
@@ -55,6 +55,47 @@ function moveCursor(draft: string, cursor: number, delta: number): number {
   return Math.max(0, Math.min(cursor + delta, draft.length));
 }
 
+type ComposerDraftState = { draft: string; cursor: number };
+
+type ComposerAction =
+  | { type: 'insert'; text: string }
+  | { type: 'backspace' }
+  | { type: 'move'; delta: number }
+  | { type: 'set-draft'; draft: string }
+  | { type: 'set-cursor'; cursor: number }
+  | { type: 'reset' };
+
+function applyComposerAction(
+  state: ComposerDraftState,
+  action: ComposerAction,
+): ComposerDraftState {
+  switch (action.type) {
+    case 'insert':
+      return insertText(state.draft, state.cursor, action.text);
+    case 'backspace':
+      return removeTextBeforeCursor(state.draft, state.cursor);
+    case 'move':
+      return {
+        draft: state.draft,
+        cursor: moveCursor(state.draft, state.cursor, action.delta),
+      };
+    case 'set-draft':
+      return {
+        draft: action.draft,
+        cursor: clampCursor(action.draft, state.cursor),
+      };
+    case 'set-cursor':
+      return {
+        draft: state.draft,
+        cursor: clampCursor(state.draft, action.cursor),
+      };
+    case 'reset':
+      return { draft: '', cursor: 0 };
+    default:
+      return state;
+  }
+}
+
 function wrapComposerLine(line: string, width: number): string[] {
   if (width <= 0) return [line];
   if (line.length === 0) return [''];
@@ -108,64 +149,39 @@ export function useComposerState({
   onSend: (text: string) => void;
   isStreaming: boolean;
 }): ComposerState {
-  type ComposerDraftState = { draft: string; cursor: number };
-  type ComposerAction =
-    | { type: 'insert'; text: string }
-    | { type: 'backspace' }
-    | { type: 'move'; delta: number }
-    | { type: 'set-draft'; draft: string }
-    | { type: 'set-cursor'; cursor: number }
-    | { type: 'reset' };
-
-  const reducer = (
-    state: ComposerDraftState,
-    action: ComposerAction,
-  ): ComposerDraftState => {
-    switch (action.type) {
-      case 'insert':
-        return insertText(state.draft, state.cursor, action.text);
-      case 'backspace':
-        return removeTextBeforeCursor(state.draft, state.cursor);
-      case 'move':
-        return {
-          draft: state.draft,
-          cursor: moveCursor(state.draft, state.cursor, action.delta),
-        };
-      case 'set-draft':
-        return {
-          draft: action.draft,
-          cursor: clampCursor(action.draft, state.cursor),
-        };
-      case 'set-cursor':
-        return {
-          draft: state.draft,
-          cursor: clampCursor(state.draft, action.cursor),
-        };
-      case 'reset':
-        return { draft: '', cursor: 0 };
-      default:
-        return state;
-    }
-  };
-
-  const [state, dispatch] = useReducer(reducer, { draft: '', cursor: 0 });
+  const [state, dispatch] = useReducer(applyComposerAction, {
+    draft: '',
+    cursor: 0,
+  });
   const stateRef = useRef(state);
 
-  useEffect(() => {
-    stateRef.current = state;
-  }, [state]);
+  const commit = useCallback((action: ComposerAction) => {
+    stateRef.current = applyComposerAction(stateRef.current, action);
+    dispatch(action);
+  }, []);
 
   const submit = useCallback(() => {
     if (isStreaming) return;
     const trimmed = stateRef.current.draft.trim();
     if (!trimmed) return;
     onSend(trimmed);
-    dispatch({ type: 'reset' });
-  }, [isStreaming, onSend]);
+    commit({ type: 'reset' });
+  }, [commit, isStreaming, onSend]);
+
+  const isModifiedEnterSequence = useCallback((input: string) => {
+    return (
+      input === '\u001b[13;2u' || input === '\u001b[13;2~' || input === '[13;2u'
+    );
+  }, []);
 
   const handleInput = useCallback(
     (input: string, key: Key) => {
       if (key.ctrl && input === 'c') return;
+
+      if (isModifiedEnterSequence(input)) {
+        commit({ type: 'insert', text: '\n' });
+        return;
+      }
 
       if (key.return) {
         const next = applyComposerEnter(stateRef.current, key.shift);
@@ -173,30 +189,30 @@ export function useComposerState({
           submit();
           return;
         }
-        dispatch({ type: 'insert', text: '\n' });
+        commit({ type: 'insert', text: '\n' });
         return;
       }
 
       if (key.backspace || key.delete) {
-        dispatch({ type: 'backspace' });
+        commit({ type: 'backspace' });
         return;
       }
 
       if (key.leftArrow) {
-        dispatch({ type: 'move', delta: -1 });
+        commit({ type: 'move', delta: -1 });
         return;
       }
 
       if (key.rightArrow) {
-        dispatch({ type: 'move', delta: 1 });
+        commit({ type: 'move', delta: 1 });
         return;
       }
 
       if (input.length > 0) {
-        dispatch({ type: 'insert', text: input });
+        commit({ type: 'insert', text: input });
       }
     },
-    [submit],
+    [commit, isModifiedEnterSequence, submit],
   );
 
   const visibleLines = useMemo(
@@ -204,23 +220,29 @@ export function useComposerState({
     [state.draft],
   );
 
-  const setDraft = useCallback<Dispatch<SetStateAction<string>>>((value) => {
-    if (typeof value === 'function') {
-      const nextDraft = value(stateRef.current.draft);
-      dispatch({ type: 'set-draft', draft: nextDraft });
-      return;
-    }
-    dispatch({ type: 'set-draft', draft: value });
-  }, []);
+  const setDraft = useCallback<Dispatch<SetStateAction<string>>>(
+    (value) => {
+      if (typeof value === 'function') {
+        const nextDraft = value(stateRef.current.draft);
+        commit({ type: 'set-draft', draft: nextDraft });
+        return;
+      }
+      commit({ type: 'set-draft', draft: value });
+    },
+    [commit],
+  );
 
-  const setCursor = useCallback<Dispatch<SetStateAction<number>>>((value) => {
-    if (typeof value === 'function') {
-      const nextCursor = value(stateRef.current.cursor);
-      dispatch({ type: 'set-cursor', cursor: nextCursor });
-      return;
-    }
-    dispatch({ type: 'set-cursor', cursor: value });
-  }, []);
+  const setCursor = useCallback<Dispatch<SetStateAction<number>>>(
+    (value) => {
+      if (typeof value === 'function') {
+        const nextCursor = value(stateRef.current.cursor);
+        commit({ type: 'set-cursor', cursor: nextCursor });
+        return;
+      }
+      commit({ type: 'set-cursor', cursor: value });
+    },
+    [commit],
+  );
 
   return {
     draft: state.draft,
