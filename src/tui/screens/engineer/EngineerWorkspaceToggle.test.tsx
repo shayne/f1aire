@@ -32,7 +32,7 @@ const stripAnsi = (value: string) => value.replace(/\u001b\[[0-9;]*m/g, '');
 const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
 
 describe('EngineerChat details toggle', () => {
-  it('toggles the expanded details panel with the i key', async () => {
+  it('keeps plain i typing in the composer and toggles details with Tab', async () => {
     const { stdin, lastFrame } = render(
       <EngineerChat
         {...baseProps}
@@ -47,11 +47,18 @@ describe('EngineerChat details toggle', () => {
     stdin.write('i');
     await tick();
 
+    const typedFrame = stripAnsi(lastFrame() ?? '');
+    expect(typedFrame).toContain('› i');
+    expect(typedFrame).not.toContain('Python');
+
+    stdin.write('\t');
+    await tick();
+
     const expandedFrame = stripAnsi(lastFrame() ?? '');
     expect(expandedFrame).toContain('Python');
     expect(expandedFrame).toContain('print("hi")');
 
-    stdin.write('i');
+    stdin.write('\t');
     await tick();
 
     const collapsedFrame = stripAnsi(lastFrame() ?? '');

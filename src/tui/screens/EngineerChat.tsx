@@ -141,13 +141,7 @@ export function EngineerChat({
     hasUpdatesBelow: isScrolledUp,
   });
   const handleComposerIntercept = (input: string, key: Key) => {
-    if (
-      input === 'i' &&
-      !key.ctrl &&
-      !key.meta &&
-      !key.shift &&
-      !key.escape
-    ) {
+    if (key.tab || input === '\t') {
       setDetailsExpanded((current) => !current);
       return true;
     }

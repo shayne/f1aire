@@ -91,7 +91,7 @@ describe('EngineerChat', () => {
     await tick();
     expect(stripAnsi(lastFrame() ?? '')).not.toContain('Python');
 
-    stdin.write('i');
+    stdin.write('\t');
     await tick();
 
     const frame = stripAnsi(lastFrame() ?? '');

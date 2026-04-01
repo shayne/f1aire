@@ -154,7 +154,7 @@ export function Composer({
         })}
         <Box>
           <Text color={theme.muted}>
-            enter send · shift+enter newline · i details
+            enter send · shift+enter newline · TAB details
             {isStreaming ? ' · streaming' : ''}
           </Text>
         </Box>
