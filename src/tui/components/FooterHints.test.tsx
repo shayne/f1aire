@@ -16,9 +16,8 @@ describe('FooterHints', () => {
 
   it('documents the current engineer controls', () => {
     const { lastFrame } = render(<FooterHints screen="engineer" />);
-    expect(lastFrame()).toContain('enter submit');
-    expect(lastFrame()).toContain('shift+enter newline');
-    expect(lastFrame()).toContain('tab details');
-    expect(lastFrame()).toContain('pgup/pgdn scroll/live');
+    expect(lastFrame()).toContain(
+      'enter send · shift+enter newline · TAB details · pgup/pgdn scroll/live',
+    );
   });
 });
