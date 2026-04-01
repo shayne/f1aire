@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Box, Text, useInput, useStdout } from 'ink';
+import { Box, Text, useStdout } from 'ink';
 import TextInput from 'ink-text-input';
 import type { ChatMessage } from '../chat-state.js';
 import type { Summary as SummaryData } from '../../core/summary.js';
@@ -7,76 +7,13 @@ import type { Meeting, Session } from '../../core/types.js';
 import { fitRightPane, getRightPaneMode, getSessionItems } from '../layout.js';
 import { Panel } from '../components/Panel.js';
 import { theme } from '../theme.js';
-import { renderMarkdownToTerminal } from '../terminal-markdown.js';
+import {
+  buildTranscriptRows,
+  type TranscriptRow,
+} from './engineer/transcript-rows.js';
+import { useTranscriptViewport } from './engineer/useTranscriptViewport.js';
 
-const SPINNER_FRAMES = ['|', '/', '-', '\\'];
-const ANSI_SGR_REGEX = /\x1b\[[0-9;]*m/g;
-
-function padTerminalLines(text: string, width: number): string {
-  if (width <= 0 || !text) return text;
-  const lines = text.split('\n');
-  return lines
-    .map((line) => {
-      const visible = line.replace(ANSI_SGR_REGEX, '');
-      const pad = width - visible.length;
-      return pad > 0 ? `${line}${' '.repeat(pad)}` : line;
-    })
-    .join('\n');
-}
-
-function wrapAnsiLine(text: string, width: number): string[] {
-  if (width <= 0) return [text];
-  const visible = text.replace(ANSI_SGR_REGEX, '');
-  if (visible.length <= width) return [text];
-  const chunks: string[] = [];
-  let current = '';
-  let visibleCount = 0;
-  for (let i = 0; i < text.length; ) {
-    if (text[i] === '\u001b') {
-      const match = /^\u001b\[[0-9;]*m/.exec(text.slice(i));
-      if (match) {
-        current += match[0];
-        i += match[0].length;
-        continue;
-      }
-    }
-    current += text[i];
-    i += 1;
-    visibleCount += 1;
-    if (visibleCount >= width) {
-      chunks.push(current);
-      current = '';
-      visibleCount = 0;
-    }
-  }
-  if (current.length > 0) chunks.push(current);
-  return chunks.length ? chunks : [''];
-}
-
-function wrapAnsiText(text: string, width: number): string[] {
-  return text
-    .split('\n')
-    .flatMap((line) => wrapAnsiLine(line, width));
-}
-
-function Spinner({ active }: { active: boolean }) {
-  const [index, setIndex] = useState(0);
-  useEffect(() => {
-    if (!active) return;
-    const id = setInterval(
-      () => setIndex((current) => (current + 1) % SPINNER_FRAMES.length),
-      80,
-    );
-    return () => clearInterval(id);
-  }, [active]);
-  if (!active) return null;
-  return <Text color={theme.muted}>{SPINNER_FRAMES[index]}</Text>;
-}
-
-type ConversationRow = {
-  key: string;
-  node: React.ReactNode;
-};
+type ConversationRow = TranscriptRow;
 
 function StatRow({ label, value }: { label: string; value: string }) {
   return (
@@ -100,12 +37,14 @@ function activityColor(entry: string) {
 type ConversationPanelProps = {
   visibleRows: ConversationRow[];
   height?: number;
+  scrollHint?: string | null;
   onRender?: () => void;
 };
 
 const ConversationPanel = React.memo(function ConversationPanel({
   visibleRows,
   height,
+  scrollHint,
   onRender,
 }: ConversationPanelProps) {
   useEffect(() => {
@@ -116,13 +55,14 @@ const ConversationPanel = React.memo(function ConversationPanel({
     <Panel
       title="Conversation"
       tone="accent"
-      boxProps={
-        height
-          ? { height, overflow: 'hidden' }
-          : { flexGrow: 1 }
-      }
+      boxProps={height ? { height, overflow: 'hidden' } : { flexGrow: 1 }}
     >
       <Box flexDirection="column">
+        {scrollHint ? (
+          <Text color={theme.muted} wrap="truncate-end">
+            {scrollHint}
+          </Text>
+        ) : null}
         {visibleRows.map((row) => (
           <Box key={row.key}>{row.node}</Box>
         ))}
@@ -136,7 +76,10 @@ type AskInputProps = {
   height?: number;
 };
 
-const AskInput = React.memo(function AskInput({ onSend, height }: AskInputProps) {
+const AskInput = React.memo(function AskInput({
+  onSend,
+  height,
+}: AskInputProps) {
   const [input, setInput] = useState('');
 
   const handleSubmit = (value: string) => {
@@ -147,7 +90,11 @@ const AskInput = React.memo(function AskInput({ onSend, height }: AskInputProps)
   };
 
   return (
-    <Panel title="Ask the engineer" tone="muted" boxProps={height ? { height } : undefined}>
+    <Panel
+      title="Ask the engineer"
+      tone="muted"
+      boxProps={height ? { height } : undefined}
+    >
       <Box>
         <Text color={theme.muted}>› </Text>
         <TextInput
@@ -218,136 +165,30 @@ export function EngineerChat({
   const availableForConversation = rows - inputPanelHeight - gapBetweenPanels;
   const conversationPanelHeight = Math.max(availableForConversation, 0);
 
-  const [scrollOffsetLines, setScrollOffsetLines] = useState(0);
+  const conversationRows = useMemo(
+    () =>
+      buildTranscriptRows({
+        messages,
+        streamingText,
+        isStreaming,
+        status,
+        messageWidth: messageContentWidth,
+      }),
+    [isStreaming, messageContentWidth, messages, status, streamingText],
+  );
 
-  const availableMessageLines = useMemo(() => {
-    return Math.max(conversationPanelHeight - panelOverhead, 1);
-  }, [conversationPanelHeight]);
-
-  const conversationRows = useMemo(() => {
-    const wrapPlainTextLine = (line: string, width: number) => {
-      if (width <= 0) return [line];
-      if (line.length <= width) return [line];
-      const parts: string[] = [];
-      for (let i = 0; i < line.length; i += width) {
-        parts.push(line.slice(i, i + width));
-      }
-      return parts;
-    };
-
-    const renderMessageLines = (message: ChatMessage) => {
-      if (message.role === 'assistant') {
-        const rendered = renderMarkdownToTerminal(
-          message.content,
-          messageContentWidth,
-        );
-        const wrapped = wrapAnsiText(rendered, messageContentWidth);
-        return padTerminalLines(wrapped.join('\n'), messageContentWidth).split('\n');
-      }
-      const lines = message.content
-        .split('\n')
-        .flatMap((line) => wrapPlainTextLine(line, messageContentWidth));
-      return padTerminalLines(lines.join('\n'), messageContentWidth).split('\n');
-    };
-
-    const rows: ConversationRow[] = [];
-    const pushMessage = (message: ChatMessage, indexKey: string) => {
-      const label = message.role === 'assistant' ? 'Engineer' : 'You';
-      const color = message.role === 'assistant' ? theme.assistant : theme.user;
-      rows.push({
-        key: `${indexKey}-label`,
-        node: (
-          <Text color={color} wrap="truncate-end">
-            {label}
-          </Text>
-        ),
-      });
-      const lines = renderMessageLines(message);
-      for (let i = 0; i < lines.length; i += 1) {
-        rows.push({
-          key: `${indexKey}-line-${i}`,
-          node: (
-            <Text wrap="truncate-end">
-              {`  ${lines[i] ?? ''}`}
-            </Text>
-          ),
-        });
-      }
-      rows.push({
-        key: `${indexKey}-spacer`,
-        node: <Text wrap="truncate-end"> </Text>,
-      });
-    };
-
-    for (let i = 0; i < messages.length; i += 1) {
-      pushMessage(messages[i], `m-${i}`);
-    }
-
-    if (isStreaming) {
-      if (streamingText) {
-        pushMessage({ role: 'assistant', content: streamingText }, 'stream');
-      } else if (status) {
-        rows.push({
-          key: `pending-label`,
-          node: (
-            <Text color={theme.assistant} wrap="truncate-end">
-              Engineer
-            </Text>
-          ),
-        });
-        rows.push({
-          key: `pending-status`,
-          node: (
-            <Box gap={1}>
-              <Spinner active={true} />
-              <Text color={theme.muted} wrap="truncate-end">
-                {status}
-              </Text>
-            </Box>
-          ),
-        });
-        rows.push({
-          key: `pending-spacer`,
-          node: <Text wrap="truncate-end"> </Text>,
-        });
-      }
-    }
-
-    return rows;
-  }, [messages, isStreaming, status, streamingText, messageContentWidth]);
-
-  const maxScrollLines = useMemo(() => {
-    return Math.max(conversationRows.length - availableMessageLines, 0);
-  }, [conversationRows.length, availableMessageLines]);
-
-  const effectiveScrollOffsetLines = Math.min(scrollOffsetLines, maxScrollLines);
-
-  const visibleRows = useMemo(() => {
-    const start = Math.max(
-      conversationRows.length - availableMessageLines - effectiveScrollOffsetLines,
-      0,
-    );
-    const end = start + availableMessageLines;
-    return conversationRows.slice(start, end);
-  }, [
-    conversationRows,
-    availableMessageLines,
-    effectiveScrollOffsetLines,
-  ]);
-
-  const scrollStep = Math.max(1, Math.floor(availableMessageLines * 0.7));
-
-  useInput((_, key) => {
-    if (key.pageUp) {
-      setScrollOffsetLines((current) =>
-        Math.min(current + scrollStep, maxScrollLines),
-      );
-      return;
-    }
-    if (key.pageDown) {
-      setScrollOffsetLines((current) => Math.max(current - scrollStep, 0));
-    }
+  const transcriptVersion = messages.length + (isStreaming ? 1 : 0);
+  const { scrollHint, visibleWindow } = useTranscriptViewport({
+    rowCount: conversationRows.length,
+    panelHeight: conversationPanelHeight,
+    panelOverhead,
+    transcriptVersion,
   });
+
+  const visibleRows = useMemo(
+    () => conversationRows.slice(visibleWindow.start, visibleWindow.end),
+    [conversationRows, visibleWindow.end, visibleWindow.start],
+  );
 
   const activityEntries = useMemo(() => {
     return activity.length ? activity : status ? [status] : ['Idle'];
@@ -404,6 +245,7 @@ export function EngineerChat({
         <ConversationPanel
           visibleRows={visibleRows}
           height={conversationPanelHeight}
+          scrollHint={scrollHint}
           onRender={onConversationRender}
         />
         <AskInput onSend={onSend} height={inputPanelHeight} />
@@ -440,7 +282,11 @@ export function EngineerChat({
           <Panel title="Python" tone="muted">
             <Box flexDirection="column">
               {rightPane.codeLines.map((line, index) => (
-                <Text key={`${line}-${index}`} wrap="truncate-end" color={theme.muted}>
+                <Text
+                  key={`${line}-${index}`}
+                  wrap="truncate-end"
+                  color={theme.muted}
+                >
                   {line}
                 </Text>
               ))}
