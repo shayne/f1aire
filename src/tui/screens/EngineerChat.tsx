@@ -1,69 +1,25 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Box, Text, useStdout } from 'ink';
-import type { ChatMessage } from '../chat-state.js';
+import { Box, useStdout } from 'ink';
 import type { Summary as SummaryData } from '../../core/summary.js';
 import type { Meeting, Session } from '../../core/types.js';
-import { fitRightPane, getRightPaneMode, getSessionItems } from '../layout.js';
-import { Panel } from '../components/Panel.js';
-import { theme } from '../theme.js';
+import type { ChatMessage } from '../chat-state.js';
+import { Composer } from './engineer/Composer.js';
+import {
+  EngineerDetails,
+  getEngineerDetailsHeight,
+} from './engineer/EngineerDetails.js';
 import {
   buildTranscriptRows,
   type TranscriptRow,
 } from './engineer/transcript-rows.js';
-import { Composer } from './engineer/Composer.js';
+import { TranscriptViewport } from './engineer/TranscriptViewport.js';
 import { useComposerState } from './engineer/useComposerState.js';
-import { useTranscriptViewport } from './engineer/useTranscriptViewport.js';
+import {
+  getTranscriptScrollHint,
+  useTranscriptViewport,
+} from './engineer/useTranscriptViewport.js';
 
 type ConversationRow = TranscriptRow;
-
-function StatRow({ label, value }: { label: string; value: string }) {
-  return (
-    <Text>
-      <Text color={theme.muted}>{label}</Text>
-      {`: ${value}`}
-    </Text>
-  );
-}
-
-function activityColor(entry: string) {
-  const lower = entry.toLowerCase();
-  if (lower.startsWith('error')) return theme.status.error;
-  if (lower.includes('running tool')) return theme.status.tool;
-  if (lower.includes('processing')) return theme.status.tool;
-  if (lower.includes('thinking')) return theme.status.thinking;
-  if (lower.includes('ready')) return theme.status.ok;
-  return theme.muted;
-}
-
-type ConversationPanelProps = {
-  visibleRows: ConversationRow[];
-  height?: number;
-  onRender?: () => void;
-};
-
-const ConversationPanel = React.memo(function ConversationPanel({
-  visibleRows,
-  height,
-  onRender,
-}: ConversationPanelProps) {
-  useEffect(() => {
-    onRender?.();
-  });
-
-  return (
-    <Panel
-      title="Conversation"
-      tone="accent"
-      boxProps={height ? { height, overflow: 'hidden' } : { flexGrow: 1 }}
-    >
-      <Box flexDirection="column">
-        {visibleRows.map((row) => (
-          <Box key={row.key}>{row.node}</Box>
-        ))}
-      </Box>
-    </Panel>
-  );
-});
 
 type ComposerPanelProps = {
   onSend: (text: string) => void;
@@ -127,28 +83,30 @@ export function EngineerChat({
   const columns = stdout?.columns ?? 100;
   const rows = maxHeight ?? stdout?.rows ?? 40;
   const compact = rows < 32;
-  const rightPaneMode = getRightPaneMode(rows);
-  const isNarrow = columns < 96;
-  const rightWidth = isNarrow
-    ? undefined
-    : Math.min(36, Math.max(28, Math.floor(columns * 0.3)));
-  const gutter = isNarrow ? 0 : 2;
-  const leftPaneWidth = Math.max(20, columns - (rightWidth ?? 0) - gutter);
-  const contentWidth = Math.max(12, leftPaneWidth - 6);
-  const messageContentWidth = Math.max(10, contentWidth - 2);
-  const composerContentWidth = Math.max(12, leftPaneWidth - 4);
+  const messageContentWidth = Math.max(10, columns - 2);
+  const composerContentWidth = Math.max(12, columns - 4);
   const [composerVisibleLines, setComposerVisibleLines] = useState(1);
+  const [detailsExpanded, setDetailsExpanded] = useState(Boolean(pythonCode));
 
   useEffect(() => {
     onRender?.();
   });
 
+  useEffect(() => {
+    if (pythonCode) setDetailsExpanded(true);
+  }, [pythonCode]);
+
   const inputPanelHeight = composerVisibleLines + 5;
-  const panelOverhead = 4;
-  const gapBetweenPanels = compact ? 0 : 1;
-  const availableForConversation = rows - inputPanelHeight - gapBetweenPanels;
-  const conversationPanelHeight = Math.max(availableForConversation, 0);
-  const visibleLineCount = Math.max(conversationPanelHeight - panelOverhead, 1);
+  const sectionGap = compact ? 0 : 1;
+  const detailsHeight = getEngineerDetailsHeight({
+    isExpanded: detailsExpanded,
+    activity,
+    pythonCode: pythonCode ?? '',
+  });
+  const availableForTranscript =
+    rows - inputPanelHeight - detailsHeight - sectionGap * 2;
+  const transcriptHeight = Math.max(availableForTranscript, 1);
+  const visibleLineCount = Math.max(transcriptHeight - 1, 1);
 
   const conversationRows = useMemo(
     () =>
@@ -163,7 +121,7 @@ export function EngineerChat({
   );
 
   const transcriptVersion = messages.length + (isStreaming ? 1 : 0);
-  const { window } = useTranscriptViewport({
+  const { window, maxScrollLines } = useTranscriptViewport({
     rowCount: conversationRows.length,
     visibleLineCount,
     transcriptVersion,
@@ -174,114 +132,48 @@ export function EngineerChat({
     [conversationRows, window.end, window.start],
   );
 
-  const activityEntries = useMemo(() => {
-    return activity.length ? activity : status ? [status] : ['Idle'];
-  }, [activity, status]);
-
-  const sessionItems = useMemo(() => {
-    return getSessionItems({
-      mode: rightPaneMode,
-      year,
-      meetingName: meeting.Name,
-      sessionName: session.Name,
-      sessionType: session.Type,
-      summary,
-      asOfLabel,
-    });
-  }, [
-    rightPaneMode,
-    year,
-    meeting.Name,
-    session.Name,
-    session.Type,
-    summary,
-    asOfLabel,
-  ]);
-
-  const pythonCodeLines = useMemo(() => {
-    if (!pythonCode) return [];
-    return pythonCode.split('\n');
-  }, [pythonCode]);
-
-  const rightPane = useMemo(() => {
-    return fitRightPane({
-      rows,
-      mode: rightPaneMode,
-      sessionItems,
-      activityEntries,
-      dataItems: [],
-      codeLines: pythonCodeLines,
-    });
-  }, [rows, rightPaneMode, sessionItems, activityEntries, pythonCodeLines]);
+  const activityEntries = useMemo(
+    () => (activity.length ? activity : status ? [status] : ['Idle']),
+    [activity, status],
+  );
+  const isScrolledUp = maxScrollLines > 0 && window.end < conversationRows.length;
+  const scrollHint = getTranscriptScrollHint({
+    isScrolledUp,
+    hasUpdatesBelow: isScrolledUp,
+  });
 
   return (
-    <Box
-      flexDirection={isNarrow ? 'column' : 'row'}
-      gap={compact ? 1 : 2}
-      height={rows}
-    >
+    <Box flexDirection="column" gap={sectionGap} height={rows}>
       <Box
         flexDirection="column"
         flexGrow={1}
-        gap={gapBetweenPanels}
-        height={rows}
+        height={transcriptHeight}
+        overflow="hidden"
       >
-        <ConversationPanel
+        <TranscriptViewport
           visibleRows={visibleRows}
-          height={conversationPanelHeight}
+          scrollHint={scrollHint}
+          height={transcriptHeight}
           onRender={onConversationRender}
         />
-        <ComposerPanel
-          onSend={onSend}
-          isStreaming={isStreaming}
-          width={composerContentWidth}
-          onHeightChange={setComposerVisibleLines}
-        />
       </Box>
-      <Box
-        flexDirection="column"
-        width={rightWidth}
-        flexShrink={0}
-        gap={compact ? 0 : 1}
-        marginTop={isNarrow ? 1 : 0}
-        height={rows}
-      >
-        <Panel title="Session">
-          {rightPane.sessionItems.map((item) => (
-            <StatRow key={item.label} label={item.label} value={item.value} />
-          ))}
-        </Panel>
-        {rightPane.showActivity ? (
-          <Panel title="Activity" tone={isStreaming ? 'accent' : 'neutral'}>
-            <Box flexDirection="column">
-              {rightPane.activityEntries.map((entry, index) => {
-                const marker =
-                  index === rightPane.activityEntries.length - 1 ? '>' : '-';
-                return (
-                  <Text key={`${entry}-${index}`} color={activityColor(entry)}>
-                    {marker} {entry}
-                  </Text>
-                );
-              })}
-            </Box>
-          </Panel>
-        ) : null}
-        {rightPane.showCode ? (
-          <Panel title="Python" tone="muted">
-            <Box flexDirection="column">
-              {rightPane.codeLines.map((line, index) => (
-                <Text
-                  key={`${line}-${index}`}
-                  wrap="truncate-end"
-                  color={theme.muted}
-                >
-                  {line}
-                </Text>
-              ))}
-            </Box>
-          </Panel>
-        ) : null}
-      </Box>
+      <EngineerDetails
+        year={year}
+        meetingName={meeting.Name}
+        sessionName={session.Name}
+        sessionType={session.Type}
+        summary={summary}
+        asOfLabel={asOfLabel ?? null}
+        activity={activityEntries}
+        pythonCode={pythonCode ?? ''}
+        isExpanded={detailsExpanded}
+      />
+      <ComposerPanel
+        onSend={onSend}
+        isStreaming={isStreaming}
+        width={composerContentWidth}
+        onHeightChange={setComposerVisibleLines}
+      />
     </Box>
   );
 }
