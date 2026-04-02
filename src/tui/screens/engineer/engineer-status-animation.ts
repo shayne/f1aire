@@ -1,5 +1,4 @@
 import { stringWidth } from '../../../vendor/ink/stringWidth.js';
-import type { Color, RGBColor } from '../../../vendor/ink/styles.js';
 
 export type EngineerStatusMode =
   | 'thinking'
@@ -13,21 +12,21 @@ export type EngineerStatusShimmerSegments = {
   after: string;
 };
 
-const SPINNER_FRAME_INTERVAL_MS = 120;
-const SHIMMER_PADDING = 10;
-const REQUESTING_SHIMMER_INTERVAL_MS = 50;
-const DEFAULT_SHIMMER_INTERVAL_MS = 200;
-const TOOL_FLASH_PERIOD_MS = 1000;
+const SPINNER_FRAME_INTERVAL_MS = 80;
+const SHIMMER_INTERVAL_MS = 120;
 
-export const F1AIRE_STATUS_FRAMES = ['▁', '▃', '▅', '▇', '▅', '▃'];
-
-type ParsedRGBColor = {
-  r: number;
-  g: number;
-  b: number;
-};
-
-const RGB_PATTERN = /^rgb\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\)$/;
+export const F1AIRE_STATUS_FRAMES = [
+  '⠋',
+  '⠙',
+  '⠹',
+  '⠸',
+  '⠼',
+  '⠴',
+  '⠦',
+  '⠧',
+  '⠇',
+  '⠏',
+];
 
 let graphemeSegmenter: Intl.Segmenter | null | undefined;
 
@@ -88,7 +87,6 @@ export function getEngineerStatusGlyph(time: number): string {
 }
 
 export function getEngineerStatusGlimmerIndex({
-  mode,
   message,
   time,
 }: {
@@ -96,33 +94,12 @@ export function getEngineerStatusGlimmerIndex({
   message: string;
   time: number;
 }): number {
-  const shimmerIntervalMs =
-    mode === 'requesting'
-      ? REQUESTING_SHIMMER_INTERVAL_MS
-      : DEFAULT_SHIMMER_INTERVAL_MS;
   const messageWidth = stringWidth(message);
-  const cycleLength = Math.max(1, messageWidth + SHIMMER_PADDING * 2);
-  const cyclePosition = Math.floor(time / shimmerIntervalMs) % cycleLength;
-
-  if (mode === 'requesting') {
-    return cyclePosition - SHIMMER_PADDING;
-  }
-
-  return messageWidth + SHIMMER_PADDING - cyclePosition;
-}
-
-export function getEngineerStatusFlashOpacity({
-  mode,
-  time,
-}: {
-  mode: EngineerStatusMode;
-  time: number;
-}): number {
-  if (mode !== 'tool-use') {
+  if (messageWidth <= 0) {
     return 0;
   }
 
-  return (Math.sin((time / TOOL_FLASH_PERIOD_MS) * Math.PI) + 1) / 2;
+  return Math.floor(time / SHIMMER_INTERVAL_MS) % messageWidth;
 }
 
 export function splitEngineerStatusMessage({
@@ -168,43 +145,5 @@ export function splitEngineerStatusMessage({
     before,
     shimmer,
     after,
-  };
-}
-
-export function interpolateEngineerStatusColor({
-  baseColor,
-  shimmerColor,
-  flashOpacity,
-}: {
-  baseColor: Color;
-  shimmerColor: Color;
-  flashOpacity: number;
-}): Color {
-  const parsedBase = parseRgbColor(baseColor);
-  const parsedShimmer = parseRgbColor(shimmerColor);
-
-  if (!parsedBase || !parsedShimmer) {
-    return flashOpacity > 0.5 ? shimmerColor : baseColor;
-  }
-
-  return `rgb(${Math.round(
-    parsedBase.r + (parsedShimmer.r - parsedBase.r) * flashOpacity,
-  )},${Math.round(
-    parsedBase.g + (parsedShimmer.g - parsedBase.g) * flashOpacity,
-  )},${Math.round(
-    parsedBase.b + (parsedShimmer.b - parsedBase.b) * flashOpacity,
-  )})` satisfies RGBColor;
-}
-
-function parseRgbColor(color: Color): ParsedRGBColor | null {
-  const match = RGB_PATTERN.exec(color);
-  if (!match) {
-    return null;
-  }
-
-  return {
-    r: Number.parseInt(match[1]!, 10),
-    g: Number.parseInt(match[2]!, 10),
-    b: Number.parseInt(match[3]!, 10),
   };
 }

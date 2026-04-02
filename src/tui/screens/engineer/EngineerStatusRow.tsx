@@ -4,11 +4,10 @@ import { useAnimationFrame } from '../../../vendor/ink/hooks/use-animation-frame
 import type { Color } from '../../../vendor/ink/styles.js';
 import { theme } from '../../theme.js';
 import {
-  getEngineerStatusFlashOpacity,
+  F1AIRE_STATUS_FRAMES,
   getEngineerStatusGlimmerIndex,
   getEngineerStatusGlyph,
   getEngineerStatusMode,
-  interpolateEngineerStatusColor,
   splitEngineerStatusMessage,
 } from './engineer-status-animation.js';
 
@@ -48,23 +47,7 @@ function renderShimmerMessage(
   glimmerIndex: number,
   accentColor: Color,
   shimmerColor: Color,
-  flashOpacity: number,
 ) {
-  if (flashOpacity > 0) {
-    const color = interpolateEngineerStatusColor({
-      baseColor: accentColor,
-      shimmerColor,
-      flashOpacity,
-    });
-
-    return (
-      <>
-        <Text color={color}>{message}</Text>
-        <Text color={accentColor}> </Text>
-      </>
-    );
-  }
-
   const { before, shimmer, after } = splitEngineerStatusMessage({
     message,
     glimmerIndex,
@@ -102,7 +85,10 @@ export function EngineerStatusRow({
   const mode = useMemo(() => getEngineerStatusMode(message), [message]);
   const { accentColor, shimmerColor } = getStatusColors(message);
   const glyph = useMemo(
-    () => (isStreaming ? getEngineerStatusGlyph(time) : '▁'),
+    () =>
+      isStreaming
+        ? getEngineerStatusGlyph(time)
+        : (F1AIRE_STATUS_FRAMES[0] ?? '⠋'),
     [isStreaming, time],
   );
   const glimmerIndex = useMemo(
@@ -111,13 +97,6 @@ export function EngineerStatusRow({
         ? getEngineerStatusGlimmerIndex({ mode, message, time })
         : -100,
     [isStreaming, message, mode, time],
-  );
-  const flashOpacity = useMemo(
-    () =>
-      isStreaming
-        ? getEngineerStatusFlashOpacity({ mode, time })
-        : 0,
-    [isStreaming, mode, time],
   );
 
   return (
@@ -138,7 +117,6 @@ export function EngineerStatusRow({
             glimmerIndex,
             accentColor,
             shimmerColor,
-            flashOpacity,
           )
         ) : (
           <Text color={theme.subtle} dimColor>

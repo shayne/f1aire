@@ -13,7 +13,7 @@ vi.mock('../../../vendor/ink/hooks/use-animation-frame.js', () => ({
 }));
 
 const stripAnsi = (value: string) => value.replace(/\u001b\[[0-9;]*m/g, '');
-const spinnerFramePattern = /[▁▃▅▇]/;
+const spinnerFramePattern = /[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]/;
 
 function getStatusGlyph(frame: string): string {
   const normalizedFrame = stripAnsi(frame);
@@ -37,6 +37,7 @@ describe('EngineerStatusRow', () => {
     expect(frame).toContain('Thinking');
     expect(getStatusGlyph(frame)).toMatch(spinnerFramePattern);
     expect(frame).not.toContain('› Thinking');
+    expect(frame).not.toMatch(/[▁▃▅▇]/);
     expect(frame).not.toMatch(/[·✢✳✶✻✽*]/);
     unmount();
   });
@@ -60,5 +61,16 @@ describe('EngineerStatusRow', () => {
     expect(nextGlyph).toMatch(spinnerFramePattern);
     expect(nextGlyph).not.toBe(firstGlyph);
     ui.unmount();
+  });
+
+  it('renders the idle marker with the Braille spinner alphabet too', async () => {
+    const { lastFrame, unmount } = await renderTui(
+      <EngineerStatusRow status="Idle" isStreaming={false} />,
+    );
+
+    const frame = stripAnsi(lastFrame() ?? '');
+    expect(frame).toContain('⠋ Idle');
+    expect(frame).not.toContain('▁ Idle');
+    unmount();
   });
 });

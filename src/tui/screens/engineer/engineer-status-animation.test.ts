@@ -1,53 +1,81 @@
 import { describe, expect, it } from 'vitest';
 import {
   F1AIRE_STATUS_FRAMES,
-  getEngineerStatusFlashOpacity,
   getEngineerStatusGlimmerIndex,
   getEngineerStatusGlyph,
-  interpolateEngineerStatusColor,
   splitEngineerStatusMessage,
 } from './engineer-status-animation.js';
 
+const activeModes = [
+  'thinking',
+  'responding',
+  'requesting',
+  'tool-use',
+] as const;
+
 describe('engineer status animation', () => {
-  it('uses an f1aire-owned spinner cycle instead of the borrowed symbol set', () => {
-    expect(F1AIRE_STATUS_FRAMES).toEqual(['▁', '▃', '▅', '▇', '▅', '▃']);
-    expect(getEngineerStatusGlyph(0)).toBe('▁');
-    expect(getEngineerStatusGlyph(120)).toBe('▃');
-    expect(getEngineerStatusGlyph(360)).toBe('▇');
+  it('uses a Braille dots spinner cycle', () => {
+    expect(F1AIRE_STATUS_FRAMES).toEqual([
+      '⠋',
+      '⠙',
+      '⠹',
+      '⠸',
+      '⠼',
+      '⠴',
+      '⠦',
+      '⠧',
+      '⠇',
+      '⠏',
+    ]);
+    expect(getEngineerStatusGlyph(0)).toBe('⠋');
+    expect(getEngineerStatusGlyph(80)).toBe('⠙');
+    expect(getEngineerStatusGlyph(720)).toBe('⠏');
   });
 
-  it('matches the reference shimmer travel direction and padding for thinking/responding modes', () => {
+  it('moves the shimmer window left to right across the status text', () => {
     expect(
       getEngineerStatusGlimmerIndex({
         mode: 'thinking',
         message: 'Thinking',
         time: 0,
       }),
-    ).toBe(18);
+    ).toBe(0);
     expect(
       getEngineerStatusGlimmerIndex({
         mode: 'thinking',
         message: 'Thinking',
-        time: 200,
+        time: 120,
       }),
-    ).toBe(17);
+    ).toBe(1);
   });
 
-  it('matches the reference shimmer travel direction and padding for requesting mode', () => {
+  it.each(activeModes)(
+    'keeps the shimmer band visible on every frame for %s status',
+    (mode) => {
+      for (let time = 0; time <= 2000; time += 120) {
+        const message = mode === 'requesting' ? 'Loading telemetry' : 'Thinking...';
+        const segments = splitEngineerStatusMessage({
+          message,
+          glimmerIndex: getEngineerStatusGlimmerIndex({
+            mode,
+            message,
+            time,
+          }),
+        });
+
+        expect(segments.shimmer).not.toBe('');
+      }
+    },
+  );
+
+  it('wraps the shimmer window to the first character instead of going offscreen', () => {
     expect(
       getEngineerStatusGlimmerIndex({
-        mode: 'requesting',
-        message: 'Loading',
-        time: 0,
+        mode: 'thinking',
+        message: 'Thinking',
+        time: 960,
       }),
-    ).toBe(-10);
-    expect(
-      getEngineerStatusGlimmerIndex({
-        mode: 'requesting',
-        message: 'Loading',
-        time: 100,
-      }),
-    ).toBe(-8);
+    ).toBe(0);
   });
 
   it('keeps grapheme clusters intact when slicing shimmer segments', () => {
@@ -61,44 +89,5 @@ describe('engineer status animation', () => {
       shimmer: '👩‍🚀 ',
       after: 'pace',
     });
-  });
-
-  it('uses continuous flash opacity for tool-use status text', () => {
-    expect(getEngineerStatusFlashOpacity({ mode: 'tool-use', time: 0 })).toBe(
-      0.5,
-    );
-    expect(
-      getEngineerStatusFlashOpacity({ mode: 'tool-use', time: 500 }),
-    ).toBe(1);
-    expect(
-      getEngineerStatusFlashOpacity({ mode: 'thinking', time: 500 }),
-    ).toBe(0);
-  });
-
-  it('interpolates tool-use shimmer colors as truecolor RGB values', () => {
-    expect(
-      interpolateEngineerStatusColor({
-        baseColor: 'rgb(122,180,232)',
-        shimmerColor: 'rgb(183,224,255)',
-        flashOpacity: 0.5,
-      }),
-    ).toBe('rgb(153,202,244)');
-  });
-
-  it('falls back to hard switching only when a color cannot be parsed as RGB', () => {
-    expect(
-      interpolateEngineerStatusColor({
-        baseColor: 'ansi:blueBright',
-        shimmerColor: 'ansi:whiteBright',
-        flashOpacity: 0.4,
-      }),
-    ).toBe('ansi:blueBright');
-    expect(
-      interpolateEngineerStatusColor({
-        baseColor: 'ansi:blueBright',
-        shimmerColor: 'ansi:whiteBright',
-        flashOpacity: 0.8,
-      }),
-    ).toBe('ansi:whiteBright');
   });
 });
