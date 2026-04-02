@@ -13,7 +13,7 @@ vi.mock('../../../vendor/ink/hooks/use-animation-frame.js', () => ({
 }));
 
 const stripAnsi = (value: string) => value.replace(/\u001b\[[0-9;]*m/g, '');
-const spinnerFramePattern = /[·✢✳✶✻✽*]/;
+const spinnerFramePattern = /[▁▃▅▇]/;
 
 function getStatusGlyph(frame: string): string {
   const normalizedFrame = stripAnsi(frame);
@@ -37,6 +37,7 @@ describe('EngineerStatusRow', () => {
     expect(frame).toContain('Thinking');
     expect(getStatusGlyph(frame)).toMatch(spinnerFramePattern);
     expect(frame).not.toContain('› Thinking');
+    expect(frame).not.toMatch(/[·✢✳✶✻✽*]/);
     unmount();
   });
 

@@ -92,7 +92,7 @@ describe('buildTranscriptRows', () => {
     expect(engineerRow && getNodeColor(engineerRow)).toBe('ansi:redBright');
   });
 
-  it('adds a pending status block when streaming text is empty', () => {
+  it('does not duplicate loading status in the transcript while waiting for the first streamed token', () => {
     const rows = buildTranscriptRows({
       messages: [],
       streamingText: '',
@@ -101,28 +101,10 @@ describe('buildTranscriptRows', () => {
       messageWidth: 24,
     });
 
-    expect(rows.some((row) => row.kind === 'pending-status')).toBe(true);
-    expect(rows.some((row) => row.plainText.includes('Thinking'))).toBe(true);
-    expect(
-      rows.some(
-        (row) =>
-          row.kind === 'pending-status' && row.plainText === '  ... Thinking',
-      ),
-    ).toBe(true);
-  });
-
-  it('colors pending engineer status with the engineer accent instead of gray', () => {
-    const rows = buildTranscriptRows({
-      messages: [],
-      streamingText: '',
-      isStreaming: true,
-      status: 'Thinking',
-      messageWidth: 24,
-    });
-
-    const pendingRow = rows.find((row) => row.kind === 'pending-status');
-
-    expect(pendingRow && getNodeColor(pendingRow)).toBe('ansi:redBright');
+    expect(rows.some((row) => row.kind === 'pending-status')).toBe(false);
+    expect(rows.some((row) => row.plainText.includes('... Thinking'))).toBe(
+      false,
+    );
   });
 
   it('renders live assistant streaming text into transcript rows', () => {

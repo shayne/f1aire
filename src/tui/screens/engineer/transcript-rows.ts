@@ -153,25 +153,6 @@ function createOnboardingRows(messageWidth: number): TranscriptRow[] {
   ];
 }
 
-function createPendingRows(status: string): TranscriptRow[] {
-  const statusText = `  ... ${status}`;
-
-  return [
-    createLabelRow('pending-label', 'Engineer', theme.assistant),
-    {
-      key: 'pending-status',
-      kind: 'pending-status',
-      plainText: statusText,
-      node: React.createElement(
-        Text,
-        { color: theme.assistant, dimColor: true, wrap: 'truncate-end' },
-        statusText,
-      ),
-    },
-    createSpacerRow('pending-spacer'),
-  ];
-}
-
 export function buildTranscriptRows({
   messages,
   streamingText,
@@ -199,8 +180,6 @@ export function buildTranscriptRows({
           messageWidth,
         ),
       );
-    } else if (status) {
-      rows.push(...createPendingRows(status));
     }
   }
 

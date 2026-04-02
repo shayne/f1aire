@@ -18,22 +18,32 @@ const REQUESTING_SHIMMER_INTERVAL_MS = 50;
 const DEFAULT_SHIMMER_INTERVAL_MS = 200;
 const TOOL_FLASH_PERIOD_MS = 1000;
 
-function getSpinnerCharacters(): string[] {
-  if (process.env.TERM === 'xterm-ghostty') {
-    return ['·', '✢', '✳', '✶', '✻', '*'];
+export const F1AIRE_STATUS_FRAMES = ['▁', '▃', '▅', '▇', '▅', '▃'];
+
+let graphemeSegmenter: Intl.Segmenter | null | undefined;
+
+function getGraphemeSegmenter(): Intl.Segmenter | null {
+  if (graphemeSegmenter !== undefined) {
+    return graphemeSegmenter;
   }
 
-  return process.platform === 'darwin'
-    ? ['·', '✢', '✳', '✶', '✻', '✽']
-    : ['·', '✢', '*', '✶', '✻', '✽'];
+  graphemeSegmenter =
+    typeof Intl.Segmenter === 'function'
+      ? new Intl.Segmenter(undefined, { granularity: 'grapheme' })
+      : null;
+
+  return graphemeSegmenter;
 }
 
-const SPINNER_FRAMES = [
-  ...getSpinnerCharacters(),
-  ...[...getSpinnerCharacters()].reverse(),
-];
-
 function getGraphemeSegments(message: string): string[] {
+  const segmenter = getGraphemeSegmenter();
+  if (segmenter) {
+    return Array.from(
+      segmenter.segment(message),
+      ({ segment }) => segment,
+    );
+  }
+
   return Array.from(message);
 }
 
@@ -62,7 +72,10 @@ export function getEngineerStatusMode(status: string): EngineerStatusMode {
 export function getEngineerStatusGlyph(time: number): string {
   const frame = Math.floor(time / SPINNER_FRAME_INTERVAL_MS);
 
-  return SPINNER_FRAMES[frame % SPINNER_FRAMES.length] ?? SPINNER_FRAMES[0]!;
+  return (
+    F1AIRE_STATUS_FRAMES[frame % F1AIRE_STATUS_FRAMES.length] ??
+    F1AIRE_STATUS_FRAMES[0]!
+  );
 }
 
 export function getEngineerStatusGlimmerIndex({
@@ -89,17 +102,18 @@ export function getEngineerStatusGlimmerIndex({
   return messageWidth + SHIMMER_PADDING - cyclePosition;
 }
 
-export function getEngineerStatusFlashOn({
+export function getEngineerStatusFlashOpacity({
   mode,
   time,
 }: {
   mode: EngineerStatusMode;
   time: number;
-}): boolean {
-  return (
-    mode === 'tool-use' &&
-    (Math.sin((time / TOOL_FLASH_PERIOD_MS) * Math.PI) + 1) / 2 > 0.5
-  );
+}): number {
+  if (mode !== 'tool-use') {
+    return 0;
+  }
+
+  return (Math.sin((time / TOOL_FLASH_PERIOD_MS) * Math.PI) + 1) / 2;
 }
 
 export function splitEngineerStatusMessage({
