@@ -30,6 +30,8 @@ const baseProps = {
 
 const stripAnsi = (value: string) => value.replace(/\u001b\[[0-9;]*m/g, '');
 const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
+const countOccurrences = (value: string, needle: string) =>
+  value.split(needle).length - 1;
 
 function makeMessages(count: number) {
   return Array.from({ length: count }, (_, index) => ({
@@ -70,6 +72,27 @@ describe('EngineerChat', () => {
     expect(frame).not.toContain(
       'enter send · shift+enter newline · tab details · streaming',
     );
+    unmount();
+  });
+
+  it('keeps live status in the dedicated loader row while Details shows prior activity only', async () => {
+    const { lastFrame, unmount } = await renderTui(
+      <EngineerChat
+        {...baseProps}
+        maxHeight={44}
+        asOfLabel="Latest"
+        activity={['Loaded telemetry', 'Thinking...']}
+        status="Thinking..."
+        isStreaming
+      />,
+    );
+
+    const frame = stripAnsi(lastFrame() ?? '');
+
+    expect(frame).toContain('Loaded telemetry');
+    expect(frame).toContain('⠋ Thinking...');
+    expect(frame).not.toContain('> Thinking...');
+    expect(countOccurrences(frame, 'Thinking...')).toBe(1);
     unmount();
   });
 

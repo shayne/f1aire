@@ -164,11 +164,11 @@ export function EngineerChat({
     transcriptVersion,
   });
 
-  const activityEntries = useMemo(
-    () => (activity.length ? activity : status ? [status] : ['Idle']),
-    [activity, status],
+  const detailsActivity = useMemo(
+    () => (isStreaming ? activity.slice(0, -1) : activity),
+    [activity, isStreaming],
   );
-  const latestActivity = activityEntries[activityEntries.length - 1] ?? 'Idle';
+  const liveStatus = status ?? (isStreaming ? activity.at(-1) : null) ?? 'Idle';
   const sessionStripLabel = useMemo(
     () =>
       getSessionStripLabel({
@@ -176,9 +176,9 @@ export function EngineerChat({
         meeting,
         session,
         asOfLabel,
-        latestActivity,
+        latestActivity: liveStatus,
       }),
-    [asOfLabel, latestActivity, meeting, session, year],
+    [asOfLabel, liveStatus, meeting, session, year],
   );
   const handleComposerIntercept = (input: string, key: Key) => {
     if (key.pageUp) {
@@ -216,12 +216,12 @@ export function EngineerChat({
       bottom={
         <Box flexDirection="column" gap={sectionGap}>
           <EngineerDetails
-            activity={activityEntries}
+            activity={detailsActivity}
             pythonCode={pythonCode ?? ''}
             isExpanded={detailsExpanded}
           />
           <EngineerStatusRow
-            status={latestActivity}
+            status={liveStatus}
             isStreaming={isStreaming}
           />
           <ComposerPanel

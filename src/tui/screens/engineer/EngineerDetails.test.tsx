@@ -35,9 +35,25 @@ describe('EngineerDetails', () => {
     const frame = lastFrame() ?? '';
 
     expect(frame).toContain('Details');
-    expect(frame).toContain('Running tool');
+    expect(frame).toContain('- Thinking');
+    expect(frame).toContain('- Running tool');
+    expect(frame).not.toContain('> Running tool');
     expect(frame).toContain('Python');
     expect(frame).toContain('print("hi")');
+    unmount();
+  });
+
+  it('renders a quiet empty state instead of duplicating Idle from the status row', async () => {
+    const { lastFrame, unmount } = await renderTui(
+      <EngineerDetails activity={[]} pythonCode="" isExpanded />,
+      { columns: 120, rows: 16 },
+    );
+
+    const frame = lastFrame() ?? '';
+
+    expect(frame).toContain('Details');
+    expect(frame).toContain('No tool activity yet');
+    expect(frame).not.toContain('> Idle');
     unmount();
   });
 });

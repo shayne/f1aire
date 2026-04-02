@@ -7,6 +7,7 @@ import { theme } from '../../theme.js';
 const MAX_ACTIVITY_LINES = 3;
 const MAX_PYTHON_PREVIEW_LINES = 3;
 const PANEL_OVERHEAD_LINES = 4;
+const EMPTY_ACTIVITY_LABEL = 'No tool activity yet';
 
 function activityColor(entry: string): Color {
   const lower = entry.toLowerCase();
@@ -15,7 +16,6 @@ function activityColor(entry: string): Color {
 }
 
 function getRecentActivity(activity: string[]): string[] {
-  if (activity.length === 0) return ['Idle'];
   return activity.slice(-MAX_ACTIVITY_LINES);
 }
 
@@ -39,11 +39,12 @@ export function getEngineerDetailsHeight({
   if (!isExpanded) return 0;
 
   const pythonPreview = getPythonPreview(pythonCode);
+  const activityRows = Math.max(1, getRecentActivity(activity).length);
 
   return (
     1 +
     PANEL_OVERHEAD_LINES +
-    getRecentActivity(activity).length +
+    activityRows +
     (pythonPreview.length > 0 ? 1 + pythonPreview.length : 0)
   );
 }
@@ -74,10 +75,14 @@ export function EngineerDetails({
               color={activityColor(entry)}
               dimColor={!entry.toLowerCase().startsWith('error')}
             >
-              {index === recentActivity.length - 1 ? '> ' : '- '}
-              {entry}
+              {`- ${entry}`}
             </Text>
           ))}
+          {recentActivity.length === 0 ? (
+            <Text color={theme.subtle} dimColor>
+              {EMPTY_ACTIVITY_LABEL}
+            </Text>
+          ) : null}
           {pythonPreview.length > 0 ? (
             <Box flexDirection="column">
               <Text color={theme.subtle} dimColor>
