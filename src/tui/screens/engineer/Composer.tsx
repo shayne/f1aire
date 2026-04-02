@@ -130,7 +130,7 @@ export function Composer({
           const isEmptyDraft = state.draft.length === 0;
           const displayLine =
             isEmptyDraft && index === 0 ? (
-              <Text>
+              <Text color={theme.subtle}>
                 Ask the engineer about pace, tyres, traffic, or strategy...
               </Text>
             ) : (

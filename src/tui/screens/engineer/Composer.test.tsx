@@ -35,7 +35,8 @@ describe('Composer', () => {
       <Harness onSend={vi.fn()} />,
     );
 
-    expect(lastFrame()).toContain(
+    const frame = lastFrame() ?? '';
+    expect(frame).toContain(
       'Ask the engineer about pace, tyres, traffic, or strategy...',
     );
     unmount();
@@ -50,7 +51,12 @@ describe('Composer', () => {
     await waitForTick();
     stdin.write('pit');
     await waitForTick();
-    expect(lastFrame()).toContain('pit');
+
+    const typedFrame = lastFrame() ?? '';
+    expect(typedFrame).toContain('pit');
+    expect(typedFrame).not.toContain(
+      'Ask the engineer about pace, tyres, traffic, or strategy...',
+    );
 
     stdin.write('\r');
     await waitForTick();
