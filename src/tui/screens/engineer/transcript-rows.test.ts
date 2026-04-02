@@ -73,6 +73,12 @@ describe('buildTranscriptRows', () => {
 
     expect(rows.some((row) => row.kind === 'pending-status')).toBe(true);
     expect(rows.some((row) => row.plainText.includes('Thinking'))).toBe(true);
+    expect(
+      rows.some(
+        (row) =>
+          row.kind === 'pending-status' && row.plainText === '  ... Thinking',
+      ),
+    ).toBe(true);
   });
 
   it('renders live assistant streaming text into transcript rows', () => {

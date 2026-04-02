@@ -276,6 +276,10 @@ export function FullscreenLayout({
         ) : null}
       </Box>
 
+      <Box flexShrink={0} width="100%">
+        <Text color="ansi:blackBright">{figures.line.repeat(columns)}</Text>
+      </Box>
+
       <Box flexDirection="column" flexShrink={0} width="100%" maxHeight="50%">
         <Box flexDirection="column" width="100%" flexGrow={1} overflowY="hidden">
           {bottom}

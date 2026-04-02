@@ -11,10 +11,6 @@ const PANEL_OVERHEAD_LINES = 4;
 function activityColor(entry: string): Color {
   const lower = entry.toLowerCase();
   if (lower.startsWith('error')) return 'ansi:red';
-  if (lower.includes('running tool')) return 'ansi:magenta';
-  if (lower.includes('processing')) return 'ansi:magenta';
-  if (lower.includes('thinking')) return 'ansi:yellow';
-  if (lower.includes('ready')) return 'ansi:green';
   return theme.subtle;
 }
 

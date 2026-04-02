@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from 'react';
-import { Box, Text } from '#ink';
+import React from 'react';
+import { Text } from '#ink';
 import type { Color } from '../../../vendor/ink/styles.js';
 import type { ChatMessage } from '../../chat-state.js';
 import { renderMarkdownToTerminal } from '../../terminal-markdown.js';
@@ -71,23 +71,6 @@ function wrapPlainTextLine(line: string, width: number): string[] {
     parts.push(line.slice(i, i + width));
   }
   return parts;
-}
-
-function Spinner({ active }: { active: boolean }) {
-  const [index, setIndex] = useState(0);
-
-  useEffect(() => {
-    if (!active) return;
-    const id = setInterval(() => setIndex((current) => (current + 1) % 4), 80);
-    return () => clearInterval(id);
-  }, [active]);
-
-  if (!active) return null;
-  return React.createElement(
-    Text,
-    { color: 'ansi:blackBright' },
-    ['|', '/', '-', '\\'][index],
-  );
 }
 
 function createLabelRow(
@@ -171,21 +154,18 @@ function createOnboardingRows(messageWidth: number): TranscriptRow[] {
 }
 
 function createPendingRows(status: string): TranscriptRow[] {
+  const statusText = `  ... ${status}`;
+
   return [
     createLabelRow('pending-label', 'Engineer', theme.assistant),
     {
       key: 'pending-status',
       kind: 'pending-status',
-      plainText: status,
+      plainText: statusText,
       node: React.createElement(
-        Box,
-        { gap: 1 },
-        React.createElement(Spinner, { active: true }),
-        React.createElement(
-          Text,
-          { color: theme.subtle, wrap: 'truncate-end' },
-          status,
-        ),
+        Text,
+        { color: theme.subtle, wrap: 'truncate-end' },
+        statusText,
       ),
     },
     createSpacerRow('pending-spacer'),

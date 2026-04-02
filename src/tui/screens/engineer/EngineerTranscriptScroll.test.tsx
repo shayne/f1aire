@@ -52,7 +52,9 @@ describe('EngineerChat transcript scroll', () => {
     await tick();
     await tick();
 
-    expect(stripAnsi(lastFrame() ?? '')).toContain('Jump to bottom');
+    const pausedFrame = stripAnsi(lastFrame() ?? '');
+    expect(pausedFrame).toContain('Jump to bottom');
+    expect(pausedFrame).toMatch(/─{10,}/);
 
     stdin.write('\u001b[6~');
     await tick();
