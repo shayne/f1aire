@@ -78,8 +78,16 @@ function renderVisibleLine(
   return (
     <Text>
       {before}
-      <Text color="ansi:cyan">▌</Text>
+      <Text color={theme.accent}>▌</Text>
       {after}
+    </Text>
+  );
+}
+
+export function renderComposerPlaceholder(): React.ReactNode {
+  return (
+    <Text color={theme.subtle} dimColor>
+      Ask the engineer about pace, tyres, traffic, or strategy...
     </Text>
   );
 }
@@ -113,14 +121,8 @@ export function Composer({
   const visibleStart = lineMeta.lines.length - visibleLines.length;
   const cursorVisibleIndex = lineMeta.lineIndex - visibleStart;
 
-  const panelHeight = visibleLines.length + 5;
-
   return (
-    <Panel
-      title="Ask the engineer"
-      tone="accent"
-      boxProps={{ height: panelHeight, overflow: 'hidden' }}
-    >
+    <Panel title="Ask the engineer" tone="accent">
       <Box flexDirection="column">
         {visibleLines.map((line, index) => {
           const absoluteIndex = visibleStart + index;
@@ -128,9 +130,7 @@ export function Composer({
           const isEmptyDraft = state.draft.length === 0;
           const displayLine =
             isEmptyDraft && index === 0 ? (
-              <Text color={theme.subtle}>
-                Ask the engineer about pace, tyres, traffic, or strategy...
-              </Text>
+              renderComposerPlaceholder()
             ) : (
               renderVisibleLine(
                 line,
@@ -141,13 +141,18 @@ export function Composer({
 
           return (
             <Box key={`${index}-${line}`}>
-              <Text color={theme.subtle}>{index === 0 ? '› ' : '  '}</Text>
+              <Text
+                color={index === 0 ? theme.accent : theme.subtle}
+                dimColor={index !== 0}
+              >
+                {index === 0 ? '› ' : '  '}
+              </Text>
               <Text wrap="truncate-end">{displayLine}</Text>
             </Box>
           );
         })}
         <Box>
-          <Text color={theme.subtle}>
+          <Text color={theme.subtle} dimColor>
             enter send · shift+enter newline · tab details
           </Text>
         </Box>

@@ -10,7 +10,7 @@ const PANEL_OVERHEAD_LINES = 4;
 
 function activityColor(entry: string): Color {
   const lower = entry.toLowerCase();
-  if (lower.startsWith('error')) return 'ansi:red';
+  if (lower.startsWith('error')) return theme.status.error;
   return theme.subtle;
 }
 
@@ -69,18 +69,25 @@ export function EngineerDetails({
       <Panel title="Details" tone="muted">
         <Box flexDirection="column">
           {recentActivity.map((entry, index) => (
-            <Text key={`${index}-${entry}`} color={activityColor(entry)}>
+            <Text
+              key={`${index}-${entry}`}
+              color={activityColor(entry)}
+              dimColor={!entry.toLowerCase().startsWith('error')}
+            >
               {index === recentActivity.length - 1 ? '> ' : '- '}
               {entry}
             </Text>
           ))}
           {pythonPreview.length > 0 ? (
             <Box flexDirection="column">
-              <Text color={theme.subtle}>Python</Text>
+              <Text color={theme.subtle} dimColor>
+                Python
+              </Text>
               {pythonPreview.map((line, index) => (
                 <Text
                   key={`${index}-${line}`}
                   color={theme.subtle}
+                  dimColor
                   wrap="truncate-end"
                 >
                   {line}

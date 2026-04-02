@@ -22,18 +22,18 @@ export function Header({
           <Text color={theme.brand} bold>
             {brand}
           </Text>
-          <Text color={theme.subtle}>{` · ${tagline}`}</Text>
+          <Text color={theme.subtle} dimColor>{` · ${tagline}`}</Text>
         </Text>
       ) : (
         <>
           <Text color={theme.brand} bold>
             {brand}
           </Text>
-          {tagline ? <Text color={theme.subtle}>{tagline}</Text> : null}
+          {tagline ? <Text color={theme.subtle} dimColor>{tagline}</Text> : null}
         </>
       )}
       {breadcrumb.length > 0 && (
-        <Text color={theme.subtle} wrap="truncate-end">
+        <Text color={theme.subtle} dimColor wrap="truncate-end">
           {breadcrumb.join(' / ')}
         </Text>
       )}

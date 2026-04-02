@@ -61,5 +61,9 @@ export function getFooterHintRowCount(screen: string, width: number): number {
 }
 
 export function FooterHints({ screen }: { screen: string }): React.JSX.Element {
-  return <Text color={theme.subtle}>{getFooterHintText(screen)}</Text>;
+  return (
+    <Text color={theme.subtle} dimColor>
+      {getFooterHintText(screen)}
+    </Text>
+  );
 }

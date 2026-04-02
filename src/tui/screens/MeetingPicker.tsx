@@ -45,13 +45,17 @@ export function MeetingPicker({
           {detailMeeting ? (
             <>
               <Text>{detailMeeting.Name}</Text>
-              <Text color={theme.subtle}>{detailMeeting.Location}</Text>
-              <Text color={theme.subtle}>
+              <Text color={theme.subtle} dimColor>
+                {detailMeeting.Location}
+              </Text>
+              <Text color={theme.subtle} dimColor>
                 {detailMeeting.Sessions.length} sessions available
               </Text>
             </>
           ) : (
-            <Text color={theme.subtle}>Highlight a meeting for details.</Text>
+            <Text color={theme.subtle} dimColor>
+              Highlight a meeting for details.
+            </Text>
           )}
         </Panel>
       }

@@ -44,15 +44,21 @@ export function Settings({
       detail={
         <Panel title="OpenAI">
           <Text>
-            <Text color={theme.subtle}>Env key</Text>
+            <Text color={theme.subtle} dimColor>
+              Env key
+            </Text>
             {`: ${presentLabel(status.envKeyPresent)}`}
           </Text>
           <Text>
-            <Text color={theme.subtle}>Stored key</Text>
+            <Text color={theme.subtle} dimColor>
+              Stored key
+            </Text>
             {`: ${presentLabel(status.storedKeyPresent)}`}
           </Text>
           <Text>
-            <Text color={theme.subtle}>In use</Text>
+            <Text color={theme.subtle} dimColor>
+              In use
+            </Text>
             {`: ${status.inUse}`}
           </Text>
         </Panel>

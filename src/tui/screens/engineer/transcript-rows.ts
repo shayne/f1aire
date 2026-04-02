@@ -145,7 +145,7 @@ function createOnboardingRows(messageWidth: number): TranscriptRow[] {
       plainText: line,
       node: React.createElement(
         Text,
-        { color: theme.subtle, wrap: 'truncate-end' },
+        { color: theme.subtle, dimColor: true, wrap: 'truncate-end' },
         line,
       ),
     })),
@@ -164,7 +164,7 @@ function createPendingRows(status: string): TranscriptRow[] {
       plainText: statusText,
       node: React.createElement(
         Text,
-        { color: theme.subtle, wrap: 'truncate-end' },
+        { color: theme.assistant, dimColor: true, wrap: 'truncate-end' },
         statusText,
       ),
     },

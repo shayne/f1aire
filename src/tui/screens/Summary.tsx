@@ -14,13 +14,15 @@ export function Summary({
 }): React.JSX.Element {
   return (
     <Box flexDirection="column">
-      <Text color={theme.brand}>Session ready</Text>
-      <Text color={theme.subtle}>
+      <Text color={theme.status.ok}>Session ready</Text>
+      <Text color={theme.subtle} dimColor>
         The race engineer can use this downloaded session immediately.
       </Text>
       <Box marginTop={1}>
         <Panel title="Session summary" tone="accent">
-          <Text color={theme.subtle}>Data path</Text>
+          <Text color={theme.subtle} dimColor>
+            Data path
+          </Text>
           <Text>{createTerminalLink(dir)}</Text>
           <Box marginTop={1} flexDirection="column">
             <Text>

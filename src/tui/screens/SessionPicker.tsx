@@ -44,12 +44,20 @@ export function SessionPicker({
           {detailSession ? (
             <>
               <Text>{detailSession.Name}</Text>
-              <Text color={theme.subtle}>{detailSession.Type}</Text>
-              <Text color={theme.subtle}>Start {detailSession.StartDate}</Text>
-              <Text color={theme.subtle}>End {detailSession.EndDate}</Text>
+              <Text color={theme.subtle} dimColor>
+                {detailSession.Type}
+              </Text>
+              <Text color={theme.subtle} dimColor>
+                Start {detailSession.StartDate}
+              </Text>
+              <Text color={theme.subtle} dimColor>
+                End {detailSession.EndDate}
+              </Text>
             </>
           ) : (
-            <Text color={theme.subtle}>Highlight a session for details.</Text>
+            <Text color={theme.subtle} dimColor>
+              Highlight a session for details.
+            </Text>
           )}
         </Panel>
       }

@@ -42,12 +42,14 @@ export function SeasonPicker({
           {detailYear !== null ? (
             <>
               <Text>{detailYear}</Text>
-              <Text color={theme.subtle}>
+              <Text color={theme.subtle} dimColor>
                 Load the list of championship weekends for this season.
               </Text>
             </>
           ) : (
-            <Text color={theme.subtle}>Pick a year to continue.</Text>
+            <Text color={theme.subtle} dimColor>
+              Pick a year to continue.
+            </Text>
           )}
         </Panel>
       }

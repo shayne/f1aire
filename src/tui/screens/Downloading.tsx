@@ -49,8 +49,12 @@ export function Downloading({
     <Panel title="Preparing session" tone="accent" paddingY={1}>
       <Box flexDirection="column">
         <Text>{meeting.Name}</Text>
-        <Text color={theme.subtle}>{session.Name}</Text>
-        <Text color={theme.subtle}>{status}</Text>
+        <Text color={theme.subtle} dimColor>
+          {session.Name}
+        </Text>
+        <Text color={theme.subtle} dimColor>
+          {status}
+        </Text>
       </Box>
     </Panel>
   );

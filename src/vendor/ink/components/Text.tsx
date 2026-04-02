@@ -48,9 +48,10 @@ type BaseProps = {
  * This type ensures you can use one or the other, but not both.
  */
 type WeightProps =
-  | { bold?: never; dim?: never }
-  | { bold: boolean; dim?: never }
-  | { dim: boolean; bold?: never }
+  | { bold?: never; dim?: never; dimColor?: never }
+  | { bold: boolean; dim?: never; dimColor?: never }
+  | { dim: boolean; bold?: never; dimColor?: never }
+  | { dimColor: boolean; bold?: never; dim?: never }
 
 export type Props = BaseProps & WeightProps
 
@@ -113,6 +114,7 @@ export default function Text({
   backgroundColor,
   bold,
   dim,
+  dimColor,
   italic = false,
   underline = false,
   strikethrough = false,
@@ -128,7 +130,7 @@ export default function Text({
   const textStyles: TextStyles = {
     ...(color && { color }),
     ...(backgroundColor && { backgroundColor }),
-    ...(dim && { dim }),
+    ...((dim || dimColor) && { dim: true }),
     ...(bold && { bold }),
     ...(italic && { italic }),
     ...(underline && { underline }),

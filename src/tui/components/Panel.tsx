@@ -20,6 +20,7 @@ export function Panel({
   boxProps,
 }: PanelProps): React.JSX.Element {
   const titleColor = tone === 'accent' ? theme.accent : theme.panelTitle;
+  const titleIsMuted = tone !== 'accent';
 
   return (
     <Box
@@ -28,7 +29,9 @@ export function Panel({
       paddingY={paddingY}
       {...boxProps}
     >
-      <Text color={titleColor}>{title}</Text>
+      <Text color={titleColor} dimColor={titleIsMuted}>
+        {title}
+      </Text>
       <Box flexDirection="column">
         {children}
       </Box>

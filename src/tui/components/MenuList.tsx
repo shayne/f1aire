@@ -131,6 +131,7 @@ export function MenuList<V>({
         <Text
           key={item.key ?? item.label}
           color={itemIndex === index ? menuAccentColor : theme.subtle}
+          dimColor={itemIndex !== index}
         >
           {itemIndex === index ? '› ' : '  '}
           {item.label}

@@ -4,7 +4,7 @@ import { theme } from '../../theme.js';
 
 export function EngineerSessionStrip({ label }: { label: string }) {
   return (
-    <Text color={theme.subtle} wrap="truncate-end">
+    <Text color={theme.subtle} dimColor wrap="truncate-end">
       {label}
     </Text>
   );

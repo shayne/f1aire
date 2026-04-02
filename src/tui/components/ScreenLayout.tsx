@@ -25,7 +25,11 @@ export function ScreenLayout({
   return (
     <Box flexDirection="column">
       <Text>{title}</Text>
-      {description ? <Text color={theme.subtle}>{description}</Text> : null}
+      {description ? (
+        <Text color={theme.subtle} dimColor>
+          {description}
+        </Text>
+      ) : null}
       <Box flexDirection="column" marginTop={1}>
         {stacked ? (
           <Box flexDirection="column">

@@ -3,6 +3,7 @@ import React, { useMemo } from 'react';
 import { Box, Text } from '#ink';
 import { useAnimationFrame } from '../../../vendor/ink/hooks/use-animation-frame.js';
 import { stringWidth } from '../../../vendor/ink/stringWidth.js';
+import type { Color } from '../../../vendor/ink/styles.js';
 import { theme } from '../../theme.js';
 
 const SHIMMER_INTERVAL_MS = 120;
@@ -16,7 +17,25 @@ function getGlimmerIndex(message: string, time: number): number {
   return cyclePosition - SHIMMER_PADDING;
 }
 
-function renderShimmerMessage(message: string, glimmerIndex: number) {
+function getStatusAccent(status: string): Color {
+  const normalized = status.toLowerCase();
+  if (normalized.startsWith('error')) return theme.status.error;
+  if (
+    normalized.includes('tool') ||
+    normalized.includes('python') ||
+    normalized.includes('loading')
+  ) {
+    return theme.status.tool;
+  }
+
+  return theme.assistant;
+}
+
+function renderShimmerMessage(
+  message: string,
+  glimmerIndex: number,
+  accentColor: Color,
+) {
   return Array.from(message).map((char, index) => {
     const isHighlighted =
       index === glimmerIndex || Math.abs(index - glimmerIndex) === 1;
@@ -24,7 +43,8 @@ function renderShimmerMessage(message: string, glimmerIndex: number) {
     return (
       <Text
         key={`${index}-${char}`}
-        color={isHighlighted ? 'ansi:white' : theme.subtle}
+        color={isHighlighted ? accentColor : theme.subtle}
+        dimColor={!isHighlighted}
       >
         {char}
       </Text>
@@ -44,6 +64,7 @@ export function EngineerStatusRow({
   const suffix = isStreaming
     ? '.'.repeat((Math.floor(time / 300) % 3) + 1).padEnd(3)
     : '';
+  const accentColor = getStatusAccent(message);
   const glimmerIndex = useMemo(
     () => (isStreaming ? getGlimmerIndex(message, time) : -100),
     [isStreaming, message, time],
@@ -53,14 +74,18 @@ export function EngineerStatusRow({
     <Box flexDirection="column" width="100%" height={2}>
       <Box height={1} />
       <Box flexDirection="row" width="100%" paddingLeft={2}>
-        <Text color={theme.subtle}>{figures.pointerSmall} </Text>
+        <Text color={accentColor}>{figures.pointerSmall} </Text>
         {isStreaming ? (
           <>
-            {renderShimmerMessage(message, glimmerIndex)}
-            <Text color={theme.subtle}>{suffix}</Text>
+            {renderShimmerMessage(message, glimmerIndex, accentColor)}
+            <Text color={theme.subtle} dimColor>
+              {suffix}
+            </Text>
           </>
         ) : (
-          <Text color={theme.subtle}>{message}</Text>
+          <Text color={theme.subtle} dimColor>
+            {message}
+          </Text>
         )}
       </Box>
     </Box>
