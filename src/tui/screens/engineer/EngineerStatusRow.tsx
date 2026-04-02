@@ -8,37 +8,58 @@ import {
   getEngineerStatusGlimmerIndex,
   getEngineerStatusGlyph,
   getEngineerStatusMode,
+  interpolateEngineerStatusColor,
   splitEngineerStatusMessage,
 } from './engineer-status-animation.js';
 
 const STATUS_INTERVAL_MS = 50;
 
-function getStatusAccent(status: string): Color {
+function getStatusColors(status: string): {
+  accentColor: Color;
+  shimmerColor: Color;
+} {
   const normalized = status.toLowerCase();
-  if (normalized.startsWith('error')) return theme.status.error;
+  if (normalized.startsWith('error')) {
+    return {
+      accentColor: theme.status.error,
+      shimmerColor: theme.status.errorShimmer,
+    };
+  }
+
   if (
     normalized.includes('tool') ||
     normalized.includes('python') ||
     normalized.includes('loading')
   ) {
-    return theme.status.tool;
+    return {
+      accentColor: theme.status.tool,
+      shimmerColor: theme.status.toolShimmer,
+    };
   }
 
-  return theme.assistant;
+  return {
+    accentColor: theme.status.thinking,
+    shimmerColor: theme.status.thinkingShimmer,
+  };
 }
 
 function renderShimmerMessage(
   message: string,
   glimmerIndex: number,
   accentColor: Color,
+  shimmerColor: Color,
   flashOpacity: number,
 ) {
   if (flashOpacity > 0) {
+    const color = interpolateEngineerStatusColor({
+      baseColor: accentColor,
+      shimmerColor,
+      flashOpacity,
+    });
+
     return (
       <>
-        <Text color={flashOpacity > 0.55 ? theme.text : accentColor}>
-          {message}
-        </Text>
+        <Text color={color}>{message}</Text>
         <Text color={accentColor}> </Text>
       </>
     );
@@ -56,7 +77,7 @@ function renderShimmerMessage(
           {before}
         </Text>
       ) : null}
-      {shimmer ? <Text color={theme.text}>{shimmer}</Text> : null}
+      {shimmer ? <Text color={shimmerColor}>{shimmer}</Text> : null}
       {after ? (
         <Text color={accentColor}>
           {after}
@@ -79,7 +100,7 @@ export function EngineerStatusRow({
   );
   const message = status.trim() || 'Idle';
   const mode = useMemo(() => getEngineerStatusMode(message), [message]);
-  const accentColor = getStatusAccent(message);
+  const { accentColor, shimmerColor } = getStatusColors(message);
   const glyph = useMemo(
     () => (isStreaming ? getEngineerStatusGlyph(time) : '▁'),
     [isStreaming, time],
@@ -112,7 +133,13 @@ export function EngineerStatusRow({
           <Text color={accentColor}>{glyph}</Text>
         </Box>
         {isStreaming ? (
-          renderShimmerMessage(message, glimmerIndex, accentColor, flashOpacity)
+          renderShimmerMessage(
+            message,
+            glimmerIndex,
+            accentColor,
+            shimmerColor,
+            flashOpacity,
+          )
         ) : (
           <Text color={theme.subtle} dimColor>
             {message}

@@ -4,6 +4,7 @@ import {
   getEngineerStatusFlashOpacity,
   getEngineerStatusGlimmerIndex,
   getEngineerStatusGlyph,
+  interpolateEngineerStatusColor,
   splitEngineerStatusMessage,
 } from './engineer-status-animation.js';
 
@@ -72,5 +73,32 @@ describe('engineer status animation', () => {
     expect(
       getEngineerStatusFlashOpacity({ mode: 'thinking', time: 500 }),
     ).toBe(0);
+  });
+
+  it('interpolates tool-use shimmer colors as truecolor RGB values', () => {
+    expect(
+      interpolateEngineerStatusColor({
+        baseColor: 'rgb(122,180,232)',
+        shimmerColor: 'rgb(183,224,255)',
+        flashOpacity: 0.5,
+      }),
+    ).toBe('rgb(153,202,244)');
+  });
+
+  it('falls back to hard switching only when a color cannot be parsed as RGB', () => {
+    expect(
+      interpolateEngineerStatusColor({
+        baseColor: 'ansi:blueBright',
+        shimmerColor: 'ansi:whiteBright',
+        flashOpacity: 0.4,
+      }),
+    ).toBe('ansi:blueBright');
+    expect(
+      interpolateEngineerStatusColor({
+        baseColor: 'ansi:blueBright',
+        shimmerColor: 'ansi:whiteBright',
+        flashOpacity: 0.8,
+      }),
+    ).toBe('ansi:whiteBright');
   });
 });

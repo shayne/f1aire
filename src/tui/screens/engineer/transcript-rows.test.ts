@@ -69,7 +69,7 @@ describe('buildTranscriptRows', () => {
     ).toBe(true);
   });
 
-  it('uses distinct Claude-style label colors for user and engineer turns', () => {
+  it('uses distinct Claude-inspired label colors for user and engineer turns', () => {
     const rows = buildTranscriptRows({
       messages: [
         { role: 'user', content: 'How is pace?' },
@@ -88,8 +88,8 @@ describe('buildTranscriptRows', () => {
       (row) => row.kind === 'label' && row.plainText === 'Engineer',
     );
 
-    expect(youRow && getNodeColor(youRow)).toBe('ansi:blueBright');
-    expect(engineerRow && getNodeColor(engineerRow)).toBe('ansi:redBright');
+    expect(youRow && getNodeColor(youRow)).toBe('rgb(122,180,232)');
+    expect(engineerRow && getNodeColor(engineerRow)).toBe('rgb(215,119,87)');
   });
 
   it('does not duplicate loading status in the transcript while waiting for the first streamed token', () => {

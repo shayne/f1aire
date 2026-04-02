@@ -1,4 +1,5 @@
 import { stringWidth } from '../../../vendor/ink/stringWidth.js';
+import type { Color, RGBColor } from '../../../vendor/ink/styles.js';
 
 export type EngineerStatusMode =
   | 'thinking'
@@ -19,6 +20,14 @@ const DEFAULT_SHIMMER_INTERVAL_MS = 200;
 const TOOL_FLASH_PERIOD_MS = 1000;
 
 export const F1AIRE_STATUS_FRAMES = ['▁', '▃', '▅', '▇', '▅', '▃'];
+
+type ParsedRGBColor = {
+  r: number;
+  g: number;
+  b: number;
+};
+
+const RGB_PATTERN = /^rgb\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\)$/;
 
 let graphemeSegmenter: Intl.Segmenter | null | undefined;
 
@@ -159,5 +168,43 @@ export function splitEngineerStatusMessage({
     before,
     shimmer,
     after,
+  };
+}
+
+export function interpolateEngineerStatusColor({
+  baseColor,
+  shimmerColor,
+  flashOpacity,
+}: {
+  baseColor: Color;
+  shimmerColor: Color;
+  flashOpacity: number;
+}): Color {
+  const parsedBase = parseRgbColor(baseColor);
+  const parsedShimmer = parseRgbColor(shimmerColor);
+
+  if (!parsedBase || !parsedShimmer) {
+    return flashOpacity > 0.5 ? shimmerColor : baseColor;
+  }
+
+  return `rgb(${Math.round(
+    parsedBase.r + (parsedShimmer.r - parsedBase.r) * flashOpacity,
+  )},${Math.round(
+    parsedBase.g + (parsedShimmer.g - parsedBase.g) * flashOpacity,
+  )},${Math.round(
+    parsedBase.b + (parsedShimmer.b - parsedBase.b) * flashOpacity,
+  )})` satisfies RGBColor;
+}
+
+function parseRgbColor(color: Color): ParsedRGBColor | null {
+  const match = RGB_PATTERN.exec(color);
+  if (!match) {
+    return null;
+  }
+
+  return {
+    r: Number.parseInt(match[1]!, 10),
+    g: Number.parseInt(match[2]!, 10),
+    b: Number.parseInt(match[3]!, 10),
   };
 }
