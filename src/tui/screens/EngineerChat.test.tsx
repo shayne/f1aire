@@ -141,6 +141,26 @@ describe('EngineerChat', () => {
     unmount();
   });
 
+  it('starts with details collapsed on compact terminals so the composer and transcript remain visible', async () => {
+    const { lastFrame, unmount } = await renderTui(
+      <EngineerChat
+        {...baseProps}
+        maxHeight={24}
+        pythonCode={'import numpy as np\nprint("hi")\n2+2'}
+      />,
+    );
+
+    const frame = stripAnsi(lastFrame() ?? '');
+
+    expect(frame).toContain('Status · Idle');
+    expect(frame).toContain(
+      'Ask the engineer about pace, tyres, traffic, or strategy...',
+    );
+    expect(frame).not.toContain('Python');
+    expect(frame).not.toContain('print("hi")');
+    unmount();
+  });
+
   it('shows the transcript pause/live workflow with PageUp and PageDown', async () => {
     const { stdin, lastFrame, unmount } = await renderTui(
       <EngineerChat {...baseProps} maxHeight={14} messages={makeMessages(16)} />,
