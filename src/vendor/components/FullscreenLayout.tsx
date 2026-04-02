@@ -64,6 +64,10 @@ function plural(value: number, singular: string, pluralForm = `${singular}s`): s
   return value === 1 ? singular : pluralForm
 }
 
+function getDividerLine(columns: number): string {
+  return figures.line.repeat(Math.max(1, columns - 1))
+}
+
 function isNullRenderingAttachment(message: Message): boolean {
   return Boolean(
     message.isNullRenderingAttachment ||
@@ -277,7 +281,7 @@ export function FullscreenLayout({
       </Box>
 
       <Box flexShrink={0} width="100%">
-        <Text color="ansi:blackBright">{figures.line.repeat(columns)}</Text>
+        <Text color="ansi:blackBright">{getDividerLine(columns)}</Text>
       </Box>
 
       <Box flexDirection="column" flexShrink={0} width="100%" maxHeight="50%">
@@ -298,7 +302,7 @@ export function FullscreenLayout({
           opaque
         >
           <Box flexShrink={0}>
-            <Text>{'▔'.repeat(columns)}</Text>
+            <Text>{'▔'.repeat(Math.max(1, columns - 1))}</Text>
           </Box>
           <Box flexDirection="column" paddingX={2} flexShrink={0} overflow="hidden">
             {modal}

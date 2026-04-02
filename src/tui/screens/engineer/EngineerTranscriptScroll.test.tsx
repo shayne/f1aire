@@ -42,6 +42,7 @@ describe('EngineerChat transcript scroll', () => {
   it('shows a jump-to-latest affordance after PageUp and clears it after PageDown', async () => {
     const { stdin, lastFrame, unmount } = await renderTui(
       <EngineerChat {...baseProps} maxHeight={14} messages={makeMessages(20)} />,
+      { columns: 120, rows: 40 },
     );
 
     await tick();
@@ -55,6 +56,7 @@ describe('EngineerChat transcript scroll', () => {
     const pausedFrame = stripAnsi(lastFrame() ?? '');
     expect(pausedFrame).toContain('Jump to bottom');
     expect(pausedFrame).toMatch(/─{10,}/);
+    expect(pausedFrame).not.toMatch(/\n\s*─\n/);
 
     stdin.write('\u001b[6~');
     await tick();
