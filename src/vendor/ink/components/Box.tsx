@@ -47,26 +47,28 @@ export type Props = Except<Styles, 'textWrap'> & {
 /**
  * `<Box>` is an essential Ink component to build your layout. It's like `<div style="display: flex">` in the browser.
  */
-function Box({
-  children,
-  flexWrap = 'nowrap',
-  flexDirection = 'row',
-  flexGrow = 0,
-  flexShrink = 1,
-  ref,
-  tabIndex,
-  autoFocus,
-  onClick,
-  onFocus,
-  onFocusCapture,
-  onBlur,
-  onBlurCapture,
-  onMouseEnter,
-  onMouseLeave,
-  onKeyDown,
-  onKeyDownCapture,
-  ...style
-}: PropsWithChildren<Props>): React.ReactNode {
+function Box(
+  {
+    children,
+    flexWrap = 'nowrap',
+    flexDirection = 'row',
+    flexGrow = 0,
+    flexShrink = 1,
+    tabIndex,
+    autoFocus,
+    onClick,
+    onFocus,
+    onFocusCapture,
+    onBlur,
+    onBlurCapture,
+    onMouseEnter,
+    onMouseLeave,
+    onKeyDown,
+    onKeyDownCapture,
+    ...style
+  }: PropsWithChildren<Omit<Props, 'ref'>>,
+  ref: Ref<DOMElement>,
+): React.ReactNode {
   // Warn if spacing values are not integers to prevent fractional layout dimensions
   warn.ifNotInteger(style.margin, 'margin')
   warn.ifNotInteger(style.marginX, 'marginX')
@@ -115,4 +117,7 @@ function Box({
   )
 }
 
-export default Box
+const ForwardedBox = React.forwardRef(Box)
+ForwardedBox.displayName = 'Box'
+
+export default ForwardedBox

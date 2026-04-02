@@ -1,21 +1,17 @@
-import figures from 'figures';
 import React, { useMemo } from 'react';
 import { Box, Text } from '#ink';
 import { useAnimationFrame } from '../../../vendor/ink/hooks/use-animation-frame.js';
-import { stringWidth } from '../../../vendor/ink/stringWidth.js';
 import type { Color } from '../../../vendor/ink/styles.js';
 import { theme } from '../../theme.js';
+import {
+  getEngineerStatusFlashOn,
+  getEngineerStatusGlimmerIndex,
+  getEngineerStatusGlyph,
+  getEngineerStatusMode,
+  splitEngineerStatusMessage,
+} from './engineer-status-animation.js';
 
-const SHIMMER_INTERVAL_MS = 120;
-const SHIMMER_PADDING = 10;
-
-function getGlimmerIndex(message: string, time: number): number {
-  const messageWidth = stringWidth(message);
-  const cycleLength = Math.max(1, messageWidth + SHIMMER_PADDING * 2);
-  const cyclePosition = Math.floor(time / SHIMMER_INTERVAL_MS) % cycleLength;
-
-  return cyclePosition - SHIMMER_PADDING;
-}
+const STATUS_INTERVAL_MS = 50;
 
 function getStatusAccent(status: string): Color {
   const normalized = status.toLowerCase();
@@ -35,21 +31,35 @@ function renderShimmerMessage(
   message: string,
   glimmerIndex: number,
   accentColor: Color,
+  flashOn: boolean,
 ) {
-  return Array.from(message).map((char, index) => {
-    const isHighlighted =
-      index === glimmerIndex || Math.abs(index - glimmerIndex) === 1;
+  if (flashOn) {
+    return <Text color={accentColor}>{message} </Text>;
+  }
 
-    return (
-      <Text
-        key={`${index}-${char}`}
-        color={isHighlighted ? accentColor : theme.subtle}
-        dimColor={!isHighlighted}
-      >
-        {char}
-      </Text>
-    );
+  const { before, shimmer, after } = splitEngineerStatusMessage({
+    message,
+    glimmerIndex,
   });
+
+  return (
+    <>
+      {before ? (
+        <Text color={theme.subtle} dimColor>
+          {before}
+        </Text>
+      ) : null}
+      {shimmer ? <Text color={accentColor}>{shimmer}</Text> : null}
+      {after ? (
+        <Text color={theme.subtle} dimColor>
+          {after}
+        </Text>
+      ) : null}
+      <Text color={theme.subtle} dimColor>
+        {' '}
+      </Text>
+    </>
+  );
 }
 
 export function EngineerStatusRow({
@@ -59,29 +69,42 @@ export function EngineerStatusRow({
   status: string;
   isStreaming: boolean;
 }): React.JSX.Element {
-  const [, time] = useAnimationFrame(isStreaming ? SHIMMER_INTERVAL_MS : null);
+  const [animationRef, time] = useAnimationFrame(
+    isStreaming ? STATUS_INTERVAL_MS : null,
+  );
   const message = status.trim() || 'Idle';
-  const suffix = isStreaming
-    ? '.'.repeat((Math.floor(time / 300) % 3) + 1).padEnd(3)
-    : '';
+  const mode = useMemo(() => getEngineerStatusMode(message), [message]);
   const accentColor = getStatusAccent(message);
+  const glyph = useMemo(
+    () => (isStreaming ? getEngineerStatusGlyph(time) : '·'),
+    [isStreaming, time],
+  );
   const glimmerIndex = useMemo(
-    () => (isStreaming ? getGlimmerIndex(message, time) : -100),
-    [isStreaming, message, time],
+    () =>
+      isStreaming
+        ? getEngineerStatusGlimmerIndex({ mode, message, time })
+        : -100,
+    [isStreaming, message, mode, time],
+  );
+  const flashOn = useMemo(
+    () => isStreaming && getEngineerStatusFlashOn({ mode, time }),
+    [isStreaming, mode, time],
   );
 
   return (
     <Box flexDirection="column" width="100%" height={2}>
       <Box height={1} />
-      <Box flexDirection="row" width="100%" paddingLeft={2}>
-        <Text color={accentColor}>{figures.pointerSmall} </Text>
+      <Box
+        ref={animationRef}
+        flexDirection="row"
+        width="100%"
+        paddingLeft={2}
+      >
+        <Box width={2}>
+          <Text color={accentColor}>{glyph}</Text>
+        </Box>
         {isStreaming ? (
-          <>
-            {renderShimmerMessage(message, glimmerIndex, accentColor)}
-            <Text color={theme.subtle} dimColor>
-              {suffix}
-            </Text>
-          </>
+          renderShimmerMessage(message, glimmerIndex, accentColor, flashOn)
         ) : (
           <Text color={theme.subtle} dimColor>
             {message}

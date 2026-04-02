@@ -172,7 +172,7 @@ describe('EngineerChat', () => {
 
     const frame = stripAnsi(lastFrame() ?? '');
 
-    expect(frame).toContain('› Idle');
+    expect(frame).toContain('· Idle');
     expect(frame).toContain(
       'Ask the engineer about pace, tyres, traffic, or strategy...',
     );

@@ -57,4 +57,22 @@ describe('renderTui', () => {
 
     expect(result).toBe('resolved');
   });
+
+  it('forwards Box refs to the underlying DOM element', async () => {
+    let attachedNodeName: string | null = null;
+
+    const app = await renderTui(
+      <Box
+        ref={(node) => {
+          attachedNodeName = node?.nodeName ?? null;
+        }}
+      >
+        <Text>lap delta</Text>
+      </Box>,
+      { columns: 24, rows: 8 },
+    );
+
+    expect(attachedNodeName).toBe('ink-box');
+    app.unmount();
+  });
 });
