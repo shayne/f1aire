@@ -2,11 +2,8 @@ import React, { useMemo } from 'react';
 import { Box, Text } from '#ink';
 import type { Color } from '../../../vendor/ink/styles.js';
 import { theme } from '../../theme.js';
-import {
-  F1AIRE_STATUS_FRAMES,
-  getEngineerStatusGlyph,
-  getEngineerStatusMode,
-} from './engineer-status-animation.js';
+import { getEngineerStatusMode } from './engineer-status-animation.js';
+import { EngineerStatusGlyph } from './EngineerStatusGlyph.js';
 import { EngineerShimmerMessage } from './EngineerShimmerMessage.js';
 import { useEngineerShimmerAnimation } from './useEngineerShimmerAnimation.js';
 
@@ -54,14 +51,6 @@ export function EngineerStatusRow({
     !isStreaming,
   );
   const { accentColor, shimmerColor } = getStatusColors(message);
-  const glyph = useMemo(
-    () =>
-      isStreaming
-        ? getEngineerStatusGlyph(time)
-        : (F1AIRE_STATUS_FRAMES[0] ?? '⠋'),
-    [isStreaming, time],
-  );
-
   return (
     <Box flexDirection="column" width="100%" height={2}>
       <Box height={1} />
@@ -71,9 +60,11 @@ export function EngineerStatusRow({
         width="100%"
         paddingLeft={2}
       >
-        <Box width={2}>
-          <Text color={accentColor}>{glyph}</Text>
-        </Box>
+        <EngineerStatusGlyph
+          time={time}
+          color={accentColor}
+          isIdle={!isStreaming}
+        />
         {isStreaming ? (
           <EngineerShimmerMessage
             message={message}
