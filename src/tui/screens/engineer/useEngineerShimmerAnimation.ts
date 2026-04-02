@@ -2,7 +2,10 @@ import { useMemo } from 'react';
 import { useAnimationFrame } from '../../../vendor/ink/hooks/use-animation-frame.js';
 import { stringWidth } from '../../../vendor/ink/stringWidth.js';
 import type { DOMElement } from '../../../vendor/ink/dom.js';
-import type { EngineerStatusMode } from './engineer-status-animation.js';
+import {
+  getEngineerStatusGlimmerIndex,
+  type EngineerStatusMode,
+} from './engineer-status-animation.js';
 
 const REQUESTING_GLIMMER_SPEED_MS = 50;
 const DEFAULT_GLIMMER_SPEED_MS = 200;
@@ -29,7 +32,14 @@ export function useEngineerShimmerAnimation(
 
   return [
     ref,
-    Math.floor(time / glimmerSpeed) % Math.max(1, messageWidth),
+    messageWidth <= 0
+      ? 0
+      : getEngineerStatusGlimmerIndex({
+          mode,
+          message,
+          time,
+          glimmerSpeedMs: glimmerSpeed,
+        }),
     time,
   ];
 }

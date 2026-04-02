@@ -87,19 +87,28 @@ export function getEngineerStatusGlyph(time: number): string {
 }
 
 export function getEngineerStatusGlimmerIndex({
+  mode,
   message,
   time,
+  glimmerSpeedMs = SHIMMER_INTERVAL_MS,
 }: {
   mode: EngineerStatusMode;
   message: string;
   time: number;
+  glimmerSpeedMs?: number;
 }): number {
   const messageWidth = stringWidth(message);
   if (messageWidth <= 0) {
     return 0;
   }
 
-  return Math.floor(time / SHIMMER_INTERVAL_MS) % messageWidth;
+  const cyclePosition = Math.floor(time / glimmerSpeedMs) % messageWidth;
+
+  if (mode === 'requesting') {
+    return cyclePosition;
+  }
+
+  return messageWidth - 1 - cyclePosition;
 }
 
 export function splitEngineerStatusMessage({
