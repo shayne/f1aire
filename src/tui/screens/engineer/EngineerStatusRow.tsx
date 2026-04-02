@@ -1,17 +1,14 @@
 import React, { useMemo } from 'react';
 import { Box, Text } from '#ink';
-import { useAnimationFrame } from '../../../vendor/ink/hooks/use-animation-frame.js';
 import type { Color } from '../../../vendor/ink/styles.js';
 import { theme } from '../../theme.js';
 import {
   F1AIRE_STATUS_FRAMES,
-  getEngineerStatusGlimmerIndex,
   getEngineerStatusGlyph,
   getEngineerStatusMode,
-  splitEngineerStatusMessage,
 } from './engineer-status-animation.js';
-
-const STATUS_INTERVAL_MS = 50;
+import { EngineerShimmerMessage } from './EngineerShimmerMessage.js';
+import { useEngineerShimmerAnimation } from './useEngineerShimmerAnimation.js';
 
 function getStatusColors(status: string): {
   accentColor: Color;
@@ -42,35 +39,6 @@ function getStatusColors(status: string): {
   };
 }
 
-function renderShimmerMessage(
-  message: string,
-  glimmerIndex: number,
-  accentColor: Color,
-  shimmerColor: Color,
-) {
-  const { before, shimmer, after } = splitEngineerStatusMessage({
-    message,
-    glimmerIndex,
-  });
-
-  return (
-    <>
-      {before ? (
-        <Text color={accentColor}>
-          {before}
-        </Text>
-      ) : null}
-      {shimmer ? <Text color={shimmerColor}>{shimmer}</Text> : null}
-      {after ? (
-        <Text color={accentColor}>
-          {after}
-        </Text>
-      ) : null}
-      <Text color={accentColor}> </Text>
-    </>
-  );
-}
-
 export function EngineerStatusRow({
   status,
   isStreaming,
@@ -78,11 +46,13 @@ export function EngineerStatusRow({
   status: string;
   isStreaming: boolean;
 }): React.JSX.Element {
-  const [animationRef, time] = useAnimationFrame(
-    isStreaming ? STATUS_INTERVAL_MS : null,
-  );
   const message = status.trim() || 'Idle';
   const mode = useMemo(() => getEngineerStatusMode(message), [message]);
+  const [animationRef, glimmerIndex, time] = useEngineerShimmerAnimation(
+    mode,
+    message,
+    !isStreaming,
+  );
   const { accentColor, shimmerColor } = getStatusColors(message);
   const glyph = useMemo(
     () =>
@@ -90,13 +60,6 @@ export function EngineerStatusRow({
         ? getEngineerStatusGlyph(time)
         : (F1AIRE_STATUS_FRAMES[0] ?? '⠋'),
     [isStreaming, time],
-  );
-  const glimmerIndex = useMemo(
-    () =>
-      isStreaming
-        ? getEngineerStatusGlimmerIndex({ mode, message, time })
-        : -100,
-    [isStreaming, message, mode, time],
   );
 
   return (
@@ -112,12 +75,12 @@ export function EngineerStatusRow({
           <Text color={accentColor}>{glyph}</Text>
         </Box>
         {isStreaming ? (
-          renderShimmerMessage(
-            message,
-            glimmerIndex,
-            accentColor,
-            shimmerColor,
-          )
+          <EngineerShimmerMessage
+            message={message}
+            glimmerIndex={glimmerIndex}
+            messageColor={accentColor}
+            shimmerColor={shimmerColor}
+          />
         ) : (
           <Text color={theme.subtle} dimColor>
             {message}
