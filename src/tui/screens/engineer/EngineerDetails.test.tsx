@@ -4,7 +4,7 @@ import { renderTui } from '#ink/testing';
 import { EngineerDetails } from './EngineerDetails.js';
 
 describe('EngineerDetails', () => {
-  it('renders a compact status strip and keeps expanded details hidden by default', async () => {
+  it('renders nothing while collapsed so the dedicated status row owns compact state', async () => {
     const { lastFrame, unmount } = await renderTui(
       <EngineerDetails
         activity={['Thinking']}
@@ -16,7 +16,7 @@ describe('EngineerDetails', () => {
 
     const frame = lastFrame() ?? '';
 
-    expect(frame).toContain('Status · Thinking');
+    expect(frame).toBe('');
     expect(frame).not.toContain('Details');
     expect(frame).not.toContain('print("hi")');
     unmount();

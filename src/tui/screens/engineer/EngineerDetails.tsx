@@ -21,7 +21,10 @@ function getRecentActivity(activity: string[]): string[] {
 
 function getPythonPreview(pythonCode: string): string[] {
   if (!pythonCode) return [];
-  return pythonCode.split('\n').filter(Boolean).slice(-MAX_PYTHON_PREVIEW_LINES);
+  return pythonCode
+    .split('\n')
+    .filter(Boolean)
+    .slice(-MAX_PYTHON_PREVIEW_LINES);
 }
 
 export function getEngineerDetailsHeight({
@@ -33,7 +36,7 @@ export function getEngineerDetailsHeight({
   activity: string[];
   pythonCode: string;
 }): number {
-  if (!isExpanded) return 1;
+  if (!isExpanded) return 0;
 
   const pythonPreview = getPythonPreview(pythonCode);
 
@@ -54,41 +57,39 @@ export function EngineerDetails({
   pythonCode: string;
   isExpanded: boolean;
 }): React.JSX.Element {
+  if (!isExpanded) {
+    return <Box />;
+  }
+
   const recentActivity = getRecentActivity(activity);
-  const latestActivity = recentActivity[recentActivity.length - 1] ?? 'Idle';
   const pythonPreview = getPythonPreview(pythonCode);
 
   return (
     <Box flexDirection="column">
-      <Text color={theme.subtle} wrap="truncate-end">
-        {`Status · ${latestActivity}`}
-      </Text>
-      {isExpanded ? (
-        <Panel title="Details" tone="muted">
-          <Box flexDirection="column">
-            {recentActivity.map((entry, index) => (
-              <Text key={`${index}-${entry}`} color={activityColor(entry)}>
-                {index === recentActivity.length - 1 ? '> ' : '- '}
-                {entry}
-              </Text>
-            ))}
-            {pythonPreview.length > 0 ? (
-              <Box flexDirection="column">
-                <Text color={theme.subtle}>Python</Text>
-                {pythonPreview.map((line, index) => (
-                  <Text
-                    key={`${index}-${line}`}
+      <Panel title="Details" tone="muted">
+        <Box flexDirection="column">
+          {recentActivity.map((entry, index) => (
+            <Text key={`${index}-${entry}`} color={activityColor(entry)}>
+              {index === recentActivity.length - 1 ? '> ' : '- '}
+              {entry}
+            </Text>
+          ))}
+          {pythonPreview.length > 0 ? (
+            <Box flexDirection="column">
+              <Text color={theme.subtle}>Python</Text>
+              {pythonPreview.map((line, index) => (
+                <Text
+                  key={`${index}-${line}`}
                   color={theme.subtle}
                   wrap="truncate-end"
                 >
                   {line}
-                  </Text>
-                ))}
-              </Box>
-            ) : null}
-          </Box>
-        </Panel>
-      ) : null}
+                </Text>
+              ))}
+            </Box>
+          ) : null}
+        </Box>
+      </Panel>
     </Box>
   );
 }

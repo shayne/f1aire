@@ -53,6 +53,26 @@ describe('EngineerChat', () => {
     unmount();
   });
 
+  it('renders streaming status in a dedicated row instead of appending it to composer hints', async () => {
+    const { lastFrame, unmount } = await renderTui(
+      <EngineerChat
+        {...baseProps}
+        maxHeight={24}
+        status="Comparing tyre stints"
+        isStreaming
+      />,
+    );
+
+    const frame = stripAnsi(lastFrame() ?? '');
+
+    expect(frame).toContain('Comparing tyre stints');
+    expect(frame).not.toContain('Status · Comparing tyre stints');
+    expect(frame).not.toContain(
+      'enter send · shift+enter newline · tab details · streaming',
+    );
+    unmount();
+  });
+
   it('renders assistant markdown without literal markers', async () => {
     const { lastFrame, unmount } = await renderTui(
       <EngineerChat
@@ -152,7 +172,7 @@ describe('EngineerChat', () => {
 
     const frame = stripAnsi(lastFrame() ?? '');
 
-    expect(frame).toContain('Status · Idle');
+    expect(frame).toContain('› Idle');
     expect(frame).toContain(
       'Ask the engineer about pace, tyres, traffic, or strategy...',
     );
@@ -161,9 +181,43 @@ describe('EngineerChat', () => {
     unmount();
   });
 
+  it('auto-collapses details when the terminal becomes compact so the composer stays visible', async () => {
+    const { lastFrame, rerender, unmount } = await renderTui(
+      <EngineerChat
+        {...baseProps}
+        maxHeight={44}
+        pythonCode={'import numpy as np\nprint("hi")\n2+2'}
+      />,
+    );
+
+    await tick();
+    expect(stripAnsi(lastFrame() ?? '')).toContain('Python');
+
+    rerender(
+      <EngineerChat
+        {...baseProps}
+        maxHeight={24}
+        pythonCode={'import numpy as np\nprint("hi")\n2+2'}
+      />,
+    );
+    await tick();
+
+    const compactFrame = stripAnsi(lastFrame() ?? '');
+    expect(compactFrame).toContain(
+      'Ask the engineer about pace, tyres, traffic, or strategy...',
+    );
+    expect(compactFrame).not.toContain('Python');
+    expect(compactFrame).not.toContain('print("hi")');
+    unmount();
+  });
+
   it('shows the transcript pause/live workflow with PageUp and PageDown', async () => {
     const { stdin, lastFrame, unmount } = await renderTui(
-      <EngineerChat {...baseProps} maxHeight={14} messages={makeMessages(16)} />,
+      <EngineerChat
+        {...baseProps}
+        maxHeight={14}
+        messages={makeMessages(16)}
+      />,
     );
 
     await tick();

@@ -885,7 +885,6 @@ export function App(): React.JSX.Element {
                 summary={summary}
                 activity={activity}
                 pythonCode={pythonCodePreview}
-                maxHeight={contentHeight}
                 asOfLabel={asOfLabel}
               />
             )}

@@ -7,6 +7,7 @@ import { Composer } from './engineer/Composer.js';
 import { EngineerDetails } from './engineer/EngineerDetails.js';
 import { EngineerSessionStrip } from './engineer/EngineerSessionStrip.js';
 import { EngineerShell } from './engineer/EngineerShell.js';
+import { EngineerStatusRow } from './engineer/EngineerStatusRow.js';
 import { buildTranscriptRows } from './engineer/transcript-rows.js';
 import { TranscriptViewport } from './engineer/TranscriptViewport.js';
 import { useEngineerScrollState } from './engineer/useEngineerScrollState.js';
@@ -72,12 +73,7 @@ const ComposerPanel = React.memo(function ComposerPanel({
   const state = useComposerState({ onSend, isStreaming });
 
   return (
-    <Composer
-      state={state}
-      isStreaming={isStreaming}
-      width={width}
-      onInterceptInput={onInterceptInput}
-    />
+    <Composer state={state} width={width} onInterceptInput={onInterceptInput} />
   );
 });
 
@@ -122,6 +118,12 @@ export function EngineerChat({
   const [detailsExpanded, setDetailsExpanded] = useState(() => !compact);
 
   useEffect(() => {
+    if (compact) {
+      setDetailsExpanded(false);
+    }
+  }, [compact]);
+
+  useEffect(() => {
     onRender?.();
   });
 
@@ -158,9 +160,9 @@ export function EngineerChat({
     handlePageUp,
     handlePageDown,
   } = useEngineerScrollState({
-      messageCount: messages.length,
-      transcriptVersion,
-    });
+    messageCount: messages.length,
+    transcriptVersion,
+  });
 
   const activityEntries = useMemo(
     () => (activity.length ? activity : status ? [status] : ['Idle']),
@@ -217,6 +219,10 @@ export function EngineerChat({
             activity={activityEntries}
             pythonCode={pythonCode ?? ''}
             isExpanded={detailsExpanded}
+          />
+          <EngineerStatusRow
+            status={latestActivity}
+            isStreaming={isStreaming}
           />
           <ComposerPanel
             onSend={onSend}

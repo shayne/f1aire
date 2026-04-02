@@ -86,12 +86,10 @@ function renderVisibleLine(
 
 export function Composer({
   state,
-  isStreaming,
   width,
   onInterceptInput,
 }: {
   state: ComposerState;
-  isStreaming: boolean;
   width: number;
   onInterceptInput?: (input: string, key: Key) => boolean;
 }): React.JSX.Element {
@@ -151,7 +149,6 @@ export function Composer({
         <Box>
           <Text color={theme.subtle}>
             enter send · shift+enter newline · tab details
-            {isStreaming ? ' · streaming' : ''}
           </Text>
         </Box>
       </Box>
