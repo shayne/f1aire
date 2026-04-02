@@ -119,7 +119,7 @@ export function EngineerChat({
   const compact = rows < 32;
   const messageContentWidth = Math.max(10, columns - 2);
   const composerContentWidth = Math.max(12, columns - 4);
-  const [detailsExpanded, setDetailsExpanded] = useState(false);
+  const [detailsExpanded, setDetailsExpanded] = useState(true);
 
   useEffect(() => {
     onRender?.();

@@ -32,7 +32,7 @@ const stripAnsi = (value: string) => value.replace(/\u001b\[[0-9;]*m/g, '');
 const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
 
 describe('EngineerChat details toggle', () => {
-  it('keeps plain i typing in the composer and toggles details with Tab', async () => {
+  it('shows details by default, keeps plain i typing, and toggles details with Tab', async () => {
     const { stdin, lastFrame, unmount } = await renderTui(
       <EngineerChat
         {...baseProps}
@@ -42,26 +42,28 @@ describe('EngineerChat details toggle', () => {
     );
 
     await tick();
-    expect(stripAnsi(lastFrame() ?? '')).not.toContain('Python');
+    expect(stripAnsi(lastFrame() ?? '')).toContain('Python');
 
     stdin.write('i');
     await tick();
 
     const typedFrame = stripAnsi(lastFrame() ?? '');
     expect(typedFrame).toContain('› i');
-    expect(typedFrame).not.toContain('Python');
-
-    stdin.write('\t');
-    await tick();
-
-    const expandedFrame = stripAnsi(lastFrame() ?? '');
-    expect(expandedFrame).toContain('print("hi")');
+    expect(typedFrame).toContain('Python');
 
     stdin.write('\t');
     await tick();
 
     const collapsedFrame = stripAnsi(lastFrame() ?? '');
+    expect(collapsedFrame).toContain('› i');
     expect(collapsedFrame).not.toContain('Python');
+
+    stdin.write('\t');
+    await tick();
+
+    const reopenedFrame = stripAnsi(lastFrame() ?? '');
+    expect(reopenedFrame).toContain('› i');
+    expect(reopenedFrame).toContain('print("hi")');
     unmount();
   });
 });

@@ -105,7 +105,7 @@ describe('EngineerChat', () => {
     unmount();
   });
 
-  it('keeps composer typing intact and toggles the details panel with Tab', async () => {
+  it('shows details by default and keeps composer typing intact while Tab collapses and reopens them', async () => {
     const { stdin, lastFrame, unmount } = await renderTui(
       <EngineerChat
         {...baseProps}
@@ -115,28 +115,29 @@ describe('EngineerChat', () => {
     );
 
     await tick();
-    expect(stripAnsi(lastFrame() ?? '')).not.toContain('Python');
+    expect(stripAnsi(lastFrame() ?? '')).toContain('Python');
+    expect(stripAnsi(lastFrame() ?? '')).toContain('print(\"hi\")');
 
     stdin.write('i');
     await tick();
 
     const typedFrame = stripAnsi(lastFrame() ?? '');
     expect(typedFrame).toContain('› i');
-    expect(typedFrame).not.toContain('Python');
+    expect(typedFrame).toContain('Python');
 
     stdin.write('\t');
     await tick();
 
     const frame = stripAnsi(lastFrame() ?? '');
     expect(frame).toContain('› i');
-    expect(frame).toContain('print(\"hi\")');
+    expect(frame).not.toContain('Python');
 
     stdin.write('\t');
     await tick();
 
-    const collapsedFrame = stripAnsi(lastFrame() ?? '');
-    expect(collapsedFrame).toContain('› i');
-    expect(collapsedFrame).not.toContain('Python');
+    const reopenedFrame = stripAnsi(lastFrame() ?? '');
+    expect(reopenedFrame).toContain('› i');
+    expect(reopenedFrame).toContain('print(\"hi\")');
     unmount();
   });
 
