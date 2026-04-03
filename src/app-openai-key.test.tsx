@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import React from 'react';
 import { renderTui } from '#ink/testing';
+import type { Meeting, Session } from './core/types.js';
 
 const originalEnv = { ...process.env };
 
@@ -29,6 +30,11 @@ const waitFor = async (
   throw new Error(`Timed out waiting for condition${tail}`);
 };
 
+type RuntimeProgressUpdate = {
+  phase: 'downloading' | 'extracting' | 'ready';
+  message: string;
+};
+
 describe('App OpenAI key prompt', () => {
   it('prompts for key after download when env and stored key are missing and writes titles to the renderer stdout', async () => {
     delete process.env.OPENAI_API_KEY;
@@ -38,7 +44,11 @@ describe('App OpenAI key prompt', () => {
     process.env.HOME = base;
 
     vi.doMock('./agent/pyodide/assets.js', () => ({
-      ensurePyodideAssets: async ({ onProgress }: any) => {
+      ensurePyodideAssets: async ({
+        onProgress,
+      }: {
+        onProgress?: (update: RuntimeProgressUpdate) => void;
+      }) => {
         onProgress?.({ phase: 'ready', message: 'Python runtime ready.' });
         return { ready: true };
       },
@@ -49,7 +59,7 @@ describe('App OpenAI key prompt', () => {
     vi.doMock('./agent/engineer.js', () => ({
       createEngineerSession: () => ({
         close: vi.fn(),
-        sendUserMessage: vi.fn(),
+        send: vi.fn(async function* () {}),
       }),
     }));
     vi.doMock('./agent/engineer-logger.js', () => ({
@@ -68,7 +78,7 @@ describe('App OpenAI key prompt', () => {
     }));
 
     vi.doMock('./tui/screens/SeasonPicker.js', () => ({
-      SeasonPicker: ({ onSelect }: any) => {
+      SeasonPicker: ({ onSelect }: { onSelect: (year: number) => void }) => {
         React.useEffect(() => {
           void onSelect(2026);
         }, [onSelect]);
@@ -101,7 +111,13 @@ describe('App OpenAI key prompt', () => {
     }));
 
     vi.doMock('./tui/screens/MeetingPicker.js', () => ({
-      MeetingPicker: ({ meetings, onSelect }: any) => {
+      MeetingPicker: ({
+        meetings,
+        onSelect,
+      }: {
+        meetings: Meeting[];
+        onSelect: (meeting: Meeting) => void;
+      }) => {
         React.useEffect(() => {
           void onSelect(meetings[0]);
         }, [meetings, onSelect]);
@@ -110,7 +126,13 @@ describe('App OpenAI key prompt', () => {
     }));
 
     vi.doMock('./tui/screens/SessionPicker.js', () => ({
-      SessionPicker: ({ meeting, onSelect }: any) => {
+      SessionPicker: ({
+        meeting,
+        onSelect,
+      }: {
+        meeting: Meeting;
+        onSelect: (session: Session) => void;
+      }) => {
         React.useEffect(() => {
           void onSelect(meeting.Sessions[0]);
         }, [meeting, onSelect]);
@@ -134,7 +156,15 @@ describe('App OpenAI key prompt', () => {
     const app = await renderTui(<App />);
     const rendererWrites: string[] = [];
     const originalRendererWrite = app.stdout.write.bind(app.stdout);
-    app.stdout.write = ((chunk: any, ...args: any[]) => {
+    app.stdout.write = ((
+      chunk: Parameters<typeof app.stdout.write>[0],
+      ...args: Parameters<typeof app.stdout.write> extends [
+        unknown,
+        ...infer Rest,
+      ]
+        ? Rest
+        : never
+    ) => {
       rendererWrites.push(String(chunk));
       return originalRendererWrite(chunk, ...args);
     }) as typeof app.stdout.write;
