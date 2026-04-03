@@ -1,4 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
+import type { TranscriptEvent } from './transcript-events.js';
 import { createEngineerSession } from './engineer.js';
 
 describe('engineer session', () => {
@@ -21,12 +22,14 @@ describe('engineer session', () => {
   });
 
   it('allows enough tool steps for python self-healing', async () => {
-    const streamTextFn = vi.fn(async () =>
-      ({
-        fullStream: (async function* () {
-          yield { type: 'text-delta', id: 't1', text: 'ok' };
-        })(),
-      }) as any);
+    const streamTextFn = vi.fn(
+      async () =>
+        ({
+          fullStream: (async function* () {
+            yield { type: 'text-delta', id: 't1', text: 'ok' };
+          })(),
+        }) as any,
+    );
 
     const session = createEngineerSession({
       model: {} as any,
@@ -46,5 +49,75 @@ describe('engineer session', () => {
     // stepCountIs(N) stops when steps.length === N.
     expect(stopWhen({ steps: new Array(7).fill({}) })).toBe(false);
     expect(stopWhen({ steps: new Array(8).fill({}) })).toBe(true);
+  });
+
+  it('stores transcript events for user text, tool lifecycle, and assistant output', async () => {
+    const initialTranscript: TranscriptEvent[] = [
+      {
+        id: 'seed-assistant',
+        type: 'assistant-message',
+        text: 'Quick summary ready.',
+        streaming: false,
+      },
+    ];
+    const session = createEngineerSession({
+      model: {} as any,
+      tools: {} as any,
+      system: 'x',
+      initialTranscript,
+      streamTextFn: (async () =>
+        ({
+          fullStream: (async function* () {
+            yield {
+              type: 'tool-call',
+              toolCallId: 'tool-123',
+              toolName: 'compare_lap_times',
+            };
+            yield {
+              type: 'tool-result',
+              toolCallId: 'tool-123',
+              toolName: 'compare_lap_times',
+            };
+            yield { type: 'text-delta', id: 't1', text: 'Pace is ' };
+            yield { type: 'text-delta', id: 't2', text: 'stable.' };
+          })(),
+        }) as any) as any,
+    });
+
+    const parts: string[] = [];
+    for await (const chunk of session.send('Compare pace')) parts.push(chunk);
+
+    expect(parts.join('')).toBe('Pace is stable.');
+    expect(session.getTranscriptEvents()).toEqual([
+      {
+        id: 'seed-assistant',
+        type: 'assistant-message',
+        text: 'Quick summary ready.',
+        streaming: false,
+      },
+      {
+        id: 'user-1',
+        type: 'user-message',
+        text: 'Compare pace',
+      },
+      {
+        id: 'tool-123',
+        type: 'tool-call',
+        toolName: 'compare_lap_times',
+        label: 'Running tool: compare_lap_times',
+      },
+      {
+        id: 'tool-123-result',
+        type: 'tool-result',
+        toolName: 'compare_lap_times',
+        label: 'Processing result: compare_lap_times',
+      },
+      {
+        id: 'assistant-1',
+        type: 'assistant-message',
+        text: 'Pace is stable.',
+        streaming: false,
+      },
+    ]);
   });
 });

@@ -1,6 +1,13 @@
 import { stepCountIs, streamText, type ToolSet } from 'ai';
 import type { LanguageModel } from 'ai';
 import { formatUnknownError } from './error-utils.js';
+import type {
+  AssistantMessageEvent,
+  ToolCallEvent,
+  ToolResultEvent,
+  TranscriptEvent,
+  UserMessageEvent,
+} from './transcript-events.js';
 
 type Message = { role: 'user' | 'assistant'; content: string };
 
@@ -8,20 +15,53 @@ type CreateEngineerSessionArgs = {
   model: LanguageModel;
   tools: ToolSet;
   system: string;
+  initialTranscript?: TranscriptEvent[];
   streamTextFn?: typeof streamText;
   logger?: (event: Record<string, unknown>) => void | Promise<void>;
   onEvent?: (event: { type: string; [key: string]: unknown }) => void;
 };
 
+function getNextEventSequence(
+  events: TranscriptEvent[],
+  prefix: string,
+): number {
+  let next = 1;
+  const pattern = new RegExp(`^${prefix}-(\\d+)$`);
+
+  for (const event of events) {
+    const match = pattern.exec(event.id);
+    if (!match) continue;
+    next = Math.max(next, Number.parseInt(match[1] ?? '0', 10) + 1);
+  }
+
+  return next;
+}
+
+function cloneTranscriptEvent(event: TranscriptEvent): TranscriptEvent {
+  return { ...event };
+}
+
 export function createEngineerSession({
   model,
   tools,
   system,
+  initialTranscript = [],
   streamTextFn = streamText,
   logger,
   onEvent,
 }: CreateEngineerSessionArgs) {
   const messages: Message[] = [];
+  const transcriptEvents = initialTranscript.map((event) =>
+    cloneTranscriptEvent(event),
+  );
+  const pendingToolEventIds = new Map<string, string>();
+  const pendingAnonymousToolEventIds: string[] = [];
+  let nextUserEventId = getNextEventSequence(transcriptEvents, 'user');
+  let nextAssistantEventId = getNextEventSequence(
+    transcriptEvents,
+    'assistant',
+  );
+  let nextToolEventId = getNextEventSequence(transcriptEvents, 'tool');
 
   const getToolName = (part: unknown): string | undefined => {
     const value =
@@ -40,13 +80,78 @@ export function createEngineerSession({
     return typeof value === 'string' ? value : undefined;
   };
 
+  const appendToolCallEvent = (part: unknown) => {
+    const toolName = getToolName(part) ?? 'tool';
+    const toolCallId = getToolCallId(part);
+    const eventId = toolCallId ?? `tool-${nextToolEventId++}`;
+    const event: ToolCallEvent = {
+      id: eventId,
+      type: 'tool-call',
+      toolName,
+      label: `Running tool: ${toolName}`,
+    };
+
+    transcriptEvents.push(event);
+
+    if (toolCallId) {
+      pendingToolEventIds.set(toolCallId, eventId);
+    } else {
+      pendingAnonymousToolEventIds.push(eventId);
+    }
+  };
+
+  const appendToolResultEvent = (part: unknown, error?: string) => {
+    const toolName = getToolName(part) ?? 'tool';
+    const toolCallId = getToolCallId(part);
+    const toolEventId =
+      (toolCallId ? pendingToolEventIds.get(toolCallId) : undefined) ??
+      pendingAnonymousToolEventIds.shift() ??
+      toolCallId ??
+      `tool-${nextToolEventId++}`;
+    const event: ToolResultEvent = {
+      id: `${toolEventId}-result`,
+      type: 'tool-result',
+      toolName,
+      label: `Processing result: ${toolName}`,
+      ...(error ? { error } : {}),
+    };
+
+    transcriptEvents.push(event);
+
+    if (toolCallId) {
+      pendingToolEventIds.delete(toolCallId);
+    }
+  };
+
   return {
+    getTranscriptEvents() {
+      return transcriptEvents.map((event) => cloneTranscriptEvent(event));
+    },
     async *send(input: string) {
       logger?.({ type: 'send-start', inputLength: input.length });
       onEvent?.({ type: 'send-start', inputLength: input.length });
+      const userEvent: UserMessageEvent = {
+        id: `user-${nextUserEventId++}`,
+        type: 'user-message',
+        text: input,
+      };
+      transcriptEvents.push(userEvent);
       messages.push({ role: 'user', content: input });
       let errorMessage: string | null = null;
       let sawToolCall = false;
+      let assistantEvent: AssistantMessageEvent | null = null;
+      const ensureAssistantEvent = () => {
+        if (!assistantEvent) {
+          assistantEvent = {
+            id: `assistant-${nextAssistantEventId++}`,
+            type: 'assistant-message',
+            text: '',
+            streaming: true,
+          };
+          transcriptEvents.push(assistantEvent);
+        }
+        return assistantEvent;
+      };
       const result = await streamTextFn({
         model,
         system,
@@ -89,9 +194,17 @@ export function createEngineerSession({
         ) {
           sawToolCall = true;
         }
+        if (part.type === 'tool-call') {
+          appendToolCallEvent(part);
+        }
+        if (part.type === 'tool-result') {
+          appendToolResultEvent(part);
+        }
         if (part.type === 'text-delta') {
           hadText = true;
           buffer += part.text;
+          const event = ensureAssistantEvent();
+          event.text = buffer;
           yield part.text;
         }
         if (part.type === 'error') {
@@ -100,6 +213,7 @@ export function createEngineerSession({
         }
         if (part.type === 'tool-error') {
           errorMessage = formatUnknownError(part.error);
+          appendToolResultEvent(part, errorMessage);
           onEvent?.({ type: 'tool-error', error: errorMessage });
         }
       }
@@ -118,8 +232,13 @@ export function createEngineerSession({
               : 'No response received. Please try again.';
           }
         }
+        const event = ensureAssistantEvent();
+        event.text = buffer;
         yield buffer;
       }
+      const finalAssistantEvent = ensureAssistantEvent();
+      finalAssistantEvent.text = buffer;
+      finalAssistantEvent.streaming = false;
       logger?.({
         type: 'send-finish',
         outputLength: buffer.length,

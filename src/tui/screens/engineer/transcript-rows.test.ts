@@ -20,7 +20,9 @@ describe('buildTranscriptRows', () => {
 
     expect(
       rows.some((row) =>
-        row.plainText.includes('Ask about pace, tyres, pit windows, or traffic.'),
+        row.plainText.includes(
+          'Ask about pace, tyres, pit windows, or traffic.',
+        ),
       ),
     ).toBe(true);
   });
@@ -38,7 +40,9 @@ describe('buildTranscriptRows', () => {
 
     expect(
       rows.some((row) =>
-        row.plainText.includes('Ask about pace, tyres, pit windows, or traffic.'),
+        row.plainText.includes(
+          'Ask about pace, tyres, pit windows, or traffic.',
+        ),
       ),
     ).toBe(true);
   });
@@ -127,5 +131,24 @@ describe('buildTranscriptRows', () => {
       ),
     ).toBe(true);
     expect(rows.some((row) => row.kind === 'pending-status')).toBe(false);
+  });
+
+  it('keeps stable row keys for persisted turns and live streaming text', () => {
+    const rows = buildTranscriptRows({
+      messages: [{ role: 'user', content: 'How is pace?' }],
+      streamingText: 'Strong.',
+      isStreaming: true,
+      status: 'Thinking',
+      messageWidth: 24,
+    });
+
+    expect(rows.map((row) => row.key)).toEqual([
+      'm-0-label',
+      'm-0-line-0',
+      'm-0-spacer',
+      'stream-label',
+      'stream-line-0',
+      'stream-spacer',
+    ]);
   });
 });

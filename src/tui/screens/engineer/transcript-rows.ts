@@ -1,11 +1,10 @@
 import React from 'react';
 import { Text } from '#ink';
+import type { TranscriptEvent } from '../../../agent/transcript-events.js';
 import type { Color } from '../../../vendor/ink/styles.js';
 import type { ChatMessage } from '../../chat-state.js';
-import { renderMarkdownToTerminal } from '../../terminal-markdown.js';
 import { theme } from '../../theme.js';
-
-const ANSI_SGR_REGEX = /\x1b\[[0-9;]*m/g;
+import { buildTranscriptModel } from './transcript-model.js';
 
 type TranscriptRowKind = 'label' | 'message-line' | 'spacer' | 'pending-status';
 
@@ -23,45 +22,6 @@ export type BuildTranscriptRowsOptions = {
   status: string | null;
   messageWidth: number;
 };
-
-function stripAnsi(text: string): string {
-  return text.replace(ANSI_SGR_REGEX, '');
-}
-
-function wrapAnsiLine(text: string, width: number): string[] {
-  if (width <= 0) return [text];
-  const visible = stripAnsi(text);
-  if (visible.length <= width) return [text];
-  const chunks: string[] = [];
-  let current = '';
-  let visibleCount = 0;
-
-  for (let i = 0; i < text.length; ) {
-    if (text[i] === '\u001b') {
-      const match = /^\u001b\[[0-9;]*m/.exec(text.slice(i));
-      if (match) {
-        current += match[0];
-        i += match[0].length;
-        continue;
-      }
-    }
-    current += text[i];
-    i += 1;
-    visibleCount += 1;
-    if (visibleCount >= width) {
-      chunks.push(current);
-      current = '';
-      visibleCount = 0;
-    }
-  }
-
-  if (current.length > 0) chunks.push(current);
-  return chunks.length ? chunks : [''];
-}
-
-function wrapAnsiText(text: string, width: number): string[] {
-  return text.split('\n').flatMap((line) => wrapAnsiLine(line, width));
-}
 
 function wrapPlainTextLine(line: string, width: number): string[] {
   if (width <= 0) return [line];
@@ -95,43 +55,6 @@ function createSpacerRow(key: string): TranscriptRow {
   };
 }
 
-function createMessageRows(
-  message: ChatMessage,
-  indexKey: string,
-  messageWidth: number,
-): TranscriptRow[] {
-  const label = message.role === 'assistant' ? 'Engineer' : 'You';
-  const color: Color =
-    message.role === 'assistant' ? theme.assistant : theme.user;
-
-  const renderedLines =
-    message.role === 'assistant'
-      ? wrapAnsiText(
-          renderMarkdownToTerminal(message.content, messageWidth),
-          messageWidth,
-        )
-      : message.content
-          .split('\n')
-          .flatMap((line) => wrapPlainTextLine(line, messageWidth));
-
-  const rows: TranscriptRow[] = [
-    createLabelRow(`${indexKey}-label`, label, color),
-  ];
-
-  for (let i = 0; i < renderedLines.length; i += 1) {
-    const line = renderedLines[i] ?? '';
-    rows.push({
-      key: `${indexKey}-line-${i}`,
-      kind: 'message-line',
-      plainText: stripAnsi(line),
-      node: React.createElement(Text, { wrap: 'truncate-end' }, `  ${line}`),
-    });
-  }
-
-  rows.push(createSpacerRow(`${indexKey}-spacer`));
-  return rows;
-}
-
 function createOnboardingRows(messageWidth: number): TranscriptRow[] {
   const lines = wrapPlainTextLine(
     'Ask about pace, tyres, pit windows, or traffic.',
@@ -153,6 +76,79 @@ function createOnboardingRows(messageWidth: number): TranscriptRow[] {
   ];
 }
 
+function createTranscriptEventRows({
+  messages,
+  streamingText,
+  isStreaming,
+  messageWidth,
+}: {
+  messages: ChatMessage[];
+  streamingText: string;
+  isStreaming: boolean;
+  messageWidth: number;
+}): TranscriptRow[] {
+  const events: TranscriptEvent[] = messages.map((message, index) => {
+    if (message.role === 'assistant') {
+      return {
+        id: `m-${index}`,
+        type: 'assistant-message',
+        text: message.content,
+        streaming: false,
+      };
+    }
+
+    return {
+      id: `m-${index}`,
+      type: 'user-message',
+      text: message.content,
+    };
+  });
+
+  if (isStreaming && streamingText) {
+    events.push({
+      id: 'stream',
+      type: 'assistant-message',
+      text: streamingText,
+      streaming: true,
+    });
+  }
+
+  const model = buildTranscriptModel({
+    events,
+    messageWidth,
+  });
+  const rows: TranscriptRow[] = [];
+
+  for (const row of model.rows) {
+    const color: Color =
+      row.role === 'assistant'
+        ? theme.assistant
+        : row.role === 'user'
+          ? theme.user
+          : theme.subtle;
+
+    rows.push(createLabelRow(`${row.id}-label`, row.label, color));
+
+    for (let i = 0; i < row.lines.length; i += 1) {
+      const line = row.lines[i] ?? { plainText: '', text: '' };
+      rows.push({
+        key: `${row.id}-line-${i}`,
+        kind: 'message-line',
+        plainText: line.plainText,
+        node: React.createElement(
+          Text,
+          { wrap: 'truncate-end' },
+          `  ${line.text}`,
+        ),
+      });
+    }
+
+    rows.push(createSpacerRow(`${row.id}-spacer`));
+  }
+
+  return rows;
+}
+
 export function buildTranscriptRows({
   messages,
   streamingText,
@@ -160,27 +156,16 @@ export function buildTranscriptRows({
   status,
   messageWidth,
 }: BuildTranscriptRowsOptions): TranscriptRow[] {
-  const rows: TranscriptRow[] = [];
+  const rows: TranscriptRow[] = createTranscriptEventRows({
+    messages,
+    streamingText,
+    isStreaming,
+    messageWidth,
+  });
   const hasUserTurn = messages.some((message) => message.role === 'user');
-
-  for (let i = 0; i < messages.length; i += 1) {
-    rows.push(...createMessageRows(messages[i], `m-${i}`, messageWidth));
-  }
 
   if (!hasUserTurn && !isStreaming && !status) {
     rows.push(...createOnboardingRows(messageWidth));
-  }
-
-  if (isStreaming) {
-    if (streamingText) {
-      rows.push(
-        ...createMessageRows(
-          { role: 'assistant', content: streamingText },
-          'stream',
-          messageWidth,
-        ),
-      );
-    }
   }
 
   return rows;

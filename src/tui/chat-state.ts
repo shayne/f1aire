@@ -4,5 +4,7 @@ export function appendUserMessage(
   history: ChatMessage[],
   content: string,
 ): ChatMessage[] {
-  return [...history, { role: 'user', content }];
+  const prompt = content.trim();
+  if (!prompt) return history;
+  return [...history, { role: 'user', content: prompt }];
 }
