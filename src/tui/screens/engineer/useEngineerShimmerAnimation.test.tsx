@@ -52,14 +52,14 @@ describe('useEngineerShimmerAnimation', () => {
     unmount();
   });
 
-  it('uses a slower 200ms glimmer cadence and left-to-right shimmer for thinking mode', async () => {
+  it('ticks at 50ms in thinking mode while using a slower 200ms glimmer cadence', async () => {
     animationFrameState.time = 200;
 
     const { lastFrame, unmount } = await renderTui(
       <ShimmerProbe mode="thinking" message="Thinking..." />,
     );
 
-    expect(animationFrameState.intervals.at(-1)).toBe(200);
+    expect(animationFrameState.intervals.at(-1)).toBe(50);
     expect(lastFrame()).toBe('1');
     unmount();
   });

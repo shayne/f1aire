@@ -7,6 +7,7 @@ import {
   type EngineerStatusMode,
 } from './engineer-status-animation.js';
 
+const ENGINEER_STATUS_TICK_MS = 50;
 const REQUESTING_GLIMMER_SPEED_MS = 50;
 const DEFAULT_GLIMMER_SPEED_MS = 200;
 
@@ -23,7 +24,9 @@ export function useEngineerShimmerAnimation(
     mode === 'requesting'
       ? REQUESTING_GLIMMER_SPEED_MS
       : DEFAULT_GLIMMER_SPEED_MS;
-  const [ref, time] = useAnimationFrame(isIdle ? null : glimmerSpeed);
+  const [ref, time] = useAnimationFrame(
+    isIdle ? null : ENGINEER_STATUS_TICK_MS,
+  );
   const messageWidth = useMemo(() => stringWidth(message), [message]);
 
   if (isIdle) {
