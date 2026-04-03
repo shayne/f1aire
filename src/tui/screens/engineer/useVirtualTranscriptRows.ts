@@ -20,12 +20,21 @@ export function getVirtualTranscriptWindow<TranscriptRow>({
   overscan: number;
 }): VirtualTranscriptWindow<TranscriptRow> {
   const normalizedViewportRows = Math.max(0, Math.floor(viewportRows));
-  const normalizedScrollOffset = Math.max(0, Math.floor(scrollOffset));
-  const normalizedOverscan = Math.max(0, Math.floor(overscan));
-  const start = Math.max(0, normalizedScrollOffset - normalizedOverscan);
-  const end = Math.min(
+  const normalizedScrollOffset = Math.min(
     rows.length,
-    normalizedScrollOffset + normalizedViewportRows + normalizedOverscan,
+    Math.max(0, Math.floor(scrollOffset)),
+  );
+  const normalizedOverscan = Math.max(0, Math.floor(overscan));
+  const start = Math.min(
+    rows.length,
+    Math.max(0, normalizedScrollOffset - normalizedOverscan),
+  );
+  const end = Math.max(
+    start,
+    Math.min(
+      rows.length,
+      normalizedScrollOffset + normalizedViewportRows + normalizedOverscan,
+    ),
   );
 
   return {

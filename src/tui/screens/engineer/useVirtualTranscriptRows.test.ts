@@ -24,4 +24,20 @@ describe('getVirtualTranscriptWindow', () => {
     expect(window.topSpacerRows).toBe(26);
     expect(window.bottomSpacerRows).toBe(154);
   });
+
+  it('clamps overscrolled offsets so spacer counts stay within transcript bounds', () => {
+    const window = getVirtualTranscriptWindow({
+      rows: rows(3),
+      viewportRows: 5,
+      scrollOffset: 100,
+      overscan: 2,
+    });
+
+    expect(window.visibleRows.map((row) => row.id)).toEqual([
+      'row-1',
+      'row-2',
+    ]);
+    expect(window.topSpacerRows).toBe(1);
+    expect(window.bottomSpacerRows).toBe(0);
+  });
 });

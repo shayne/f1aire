@@ -145,6 +145,41 @@ describe('EngineerChat transcript scroll', () => {
     unmount();
   });
 
+  it('keeps the transcript populated after repeated PageUp events before a render tick', async () => {
+    const { stdin, lastFrame, unmount } = await renderTui(
+      <EngineerChat
+        {...baseProps}
+        maxHeight={32}
+        messages={makeMessages(140)}
+      />,
+      { columns: 120, rows: 40 },
+    );
+
+    await tick();
+
+    stdin.write('\u001b[5~');
+    stdin.write('\u001b[5~');
+    stdin.write('\u001b[5~');
+    stdin.write('\u001b[5~');
+    stdin.write('\u001b[5~');
+    stdin.write('\u001b[5~');
+    stdin.write('\u001b[5~');
+    stdin.write('\u001b[5~');
+    stdin.write('\u001b[5~');
+    stdin.write('\u001b[5~');
+    await tick();
+    await tick();
+
+    const pausedFrame = stripAnsi(lastFrame() ?? '');
+    expect(pausedFrame).toContain(
+      'Viewing earlier output · pgdn to return live',
+    );
+    expect(pausedFrame).toMatch(/message \d+/);
+    expect(pausedFrame).not.toMatch(/\n(?:\s*\n){8,}\s*Jump to bottom/);
+
+    unmount();
+  });
+
   it('keeps sticky bottom live for new stream rows and shows the paused hint when scrolled up', async () => {
     const { stdin, lastFrame, rerender, unmount } = await renderTui(
       <EngineerChat
