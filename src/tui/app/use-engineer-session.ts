@@ -7,7 +7,12 @@ import { createEngineerLogger } from '../../agent/engineer-logger.js';
 import { createEngineerSession } from '../../agent/engineer.js';
 import { formatUnknownError } from '../../agent/error-utils.js';
 import { systemPrompt } from '../../agent/prompt.js';
+import {
+  loadTranscriptEvents,
+  saveTranscriptEvents,
+} from '../../agent/session-transcript-store.js';
 import { makeTools } from '../../agent/tools.js';
+import type { TranscriptEvent } from '../../agent/transcript-events.js';
 import {
   summarizeFromLines,
   type Summary as SummaryData,
@@ -149,6 +154,45 @@ const getToolInputBytes = (part: ToolPart): number | undefined => {
   }
 };
 
+function getTranscriptSessionKey({
+  year,
+  meeting,
+  session,
+}: {
+  year: number;
+  meeting: { Key: number };
+  session: { Key: number };
+}): string {
+  return `${year}-${meeting.Key}-${session.Key}`;
+}
+
+function createSummaryTranscript(summaryText: string): TranscriptEvent[] {
+  return [
+    {
+      id: 'assistant-1',
+      type: 'assistant-message',
+      text: summaryText,
+      streaming: false,
+    },
+  ];
+}
+
+function transcriptEventsToMessages(
+  events: TranscriptEvent[],
+): ChatMessage[] {
+  return events.flatMap((event): ChatMessage[] => {
+    if (event.type === 'user-message') {
+      return [{ role: 'user', content: event.text }];
+    }
+
+    if (event.type === 'assistant-message') {
+      return [{ role: 'assistant', content: event.text }];
+    }
+
+    return [];
+  });
+}
+
 export function useEngineerSession({
   keyStatus,
   screenName,
@@ -189,6 +233,7 @@ export function useEngineerSession({
     null,
   );
   const pendingEngineerRef = useRef<PendingEngineer | null>(null);
+  const transcriptSessionKeyRef = useRef<string | null>(null);
   const engineerLoggerRef = useRef<ReturnType<
     typeof createEngineerLogger
   > | null>(null);
@@ -267,6 +312,7 @@ export function useEngineerSession({
     if (isStreaming) return;
     const session = engineerRef.current;
     if (!session) return;
+    const transcriptSessionKey = transcriptSessionKeyRef.current;
     setIsStreaming(true);
     setStreamStatus('Thinking...');
     setActivity(['Thinking...']);
@@ -279,6 +325,13 @@ export function useEngineerSession({
         setStreamingText(buffer);
       }
       setMessages((prev) => [...prev, { role: 'assistant', content: buffer }]);
+      if (transcriptSessionKey) {
+        await saveTranscriptEvents({
+          dataDir: getDataDir('f1aire'),
+          sessionKey: transcriptSessionKey,
+          events: session.getTranscriptEvents(),
+        });
+      }
     } catch (err) {
       const message = formatUnknownError(err);
       pushActivity(`Error: ${message}`);
@@ -365,10 +418,26 @@ export function useEngineerSession({
       meeting: pending.meeting.Name,
     });
 
+    const transcriptSessionKey = getTranscriptSessionKey({
+      year: pending.year,
+      meeting: pending.meeting,
+      session: pending.session,
+    });
+    transcriptSessionKeyRef.current = transcriptSessionKey;
+    const storedTranscript = await loadTranscriptEvents({
+      dataDir: getDataDir('f1aire'),
+      sessionKey: transcriptSessionKey,
+    });
+    const initialTranscript =
+      storedTranscript.length > 0
+        ? storedTranscript
+        : createSummaryTranscript(summaryText);
+
     engineerRef.current = createEngineerSession({
       model,
       tools,
       system: systemPrompt,
+      initialTranscript,
       logger: engineerLoggerRef.current?.logger ?? undefined,
       onEvent: (event) => {
         if (event.type === 'send-start') {
@@ -537,7 +606,7 @@ export function useEngineerSession({
     });
 
     setActivity([]);
-    setMessages([{ role: 'assistant', content: summaryText }]);
+    setMessages(transcriptEventsToMessages(initialTranscript));
     setStreamingText('');
     setScreen({
       name: 'engineer',

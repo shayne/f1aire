@@ -24,4 +24,22 @@ describe('Summary', () => {
     expect(frame).toContain('/tmp/f1aire/session');
     unmount();
   });
+
+  it('shows a concise resume cue when a prior transcript exists', async () => {
+    const { lastFrame, unmount } = await renderTui(
+      <Summary
+        dir="/tmp/f1aire/session"
+        hasPriorTranscript={true}
+        summary={{
+          winner: null,
+          fastestLap: null,
+          totalLaps: null,
+        }}
+      />,
+      { columns: 90, rows: 20 },
+    );
+
+    expect(lastFrame() ?? '').toContain('Prior engineer transcript found');
+    unmount();
+  });
 });

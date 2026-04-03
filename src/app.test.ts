@@ -1,9 +1,15 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 import React from 'react';
+import { Text } from '#ink';
 import { renderTui } from '#ink/testing';
 import type { Summary } from './core/summary.js';
 import type { Meeting, Session } from './core/types.js';
 import { getBackScreen } from './tui/navigation.js';
+
+const originalEnv = { ...process.env };
 
 const session: Session = {
   Key: 10,
@@ -37,6 +43,7 @@ type RuntimeProgressUpdate = {
 };
 
 afterEach(() => {
+  process.env = { ...originalEnv };
   vi.restoreAllMocks();
   vi.resetModules();
 });
@@ -134,6 +141,148 @@ describe('App shell routes', () => {
     expect(frame).toContain('Select a season');
     expect(frame).toContain('Start a f1aire race-engineer session');
     expect(frame).not.toContain('Ask the engineer');
+    expect(frame).not.toContain('Quick summary:');
+    app.unmount();
+  });
+
+  it('resumes a stored engineer transcript when the same session is reopened', async () => {
+    process.env.OPENAI_API_KEY = 'test-key';
+    const base = path.join(tmpdir(), `f1aire-app-resume-${Date.now()}`);
+    process.env.XDG_DATA_HOME = base;
+    process.env.XDG_CONFIG_HOME = base;
+    process.env.HOME = base;
+
+    mkdirSync(path.join(base, 'f1aire', 'data', 'transcripts'), {
+      recursive: true,
+    });
+    writeFileSync(
+      path.join(base, 'f1aire', 'data', 'transcripts', '2024-1-10.json'),
+      `${JSON.stringify(
+        [
+          {
+            id: 'user-1',
+            type: 'user-message',
+            text: 'Compare stint one tyre dropoff.',
+          },
+          {
+            id: 'assistant-1',
+            type: 'assistant-message',
+            text: 'Ferrari stayed flatter over the first 12 laps.',
+            streaming: false,
+          },
+        ],
+        null,
+        2,
+      )}\n`,
+      'utf-8',
+    );
+
+    vi.doMock('./agent/pyodide/assets.js', () => ({
+      ensurePyodideAssets: async ({
+        onProgress,
+      }: {
+        onProgress?: (update: RuntimeProgressUpdate) => void;
+      }) => {
+        onProgress?.({ phase: 'ready', message: 'Python runtime ready.' });
+        return { ready: true };
+      },
+    }));
+    vi.doMock('@ai-sdk/openai', () => ({
+      createOpenAI: () => () => ({}),
+    }));
+    vi.doMock('./agent/engineer-logger.js', () => ({
+      createEngineerLogger: () => ({ logger: vi.fn() }),
+    }));
+    vi.doMock('./agent/prompt.js', () => ({
+      systemPrompt: 'test prompt',
+    }));
+    vi.doMock('./agent/tools.js', () => ({
+      makeTools: () => ({}),
+    }));
+    vi.doMock('./tui/screens/SeasonPicker.js', () => ({
+      SeasonPicker: ({ onSelect }: { onSelect: (year: number) => void }) => {
+        React.useEffect(() => {
+          void onSelect(2024);
+        }, [onSelect]);
+        return null;
+      },
+    }));
+    vi.doMock('./core/f1-api.js', () => ({
+      getMeetings: async () => ({
+        Year: 2024,
+        Meetings: [meeting],
+      }),
+    }));
+    vi.doMock('./tui/screens/MeetingPicker.js', () => ({
+      MeetingPicker: ({
+        meetings,
+        onSelect,
+      }: {
+        meetings: Meeting[];
+        onSelect: (selectedMeeting: Meeting) => void;
+      }) => {
+        React.useEffect(() => {
+          void onSelect(meetings[0] as Meeting);
+        }, [meetings, onSelect]);
+        return null;
+      },
+    }));
+    vi.doMock('./tui/screens/SessionPicker.js', () => ({
+      SessionPicker: ({
+        meeting,
+        onSelect,
+      }: {
+        meeting: Meeting;
+        onSelect: (selectedSession: Session) => void;
+      }) => {
+        React.useEffect(() => {
+          void onSelect(meeting.Sessions[0] as Session);
+        }, [meeting, onSelect]);
+        return null;
+      },
+    }));
+    vi.doMock('./core/download.js', () => ({
+      downloadSession: async () => {
+        const dir = path.join(base, 'download');
+        mkdirSync(dir, { recursive: true });
+        writeFileSync(path.join(dir, 'subscribe.json'), '{}', 'utf-8');
+        writeFileSync(path.join(dir, 'live.jsonl'), '', 'utf-8');
+        return { dir, lineCount: 0 };
+      },
+    }));
+    vi.doMock('./tui/screens/EngineerChat.js', () => ({
+      EngineerChat: ({
+        messages,
+      }: {
+        messages: { role: 'user' | 'assistant'; content: string }[];
+      }) =>
+        React.createElement(
+          Text,
+          null,
+          messages
+            .map((message) => `${message.role}: ${message.content}`)
+            .join('\n'),
+        ),
+    }));
+
+    const { App } = await import('./app.js');
+    const app = await renderTui(React.createElement(App), {
+      columns: 72,
+      rows: 20,
+    });
+
+    await waitFor(
+      () =>
+        (app.lastFrame() ?? '').includes(
+          'assistant: Ferrari stayed flatter over the first 12 laps.',
+        ),
+      {
+        debug: () => app.lastFrame() ?? '',
+      },
+    );
+
+    const frame = app.lastFrame() ?? '';
+    expect(frame).toContain('user: Compare stint one tyre dropoff.');
     expect(frame).not.toContain('Quick summary:');
     app.unmount();
   });
