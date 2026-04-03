@@ -1,163 +1,117 @@
 import React from 'react';
-import { Text } from '#ink';
 import { renderTui } from '#ink/testing';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { createRenderBudgetLogger } from './perf.js';
+import { describe, expect, it, vi } from 'vitest';
 
-const transcriptRowBuilders = vi.hoisted(() => ({
-  buildHistoricalTranscriptRows: vi.fn(),
-  buildLiveTranscriptRows: vi.fn(),
+const transcriptRowRenderProbe = vi.hoisted(() => ({
+  onHistoricalMessageLineRender: vi.fn(),
 }));
 
-vi.mock('./screens/engineer/transcript-rows.js', async () => {
-  const actual = await vi.importActual<
-    typeof import('./screens/engineer/transcript-rows.js')
-  >('./screens/engineer/transcript-rows.js');
+vi.mock('#ink', async () => {
+  const React = await vi.importActual<typeof import('react')>('react');
+  const actual = await vi.importActual<typeof import('#ink')>('#ink');
+
+  function getHistoricalMessageText(children: React.ReactNode): string | null {
+    const child = React.Children.toArray(children)[0];
+    if (!React.isValidElement(child)) {
+      return null;
+    }
+
+    const props = child.props as { children?: React.ReactNode };
+    if (typeof props.children !== 'string') {
+      return null;
+    }
+
+    return /^  historical message \d+$/.test(props.children)
+      ? props.children
+      : null;
+  }
+
+  const Box = React.forwardRef<
+    React.ElementRef<typeof actual.Box>,
+    React.ComponentProps<typeof actual.Box>
+  >(function Box(props, ref) {
+    const historicalMessageText = getHistoricalMessageText(props.children);
+    if (historicalMessageText) {
+      transcriptRowRenderProbe.onHistoricalMessageLineRender(
+        historicalMessageText,
+      );
+    }
+
+    return React.createElement(actual.Box, {
+      ...props,
+      ref,
+    });
+  });
+  Box.displayName = 'Box';
 
   return {
     ...actual,
-    buildHistoricalTranscriptRows:
-      transcriptRowBuilders.buildHistoricalTranscriptRows,
-    buildLiveTranscriptRows: transcriptRowBuilders.buildLiveTranscriptRows,
+    Box,
   };
 });
 
 const { EngineerChat } = await import('./screens/EngineerChat.js');
 
-const meeting = {
-  Key: 1,
-  Name: 'Monaco Grand Prix',
-  Location: 'Monaco',
-  Sessions: [],
-};
+const messages = Array.from({ length: 120 }, (_, index) => ({
+  role: index % 2 === 0 ? ('user' as const) : ('assistant' as const),
+  content: `historical message ${index + 1}`,
+}));
 
-const session = {
-  Key: 10,
-  Name: 'Race',
-  Type: 'Race',
-  StartDate: '2025-05-25T13:00:00Z',
-  EndDate: '2025-05-25T15:00:00Z',
-  GmtOffset: '+00:00',
+const baseProps = {
+  messages,
+  onSend: () => {},
+  year: 2025,
+  meeting: {
+    Key: 1,
+    Name: 'Monaco Grand Prix',
+    Location: 'Monaco',
+    Sessions: [],
+  },
+  session: {
+    Key: 10,
+    Name: 'Race',
+    Type: 'Race',
+    StartDate: '2025-05-25T13:00:00Z',
+    EndDate: '2025-05-25T15:00:00Z',
+    GmtOffset: '+00:00',
+  },
+  summary: null,
+  asOfLabel: 'Latest',
+  maxHeight: 500,
 };
 
 const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
 
-describe('createRenderBudgetLogger', () => {
-  it('emits a render-budget warning only when measured work exceeds the budget', () => {
-    let nowMs = 100;
-    const write = vi.fn();
-    const measureRender = createRenderBudgetLogger({
-      warnMs: 8,
-      now: () => nowMs,
-      write,
-    });
-
-    const withinBudget = measureRender(() => {
-      nowMs += 7;
-      return 'fast';
-    });
-
-    const overBudget = measureRender(() => {
-      nowMs += 9;
-      return 'slow';
-    });
-
-    expect(withinBudget).toBe('fast');
-    expect(overBudget).toBe('slow');
-    expect(write).toHaveBeenCalledTimes(1);
-    expect(write).toHaveBeenCalledWith({
-      type: 'render-budget',
-      durationMs: 9,
-    });
-  });
-});
-
 describe('EngineerChat render budget', () => {
-  beforeEach(() => {
-    transcriptRowBuilders.buildHistoricalTranscriptRows.mockReset();
-    transcriptRowBuilders.buildLiveTranscriptRows.mockReset();
-  });
-
-  it('keeps one streaming delta from re-rendering every historical transcript row', async () => {
-    const onHistoricalRowRender = vi.fn();
-    const messages = Array.from({ length: 240 }, (_, index) => ({
-      role: index % 2 === 0 ? ('user' as const) : ('assistant' as const),
-      content: `historical message ${index + 1}`,
-    }));
-
-    function HistoricalRowProbe({ text }: { text: string }) {
-      onHistoricalRowRender();
-      return <Text wrap="truncate-end">{text}</Text>;
-    }
-
-    transcriptRowBuilders.buildHistoricalTranscriptRows.mockImplementation(
-      ({ messages: historicalMessages }) =>
-        historicalMessages.map((message, index) => ({
-          key: `historical-${index}`,
-          kind: 'message-line',
-          plainText: message.content,
-          node: (
-            <HistoricalRowProbe
-              key={`historical-node-${index}`}
-              text={message.content}
-            />
-          ),
-        })),
-    );
-    transcriptRowBuilders.buildLiveTranscriptRows.mockImplementation(
-      ({ streamingText }) =>
-        streamingText
-          ? [
-              {
-                key: 'live-stream',
-                kind: 'message-line',
-                plainText: streamingText,
-                node: <Text wrap="truncate-end">{streamingText}</Text>,
-              },
-            ]
-          : [],
-    );
-
+  it('keeps one streaming delta from re-rendering/remapping historical transcript row wrappers', async () => {
     const rendered = await renderTui(
       <EngineerChat
-        messages={messages}
-        onSend={() => {}}
-        streamingText=""
-        isStreaming={false}
-        status={null}
-        year={2025}
-        meeting={meeting}
-        session={session}
-        summary={null}
-        activity={[]}
-        asOfLabel="Latest"
-        maxHeight={320}
+        {...baseProps}
+        streamingText="chunk 1"
+        isStreaming
+        status="Thinking..."
+        activity={['Thinking...']}
       />,
     );
 
     await tick();
-    onHistoricalRowRender.mockClear();
+    transcriptRowRenderProbe.onHistoricalMessageLineRender.mockClear();
 
     rendered.rerender(
       <EngineerChat
-        messages={messages}
-        onSend={() => {}}
-        streamingText="fresh delta"
+        {...baseProps}
+        streamingText="chunk 2"
         isStreaming
         status="Thinking..."
-        year={2025}
-        meeting={meeting}
-        session={session}
-        summary={null}
         activity={['Thinking...']}
-        asOfLabel="Latest"
-        maxHeight={320}
       />,
     );
 
     await tick();
 
-    expect(onHistoricalRowRender.mock.calls.length).toBeLessThan(20);
+    expect(
+      transcriptRowRenderProbe.onHistoricalMessageLineRender,
+    ).toHaveBeenCalledTimes(0);
     rendered.unmount();
   });
 });

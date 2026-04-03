@@ -12,6 +12,14 @@ type TranscriptViewportProps = {
   onRender?: () => void;
 };
 
+const TranscriptViewportRow = React.memo(function TranscriptViewportRow({
+  row,
+}: {
+  row: TranscriptRow;
+}): React.JSX.Element {
+  return <Box>{row.node}</Box>;
+});
+
 export const TranscriptViewport = React.memo(function TranscriptViewport({
   rows,
   topSpacerRows = 0,
@@ -46,7 +54,7 @@ export const TranscriptViewport = React.memo(function TranscriptViewport({
     <Box flexDirection="column">
       {topSpacerRows > 0 ? <Box flexShrink={0} height={topSpacerRows} /> : null}
       {rows.map((row) => (
-        <Box key={row.key}>{row.node}</Box>
+        <TranscriptViewportRow key={row.key} row={row} />
       ))}
       {bottomSpacerRows > 0 ? (
         <Box flexShrink={0} height={bottomSpacerRows} />

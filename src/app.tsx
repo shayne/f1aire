@@ -373,6 +373,7 @@ function AppImpl(): React.JSX.Element {
         <Header breadcrumb={breadcrumb} compact={isShort} />
       ) : null}
       <Box
+        key={showGlobalChrome ? 'chrome-shell' : 'engineer-shell'}
         flexGrow={1}
         flexDirection="column"
         marginLeft={showGlobalChrome ? 1 : 0}

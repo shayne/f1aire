@@ -3,7 +3,7 @@ import path from 'node:path';
 import { tmpdir } from 'node:os';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import React from 'react';
-import { Box, Text } from '#ink';
+import { Text } from '#ink';
 import { renderTui } from '#ink/testing';
 import type { Meeting, Session } from './core/types.js';
 
@@ -209,11 +209,7 @@ describe('App engineer shell', () => {
     );
     mockEngineerRouteBoot({
       base,
-      EngineerChat: () => (
-        <Box>
-          <Text>SHELL-ROOT</Text>
-        </Box>
-      ),
+      EngineerChat: () => <Text>SHELL-ROOT</Text>,
     });
 
     const { App } = await import('./app.js');
@@ -226,8 +222,7 @@ describe('App engineer shell', () => {
     const frame = app.lastFrame() ?? '';
     const firstRenderedLine =
       frame.split('\n').find((line) => line.trim().length > 0) ?? '';
-    expect(firstRenderedLine.trim()).toBe('SHELL-ROOT');
-    expect(firstRenderedLine.startsWith('  ')).toBe(false);
+    expect(firstRenderedLine).toBe('SHELL-ROOT');
     app.unmount();
   });
 });
