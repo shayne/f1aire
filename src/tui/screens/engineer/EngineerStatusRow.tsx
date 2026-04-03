@@ -51,6 +51,11 @@ export function EngineerStatusRow({
     !isStreaming,
   );
   const { accentColor, shimmerColor } = getStatusColors(message);
+
+  if (!isStreaming && message === 'Idle') {
+    return <Box />;
+  }
+
   return (
     <Box flexDirection="column" width="100%" height={2}>
       <Box height={1} />

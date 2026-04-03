@@ -85,9 +85,17 @@ function renderVisibleLine(
 }
 
 export function renderComposerPlaceholder(): React.ReactNode {
+  const placeholder =
+    'Ask the engineer about pace, tyres, traffic, or strategy...';
+
   return (
     <Text color={theme.subtle} dimColor>
-      Ask the engineer about pace, tyres, traffic, or strategy...
+      <Text color={theme.subtle} inverse>
+        {placeholder[0] ?? ' '}
+      </Text>
+      <Text color={theme.subtle} dimColor>
+        {placeholder.slice(1)}
+      </Text>
     </Text>
   );
 }

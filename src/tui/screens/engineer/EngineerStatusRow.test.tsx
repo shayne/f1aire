@@ -63,14 +63,26 @@ describe('EngineerStatusRow', () => {
     ui.unmount();
   });
 
-  it('renders the idle marker with the Braille spinner alphabet too', async () => {
+  it('renders nothing when idle', async () => {
     const { lastFrame, unmount } = await renderTui(
       <EngineerStatusRow status="Idle" isStreaming={false} />,
     );
 
     const frame = stripAnsi(lastFrame() ?? '');
-    expect(frame).toContain('⠋ Idle');
-    expect(frame).not.toContain('▁ Idle');
+    expect(frame).toBe('');
     unmount();
+  });
+
+  it('can transition from idle to streaming without changing hook order', async () => {
+    const ui = await renderTui(
+      <EngineerStatusRow status="Idle" isStreaming={false} />,
+    );
+
+    ui.rerender(<EngineerStatusRow status="Thinking" isStreaming />);
+
+    const frame = stripAnsi(ui.lastFrame() ?? '');
+    expect(frame).toContain('Thinking');
+    expect(getStatusGlyph(frame)).toMatch(spinnerFramePattern);
+    ui.unmount();
   });
 });

@@ -53,6 +53,36 @@ describe('Composer', () => {
     ).toBe(true);
   });
 
+  it('renders a block cursor over the first placeholder character', async () => {
+    const placeholder = renderComposerPlaceholder();
+
+    expect(React.isValidElement(placeholder)).toBe(true);
+    if (!React.isValidElement(placeholder)) return;
+
+    const children = React.Children.toArray(
+      placeholder.props.children as React.ReactNode,
+    );
+    expect(children).toHaveLength(2);
+
+    const cursorGlyph = children[0];
+    const restGlyphs = children[1];
+
+    expect(React.isValidElement(cursorGlyph)).toBe(true);
+    expect(React.isValidElement(restGlyphs)).toBe(true);
+
+    if (React.isValidElement(cursorGlyph)) {
+      expect((cursorGlyph.props as { inverse?: boolean }).inverse).toBe(true);
+      expect(cursorGlyph.props.children).toBe('A');
+    }
+
+    if (React.isValidElement(restGlyphs)) {
+      expect((restGlyphs.props as { dimColor?: boolean }).dimColor).toBe(true);
+      expect(restGlyphs.props.children).toBe(
+        'sk the engineer about pace, tyres, traffic, or strategy...',
+      );
+    }
+  });
+
   it('renders the footer hint on the final visible row without trailing blank padding', async () => {
     const { lastFrame, unmount } = await renderTui(
       <Harness onSend={vi.fn()} />,

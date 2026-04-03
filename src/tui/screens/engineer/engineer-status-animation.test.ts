@@ -32,35 +32,23 @@ describe('engineer status animation', () => {
     expect(getEngineerStatusGlyph(720)).toBe('⠏');
   });
 
-  it('moves requesting shimmer left to right and response shimmer right to left', () => {
+  it.each(activeModes)('moves shimmer left to right for %s status', (mode) => {
+    const message = mode === 'requesting' ? 'Loading' : 'Thinking';
+
     expect(
       getEngineerStatusGlimmerIndex({
-        mode: 'requesting',
-        message: 'Loading',
+        mode,
+        message,
         time: 0,
       }),
     ).toBe(0);
     expect(
       getEngineerStatusGlimmerIndex({
-        mode: 'requesting',
-        message: 'Loading',
+        mode,
+        message,
         time: 120,
       }),
     ).toBe(1);
-    expect(
-      getEngineerStatusGlimmerIndex({
-        mode: 'thinking',
-        message: 'Thinking',
-        time: 0,
-      }),
-    ).toBe(7);
-    expect(
-      getEngineerStatusGlimmerIndex({
-        mode: 'thinking',
-        message: 'Thinking',
-        time: 120,
-      }),
-    ).toBe(6);
   });
 
   it.each(activeModes)(
@@ -82,22 +70,18 @@ describe('engineer status animation', () => {
     },
   );
 
-  it('wraps the shimmer window to the edge of the current sweep direction', () => {
-    expect(
-      getEngineerStatusGlimmerIndex({
-        mode: 'requesting',
-        message: 'Thinking',
-        time: 960,
-      }),
-    ).toBe(0);
-    expect(
-      getEngineerStatusGlimmerIndex({
-        mode: 'thinking',
-        message: 'Thinking',
-        time: 960,
-      }),
-    ).toBe(7);
-  });
+  it.each(activeModes)(
+    'wraps the shimmer window to the left edge for %s status',
+    (mode) => {
+      expect(
+        getEngineerStatusGlimmerIndex({
+          mode,
+          message: 'Thinking',
+          time: 960,
+        }),
+      ).toBe(0);
+    },
+  );
 
   it('keeps grapheme clusters intact when slicing shimmer segments', () => {
     expect(
