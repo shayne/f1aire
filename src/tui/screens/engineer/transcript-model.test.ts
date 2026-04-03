@@ -76,4 +76,36 @@ describe('buildTranscriptModel', () => {
       },
     ]);
   });
+
+  it('changes version when rendered styling changes beyond plain text', () => {
+    const plainModel = buildTranscriptModel({
+      events: [
+        {
+          id: 'assistant-1',
+          type: 'assistant-message',
+          text: 'Pace',
+          streaming: false,
+        },
+      ],
+      messageWidth: 72,
+      renderAssistantText: (text) => text,
+    });
+    const styledModel = buildTranscriptModel({
+      events: [
+        {
+          id: 'assistant-1',
+          type: 'assistant-message',
+          text: 'Pace',
+          streaming: false,
+        },
+      ],
+      messageWidth: 72,
+      renderAssistantText: (text) => `\u001b[1m${text}\u001b[22m`,
+    });
+
+    expect(styledModel.rows[0]).toMatchObject({
+      lines: [{ text: '\u001b[1mPace\u001b[22m', plainText: 'Pace' }],
+    });
+    expect(styledModel.version).not.toBe(plainModel.version);
+  });
 });

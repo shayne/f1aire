@@ -105,7 +105,9 @@ function wrapPlainText(text: string, width: number): TranscriptModelLine[] {
 }
 
 function buildRowVersion(row: TranscriptModelRow): string {
-  const lineText = row.lines.map((line) => line.plainText).join('\n');
+  const lineText = row.lines
+    .map((line) => `${line.text}\u0003${line.plainText}`)
+    .join('\n');
   if (row.kind === 'tool') {
     return [
       row.id,

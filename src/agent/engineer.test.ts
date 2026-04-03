@@ -120,4 +120,81 @@ describe('engineer session', () => {
       },
     ]);
   });
+
+  it('seeds follow-up model history from initial transcript messages', async () => {
+    let callMessages: unknown;
+    const streamTextFn = vi.fn(
+      async ({ messages }) => {
+        callMessages = messages.map(
+          (message: { role: string; content: string }) => ({ ...message }),
+        );
+        return {
+          fullStream: (async function* () {
+            yield { type: 'text-delta', id: 't1', text: 'Copy.' };
+          })(),
+        } as any;
+      },
+    );
+
+    const session = createEngineerSession({
+      model: {} as any,
+      tools: {} as any,
+      system: 'x',
+      initialTranscript: [
+        {
+          id: 'user-1',
+          type: 'user-message',
+          text: 'Summarize the opening stint.',
+        },
+        {
+          id: 'assistant-1',
+          type: 'assistant-message',
+          text: 'Verstappen led the medium runners.',
+          streaming: false,
+        },
+      ],
+      streamTextFn: streamTextFn as any,
+    });
+
+    for await (const _chunk of session.send('Compare Norris next.')) {
+      // Drain stream.
+    }
+
+    expect(callMessages).toEqual([
+      { role: 'user', content: 'Summarize the opening stint.' },
+      { role: 'assistant', content: 'Verstappen led the medium runners.' },
+      { role: 'user', content: 'Compare Norris next.' },
+    ]);
+  });
+
+  it('records an assistant error event when stream setup throws before rethrowing', async () => {
+    const session = createEngineerSession({
+      model: {} as any,
+      tools: {} as any,
+      system: 'x',
+      streamTextFn: (async () => {
+        throw new Error('stream setup failed');
+      }) as any,
+    });
+
+    await expect(async () => {
+      for await (const _chunk of session.send('Hello')) {
+        // Drain stream.
+      }
+    }).rejects.toThrow('stream setup failed');
+
+    expect(session.getTranscriptEvents()).toEqual([
+      {
+        id: 'user-1',
+        type: 'user-message',
+        text: 'Hello',
+      },
+      {
+        id: 'assistant-1',
+        type: 'assistant-message',
+        text: 'Error: stream setup failed',
+        streaming: false,
+      },
+    ]);
+  });
 });

@@ -41,6 +41,20 @@ function cloneTranscriptEvent(event: TranscriptEvent): TranscriptEvent {
   return { ...event };
 }
 
+function createInitialMessages(initialTranscript: TranscriptEvent[]): Message[] {
+  return initialTranscript.flatMap((event): Message[] => {
+    if (event.type === 'user-message') {
+      return [{ role: 'user', content: event.text }];
+    }
+
+    if (event.type === 'assistant-message') {
+      return [{ role: 'assistant', content: event.text }];
+    }
+
+    return [];
+  });
+}
+
 export function createEngineerSession({
   model,
   tools,
@@ -50,7 +64,7 @@ export function createEngineerSession({
   logger,
   onEvent,
 }: CreateEngineerSessionArgs) {
-  const messages: Message[] = [];
+  const messages = createInitialMessages(initialTranscript);
   const transcriptEvents = initialTranscript.map((event) =>
     cloneTranscriptEvent(event),
   );
@@ -152,90 +166,102 @@ export function createEngineerSession({
         }
         return assistantEvent;
       };
-      const result = await streamTextFn({
-        model,
-        system,
-        messages,
-        tools,
-        // Allow enough steps for tool retries (e.g. python self-healing) while
-        // keeping an upper bound so a bad loop can't run forever.
-        stopWhen: stepCountIs(8),
-        onError({ error }) {
-          errorMessage = formatUnknownError(error);
-          logger?.({
-            type: 'stream-error',
-            error: errorMessage,
-          });
-          onEvent?.({ type: 'stream-error', error: errorMessage });
-        },
-      });
       let buffer = '';
       let hadText = false;
-      for await (const part of result.fullStream) {
-        onEvent?.({ type: 'stream-part', part });
-        if (part.type !== 'text-delta') {
-          const logEvent: Record<string, unknown> = {
-            type: 'stream-part',
-            partType: part.type,
-          };
-          const toolName = getToolName(part);
-          const toolCallId = getToolCallId(part);
-          if (toolName) logEvent.toolName = toolName;
-          if (toolCallId) logEvent.toolCallId = toolCallId;
-          if (part.type === 'tool-error' || part.type === 'error') {
-            logEvent.error = formatUnknownError((part as any).error);
+      try {
+        const result = await streamTextFn({
+          model,
+          system,
+          messages,
+          tools,
+          // Allow enough steps for tool retries (e.g. python self-healing) while
+          // keeping an upper bound so a bad loop can't run forever.
+          stopWhen: stepCountIs(8),
+          onError({ error }) {
+            errorMessage = formatUnknownError(error);
+            logger?.({
+              type: 'stream-error',
+              error: errorMessage,
+            });
+            onEvent?.({ type: 'stream-error', error: errorMessage });
+          },
+        });
+
+        for await (const part of result.fullStream) {
+          onEvent?.({ type: 'stream-part', part });
+          if (part.type !== 'text-delta') {
+            const logEvent: Record<string, unknown> = {
+              type: 'stream-part',
+              partType: part.type,
+            };
+            const toolName = getToolName(part);
+            const toolCallId = getToolCallId(part);
+            if (toolName) logEvent.toolName = toolName;
+            if (toolCallId) logEvent.toolCallId = toolCallId;
+            if (part.type === 'tool-error' || part.type === 'error') {
+              logEvent.error = formatUnknownError((part as any).error);
+            }
+            logger?.(logEvent);
           }
-          logger?.(logEvent);
+          if (
+            part.type === 'tool-call' ||
+            part.type === 'tool-result' ||
+            part.type === 'tool-input-start'
+          ) {
+            sawToolCall = true;
+          }
+          if (part.type === 'tool-call') {
+            appendToolCallEvent(part);
+          }
+          if (part.type === 'tool-result') {
+            appendToolResultEvent(part);
+          }
+          if (part.type === 'text-delta') {
+            hadText = true;
+            buffer += part.text;
+            const event = ensureAssistantEvent();
+            event.text = buffer;
+            yield part.text;
+          }
+          if (part.type === 'error') {
+            errorMessage = formatUnknownError(part.error);
+            onEvent?.({ type: 'stream-error', error: errorMessage });
+          }
+          if (part.type === 'tool-error') {
+            errorMessage = formatUnknownError(part.error);
+            appendToolResultEvent(part, errorMessage);
+            onEvent?.({ type: 'tool-error', error: errorMessage });
+          }
         }
-        if (
-          part.type === 'tool-call' ||
-          part.type === 'tool-result' ||
-          part.type === 'tool-input-start'
-        ) {
-          sawToolCall = true;
-        }
-        if (part.type === 'tool-call') {
-          appendToolCallEvent(part);
-        }
-        if (part.type === 'tool-result') {
-          appendToolResultEvent(part);
-        }
-        if (part.type === 'text-delta') {
-          hadText = true;
-          buffer += part.text;
+
+        if (!hadText) {
+          if (errorMessage) {
+            buffer = `Error: ${errorMessage}`;
+          } else {
+            try {
+              buffer = await result.text;
+            } catch {
+              buffer = '';
+            }
+            if (!buffer) {
+              buffer = sawToolCall
+                ? 'No response received after tool calls. Please try again.'
+                : 'No response received. Please try again.';
+            }
+          }
           const event = ensureAssistantEvent();
           event.text = buffer;
-          yield part.text;
+          yield buffer;
         }
-        if (part.type === 'error') {
-          errorMessage = formatUnknownError(part.error);
-          onEvent?.({ type: 'stream-error', error: errorMessage });
-        }
-        if (part.type === 'tool-error') {
-          errorMessage = formatUnknownError(part.error);
-          appendToolResultEvent(part, errorMessage);
-          onEvent?.({ type: 'tool-error', error: errorMessage });
-        }
-      }
-      if (!hadText) {
-        if (errorMessage) {
-          buffer = `Error: ${errorMessage}`;
-        } else {
-          try {
-            buffer = await result.text;
-          } catch {
-            buffer = '';
-          }
-          if (!buffer) {
-            buffer = sawToolCall
-              ? 'No response received after tool calls. Please try again.'
-              : 'No response received. Please try again.';
-          }
-        }
+      } catch (error) {
+        buffer = `Error: ${formatUnknownError(error)}`;
         const event = ensureAssistantEvent();
         event.text = buffer;
-        yield buffer;
+        event.streaming = false;
+        messages.push({ role: 'assistant', content: buffer });
+        throw error;
       }
+
       const finalAssistantEvent = ensureAssistantEvent();
       finalAssistantEvent.text = buffer;
       finalAssistantEvent.streaming = false;
