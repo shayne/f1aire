@@ -51,6 +51,7 @@ import { SeasonPicker } from './tui/screens/SeasonPicker.js';
 import { SessionPicker } from './tui/screens/SessionPicker.js';
 import { Settings, type SettingsAction } from './tui/screens/Settings.js';
 import { Summary } from './tui/screens/Summary.js';
+import { AppStateProvider } from './tui/state/app-store.js';
 
 type ToolTimingEntry = {
   toolName: string;
@@ -160,7 +161,7 @@ const getToolInputBytes = (part: ToolPart): number | undefined => {
   }
 };
 
-export function App(): React.JSX.Element {
+function AppImpl(): React.JSX.Element {
   const [screen, setScreen] = useState<Screen>({ name: 'season' });
   const [runtimeReady, setRuntimeReady] = useState(false);
   const [runtimeMessage, setRuntimeMessage] = useState(
@@ -896,5 +897,13 @@ export function App(): React.JSX.Element {
       </Box>
       {showGlobalChrome ? <FooterHints screen={screen.name} /> : null}
     </Box>
+  );
+}
+
+export function App(): React.JSX.Element {
+  return (
+    <AppStateProvider>
+      <AppImpl />
+    </AppStateProvider>
   );
 }

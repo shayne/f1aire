@@ -63,4 +63,11 @@ describe('getBackScreen', () => {
       meeting,
     });
   });
+
+  it('returns returnTo for settings and apiKey screens', () => {
+    const returnTo = { name: 'season' } as const;
+
+    expect(getBackScreen({ name: 'settings', returnTo })).toEqual(returnTo);
+    expect(getBackScreen({ name: 'apiKey', returnTo })).toEqual(returnTo);
+  });
 });
