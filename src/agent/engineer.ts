@@ -137,6 +137,11 @@ export function createEngineerSession({
     }
   };
 
+  const resetPendingToolEvents = () => {
+    pendingToolEventIds.clear();
+    pendingAnonymousToolEventIds.length = 0;
+  };
+
   return {
     getTranscriptEvents() {
       return transcriptEvents.map((event) => cloneTranscriptEvent(event));
@@ -144,6 +149,7 @@ export function createEngineerSession({
     async *send(input: string) {
       logger?.({ type: 'send-start', inputLength: input.length });
       onEvent?.({ type: 'send-start', inputLength: input.length });
+      resetPendingToolEvents();
       const userEvent: UserMessageEvent = {
         id: `user-${nextUserEventId++}`,
         type: 'user-message',
@@ -254,12 +260,15 @@ export function createEngineerSession({
           yield buffer;
         }
       } catch (error) {
-        buffer = `Error: ${formatUnknownError(error)}`;
+        const formattedError = `Error: ${formatUnknownError(error)}`;
+        buffer = buffer ? `${buffer}\n\n${formattedError}` : formattedError;
         const event = ensureAssistantEvent();
         event.text = buffer;
         event.streaming = false;
         messages.push({ role: 'assistant', content: buffer });
         throw error;
+      } finally {
+        resetPendingToolEvents();
       }
 
       const finalAssistantEvent = ensureAssistantEvent();

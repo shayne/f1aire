@@ -197,4 +197,117 @@ describe('engineer session', () => {
       },
     ]);
   });
+
+  it('preserves streamed assistant text when fullStream throws mid-response', async () => {
+    const session = createEngineerSession({
+      model: {} as any,
+      tools: {} as any,
+      system: 'x',
+      streamTextFn: (async () =>
+        ({
+          fullStream: (async function* () {
+            yield { type: 'text-delta', id: 't1', text: 'Partial answer' };
+            throw new Error('stream interrupted');
+          })(),
+        }) as any) as any,
+    });
+
+    const chunks: string[] = [];
+    await expect(async () => {
+      for await (const chunk of session.send('Hello')) {
+        chunks.push(chunk);
+      }
+    }).rejects.toThrow('stream interrupted');
+
+    expect(chunks).toEqual(['Partial answer']);
+    expect(session.getTranscriptEvents()).toEqual([
+      {
+        id: 'user-1',
+        type: 'user-message',
+        text: 'Hello',
+      },
+      {
+        id: 'assistant-1',
+        type: 'assistant-message',
+        text: 'Partial answer\n\nError: stream interrupted',
+        streaming: false,
+      },
+    ]);
+  });
+
+  it('clears anonymous tool-call bookkeeping after a failed send', async () => {
+    const streamTextFn = vi
+      .fn()
+      .mockImplementationOnce(async () => ({
+        fullStream: (async function* () {
+          yield {
+            type: 'tool-call',
+            toolName: 'compare_lap_times',
+          };
+          throw new Error('tool stream failed');
+        })(),
+      }))
+      .mockImplementationOnce(async () => ({
+        fullStream: (async function* () {
+          yield {
+            type: 'tool-result',
+            toolName: 'compare_lap_times',
+          };
+        })(),
+      }));
+
+    const session = createEngineerSession({
+      model: {} as any,
+      tools: {} as any,
+      system: 'x',
+      streamTextFn: streamTextFn as any,
+    });
+
+    await expect(async () => {
+      for await (const _chunk of session.send('First')) {
+        // Drain stream.
+      }
+    }).rejects.toThrow('tool stream failed');
+
+    for await (const _chunk of session.send('Second')) {
+      // Drain stream.
+    }
+
+    expect(session.getTranscriptEvents()).toEqual([
+      {
+        id: 'user-1',
+        type: 'user-message',
+        text: 'First',
+      },
+      {
+        id: 'tool-1',
+        type: 'tool-call',
+        toolName: 'compare_lap_times',
+        label: 'Running tool: compare_lap_times',
+      },
+      {
+        id: 'assistant-1',
+        type: 'assistant-message',
+        text: 'Error: tool stream failed',
+        streaming: false,
+      },
+      {
+        id: 'user-2',
+        type: 'user-message',
+        text: 'Second',
+      },
+      {
+        id: 'tool-2-result',
+        type: 'tool-result',
+        toolName: 'compare_lap_times',
+        label: 'Processing result: compare_lap_times',
+      },
+      {
+        id: 'assistant-2',
+        type: 'assistant-message',
+        text: 'No response received after tool calls. Please try again.',
+        streaming: false,
+      },
+    ]);
+  });
 });
