@@ -298,6 +298,44 @@ describe('EngineerChat', () => {
     rendered.unmount();
   });
 
+  it('keeps the composer visible after compact resize when a long wrapped transcript overflows the scroll area', async () => {
+    const rendered = await renderTui(
+      <EngineerChat
+        {...baseProps}
+        messages={[
+          {
+            role: 'user',
+            content:
+              'Give me a concise 12-line run-down of long-run pace, tyre degradation, and pit-window implications.',
+          },
+          {
+            role: 'assistant',
+            content: Array.from({ length: 12 }, (_, index) =>
+              `${index + 1}. This is a deliberately long engineer sentence that should wrap at 72 columns while the composer remains pinned at the bottom of the screen.`,
+            ).join('\n'),
+          },
+        ]}
+        pythonCode={'import numpy as np\nprint("hi")\n2+2'}
+      />,
+      { columns: 100, rows: 40 },
+    );
+
+    await tick();
+
+    rendered.stdin.write('\t');
+    await tick();
+
+    rendered.resize(72, 24);
+    await tick();
+
+    const compactFrame = stripAnsi(rendered.lastFrame() ?? '');
+    expect(compactFrame).toContain('Ask the engineer');
+    expect(compactFrame).toContain(
+      'enter send · shift+enter newline · tab details',
+    );
+    rendered.unmount();
+  });
+
   it('shows the transcript pause/live workflow with PageUp and PageDown', async () => {
     const { stdin, lastFrame, unmount } = await renderTui(
       <EngineerChat

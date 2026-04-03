@@ -32,6 +32,8 @@ export function useEngineerScrollState({
   const pausedMessageCountRef = useRef(0);
   const isScrolledUpRef = useRef(false);
   const pausedScrollOffsetRef = useRef(rowCount);
+  const estimatedViewportRowsRef = useRef(estimatedViewportRows);
+  const rowCountRef = useRef(rowCount);
   const [pausedScrollOffset, setPausedScrollOffset] = useState(() => rowCount);
   const [measuredViewportRows, setMeasuredViewportRows] = useState(
     () => estimatedViewportRows,
@@ -39,7 +41,7 @@ export function useEngineerScrollState({
   const [isScrolledUp, setIsScrolledUp] = useState(false);
   const viewportRows = isScrolledUp
     ? measuredViewportRows
-    : estimatedViewportRows;
+    : measuredViewportRows;
   const scrollOffset = isScrolledUp
     ? Math.min(pausedScrollOffset, Math.max(0, rowCount - viewportRows))
     : Math.max(0, rowCount - viewportRows);
@@ -59,6 +61,26 @@ export function useEngineerScrollState({
       Math.max(0, rowCount - measuredViewportRows),
     );
   }, [measuredViewportRows, rowCount]);
+
+  useEffect(() => {
+    const handle = scrollRef.current;
+    const hasViewportEstimateChanged =
+      estimatedViewportRowsRef.current !== estimatedViewportRows;
+    const hasRowCountChanged = rowCountRef.current !== rowCount;
+
+    estimatedViewportRowsRef.current = estimatedViewportRows;
+    rowCountRef.current = rowCount;
+
+    if (!hasViewportEstimateChanged && !hasRowCountChanged) return;
+    if (!handle || isScrolledUpRef.current) return;
+
+    const nextViewportRows = Math.max(0, handle.getViewportHeight());
+    setMeasuredViewportRows((current) =>
+      current === nextViewportRows ? current : nextViewportRows,
+    );
+    pausedScrollOffsetRef.current = Math.max(0, rowCount - nextViewportRows);
+    jumpToNew(handle);
+  }, [estimatedViewportRows, jumpToNew, rowCount]);
 
   const setPausedOffset = (nextOffset: number) => {
     pausedScrollOffsetRef.current = nextOffset;
