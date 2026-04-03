@@ -8,6 +8,7 @@ import { createEngineerSession } from '../../agent/engineer.js';
 import { formatUnknownError } from '../../agent/error-utils.js';
 import { systemPrompt } from '../../agent/prompt.js';
 import {
+  getTranscriptSessionKey,
   loadTranscriptEvents,
   saveTranscriptEvents,
 } from '../../agent/session-transcript-store.js';
@@ -154,18 +155,6 @@ const getToolInputBytes = (part: ToolPart): number | undefined => {
   }
 };
 
-function getTranscriptSessionKey({
-  year,
-  meeting,
-  session,
-}: {
-  year: number;
-  meeting: { Key: number };
-  session: { Key: number };
-}): string {
-  return `${year}-${meeting.Key}-${session.Key}`;
-}
-
 function createSummaryTranscript(summaryText: string): TranscriptEvent[] {
   return [
     {
@@ -191,6 +180,22 @@ function transcriptEventsToMessages(
 
     return [];
   });
+}
+
+function getSessionTranscriptEvents(
+  session: ReturnType<typeof createEngineerSession>,
+): TranscriptEvent[] | null {
+  const transcriptGetter = (
+    session as {
+      getTranscriptEvents?: () => TranscriptEvent[];
+    }
+  ).getTranscriptEvents;
+
+  if (typeof transcriptGetter !== 'function') {
+    return null;
+  }
+
+  return transcriptGetter.call(session);
 }
 
 export function useEngineerSession({
@@ -324,14 +329,15 @@ export function useEngineerSession({
         buffer += chunk;
         setStreamingText(buffer);
       }
-      setMessages((prev) => [...prev, { role: 'assistant', content: buffer }]);
-      if (transcriptSessionKey) {
+      const transcriptEvents = getSessionTranscriptEvents(session);
+      if (transcriptSessionKey && transcriptEvents) {
         await saveTranscriptEvents({
           dataDir: getDataDir('f1aire'),
           sessionKey: transcriptSessionKey,
-          events: session.getTranscriptEvents(),
+          events: transcriptEvents,
         });
       }
+      setMessages((prev) => [...prev, { role: 'assistant', content: buffer }]);
     } catch (err) {
       const message = formatUnknownError(err);
       pushActivity(`Error: ${message}`);
@@ -420,8 +426,8 @@ export function useEngineerSession({
 
     const transcriptSessionKey = getTranscriptSessionKey({
       year: pending.year,
-      meeting: pending.meeting,
-      session: pending.session,
+      meetingKey: pending.meeting.Key,
+      sessionKey: pending.session.Key,
     });
     transcriptSessionKeyRef.current = transcriptSessionKey;
     const storedTranscript = await loadTranscriptEvents({

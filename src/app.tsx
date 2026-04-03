@@ -1,6 +1,12 @@
+import fs from 'node:fs';
+import path from 'node:path';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Box, useInput, useStdout, useTerminalSize } from '#ink';
 import { formatUnknownError } from './agent/error-utils.js';
+import {
+  getTranscriptSessionKey,
+  loadTranscriptEvents,
+} from './agent/session-transcript-store.js';
 import {
   clearStoredOpenAIApiKey,
   getAppConfigPath,
@@ -9,6 +15,7 @@ import {
 } from './core/config.js';
 import { downloadSession } from './core/download.js';
 import { getMeetings } from './core/f1-api.js';
+import { summarizeFromLines } from './core/summary.js';
 import { getDataDir } from './core/xdg.js';
 import {
   useEngineerSession,
@@ -44,6 +51,8 @@ function AppImpl(): React.JSX.Element {
   const runtimeProgress = useAppState((state) => state.runtime.progress);
   const [storedApiKey, setStoredApiKey] = useState<string | null>(null);
   const [apiKeyError, setApiKeyError] = useState<string | null>(null);
+  const [summaryHasPriorTranscript, setSummaryHasPriorTranscript] =
+    useState(false);
   const { stdout } = useStdout();
   const { columns: terminalColumns = 100, rows: terminalRows = 40 } =
     useTerminalSize();
@@ -209,10 +218,41 @@ function AppImpl(): React.JSX.Element {
       clearPendingEngineer();
       setApiKeyError(null);
     }
+    if (screen.name === 'summary') {
+      clearPendingEngineer();
+      setSummaryHasPriorTranscript(false);
+    }
 
     const next = getBackScreen(screen);
     if (next) setScreen(next);
   }, [clearPendingEngineer, screen]);
+
+  const handleSummaryContinue = useCallback((): boolean | void => {
+    if (screen.name !== 'summary') {
+      return false;
+    }
+
+    void (async () => {
+      const pending = takePendingEngineer();
+      if (!pending) return;
+
+      const keyToUse = await resolveApiKeyForUse();
+      if (!keyToUse) {
+        queuePendingEngineer(pending);
+        setApiKeyError(null);
+        setScreen({ name: 'apiKey', returnTo: screen });
+        return;
+      }
+
+      await startEngineer(pending, keyToUse);
+    })();
+  }, [
+    queuePendingEngineer,
+    resolveApiKeyForUse,
+    screen,
+    startEngineer,
+    takePendingEngineer,
+  ]);
 
   const globalBindings = useMemo<Keybinding[]>(
     () => [
@@ -284,6 +324,7 @@ function AppImpl(): React.JSX.Element {
       setApiKeyError(null);
       setScreen({ name: 'settings', returnTo: screen });
     }
+
   });
 
   const headerRows = breadcrumb.length ? (isShort ? 4 : 6) : isShort ? 3 : 4;
@@ -384,7 +425,6 @@ function AppImpl(): React.JSX.Element {
                 session={screen.session}
                 onComplete={(dir) => {
                   void (async () => {
-                    const key = await resolveApiKeyForUse();
                     const pending: PendingEngineer = {
                       year: screen.year,
                       meetings: screen.meetings,
@@ -392,6 +432,38 @@ function AppImpl(): React.JSX.Element {
                       session: screen.session,
                       dir,
                     };
+
+                    const transcriptEvents = await loadTranscriptEvents({
+                      dataDir: getDataDir('f1aire'),
+                      sessionKey: getTranscriptSessionKey({
+                        year: screen.year,
+                        meetingKey: screen.meeting.Key,
+                        sessionKey: screen.session.Key,
+                      }),
+                    });
+
+                    if (transcriptEvents.length > 0) {
+                      queuePendingEngineer(pending);
+                      setSummaryHasPriorTranscript(true);
+                      setScreen({
+                        name: 'summary',
+                        year: screen.year,
+                        meetings: screen.meetings,
+                        meeting: screen.meeting,
+                        summary: summarizeFromLines(
+                          fs.readFileSync(
+                            path.join(dir, 'live.jsonl'),
+                            'utf-8',
+                          ),
+                        ),
+                        dir,
+                      });
+                      return;
+                    }
+
+                    setSummaryHasPriorTranscript(false);
+
+                    const key = await resolveApiKeyForUse();
                     if (!key) {
                       queuePendingEngineer(pending);
                       setApiKeyError(null);
@@ -434,7 +506,12 @@ function AppImpl(): React.JSX.Element {
               />
             )}
             {screen.name === 'summary' && (
-              <Summary summary={screen.summary} dir={screen.dir} />
+              <Summary
+                summary={screen.summary}
+                dir={screen.dir}
+                hasPriorTranscript={summaryHasPriorTranscript}
+                onResume={handleSummaryContinue}
+              />
             )}
           </>
         )}

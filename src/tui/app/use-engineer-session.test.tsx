@@ -278,4 +278,135 @@ describe('useEngineerSession', () => {
 
     app.unmount();
   });
+
+  it('waits for transcript persistence before appending the final assistant message', async () => {
+    const dataRoot = await mkdtemp(
+      path.join(os.tmpdir(), 'f1aire-engineer-session-'),
+    );
+    const dir = path.join(dataRoot, 'download');
+    await writeSessionFixture(dir);
+    process.env.XDG_DATA_HOME = dataRoot;
+
+    let resolveSave: (() => void) | null = null;
+    const saveTranscriptEvents = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveSave = resolve;
+        }),
+    );
+    vi.doMock('../../agent/session-transcript-store.js', async () => {
+      const actual = await vi.importActual<
+        typeof import('../../agent/session-transcript-store.js')
+      >('../../agent/session-transcript-store.js');
+      return {
+        ...actual,
+        saveTranscriptEvents,
+      };
+    });
+
+    const createEngineerSession = vi.fn(() => ({
+      getTranscriptEvents: () => [
+        {
+          id: 'user-1',
+          type: 'user-message',
+          text: 'Compare tyre degradation.',
+        },
+        {
+          id: 'assistant-1',
+          type: 'assistant-message',
+          text: 'Mercedes kept rear temps stable.',
+          streaming: false,
+        },
+      ],
+      send: vi.fn(async function* () {
+        yield 'Mercedes kept rear temps stable.';
+      }),
+    }));
+    vi.doMock('@ai-sdk/openai', () => ({
+      createOpenAI: () => () => ({}),
+    }));
+    vi.doMock('../../agent/engineer.js', () => ({
+      createEngineerSession,
+    }));
+    vi.doMock('../../agent/engineer-logger.js', () => ({
+      createEngineerLogger: () => ({ logger: vi.fn() }),
+    }));
+    vi.doMock('../../agent/prompt.js', () => ({ systemPrompt: 'test prompt' }));
+    vi.doMock('../../agent/tools.js', () => ({ makeTools: () => ({}) }));
+
+    const { useEngineerSession } = await import('./use-engineer-session.js');
+
+    function Harness({ dir }: { dir: string }) {
+      const [screen, setScreen] = useState<Screen>({ name: 'season' });
+      const startedRef = useRef(false);
+      const sentRef = useRef(false);
+      const engineer = useEngineerSession({
+        keyStatus: {
+          envKeyPresent: true,
+          storedKeyPresent: false,
+          inUse: 'env',
+        },
+        resolveApiKeyForUse: async () => 'test-key',
+        screenName: screen.name,
+        setScreen,
+        storedApiKey: null,
+      });
+
+      useEffect(() => {
+        if (startedRef.current) return;
+        startedRef.current = true;
+        void engineer.startEngineer(
+          {
+            year: 2025,
+            meetings: [meeting],
+            meeting,
+            session,
+            dir,
+          },
+          'test-key',
+        );
+      }, [dir]);
+
+      useEffect(() => {
+        if (screen.name !== 'engineer' || sentRef.current) return;
+        sentRef.current = true;
+        void engineer.handleSend('Compare tyre degradation.');
+      }, [screen.name]);
+
+      const renderedMessages = engineer.messages
+        .map((message) => `${message.role}: ${message.content}`)
+        .join('\n');
+
+      return (
+        <Text>{`${screen.name}\n${renderedMessages}\nstream: ${engineer.streamingText}`}</Text>
+      );
+    }
+
+    const app = await renderTui(<Harness dir={dir} />);
+
+    await waitFor(
+      () =>
+        saveTranscriptEvents.mock.calls.length > 0 &&
+        (app.lastFrame() ?? '').includes(
+          'stream: Mercedes kept rear temps stable.',
+        ),
+      { debug: () => app.lastFrame() ?? '' },
+    );
+
+    expect(app.lastFrame() ?? '').not.toContain(
+      'assistant: Mercedes kept rear temps stable.',
+    );
+
+    resolveSave?.();
+
+    await waitFor(
+      () =>
+        (app.lastFrame() ?? '').includes(
+          'assistant: Mercedes kept rear temps stable.',
+        ),
+      { debug: () => app.lastFrame() ?? '' },
+    );
+
+    app.unmount();
+  });
 });

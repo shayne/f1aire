@@ -1,12 +1,23 @@
-import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises';
+import {
+  mkdir,
+  mkdtemp,
+  readFile,
+  rename,
+  unlink,
+  writeFile,
+} from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   loadTranscriptEvents,
   saveTranscriptEvents,
 } from './session-transcript-store.js';
 import type { TranscriptEvent } from './transcript-events.js';
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
 
 describe('session-transcript-store', () => {
   it('round-trips transcript events for one session', async () => {
@@ -80,5 +91,64 @@ describe('session-transcript-store', () => {
         sessionKey: '2025-24-10',
       }),
     ).resolves.toEqual([]);
+  });
+
+  it('preserves the previous transcript if a temp-file rename fails', async () => {
+    const dataDir = await mkdtemp(path.join(os.tmpdir(), 'f1aire-transcript-'));
+    const previousEvents: TranscriptEvent[] = [
+      {
+        id: 'user-1',
+        type: 'user-message',
+        text: 'Keep this transcript.',
+      },
+    ];
+    const nextEvents: TranscriptEvent[] = [
+      {
+        id: 'user-1',
+        type: 'user-message',
+        text: 'Replace with new transcript.',
+      },
+    ];
+
+    await saveTranscriptEvents({
+      dataDir,
+      sessionKey: '2025-24-10',
+      events: previousEvents,
+    });
+
+    await expect(
+      saveTranscriptEvents({
+        dataDir,
+        sessionKey: '2025-24-10',
+        events: nextEvents,
+        rename: vi.fn(async () => {
+          throw Object.assign(new Error('rename failed'), { code: 'EIO' });
+        }),
+        unlink,
+        writeFile,
+      }),
+    ).rejects.toThrow('rename failed');
+
+    await expect(
+      loadTranscriptEvents({
+        dataDir,
+        sessionKey: '2025-24-10',
+      }),
+    ).resolves.toEqual(previousEvents);
+  });
+
+  it('surfaces unexpected filesystem errors instead of flattening them to empty history', async () => {
+    const dataDir = await mkdtemp(path.join(os.tmpdir(), 'f1aire-transcript-'));
+    await expect(
+      loadTranscriptEvents({
+        dataDir,
+        sessionKey: '2025-24-10',
+        readFile: vi.fn(async () => {
+          throw Object.assign(new Error('permission denied'), {
+            code: 'EACCES',
+          });
+        }),
+      }),
+    ).rejects.toThrow('permission denied');
   });
 });

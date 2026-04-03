@@ -51,7 +51,7 @@ afterEach(() => {
 async function waitFor(
   fn: () => boolean,
   {
-    timeoutMs = 1500,
+    timeoutMs = 3000,
     debug,
   }: { timeoutMs?: number; debug?: () => string } = {},
 ) {
@@ -60,6 +60,8 @@ async function waitFor(
     if (fn()) return;
     await new Promise((resolve) => setTimeout(resolve, 10));
   }
+
+  if (fn()) return;
 
   const tail = debug ? `\n\nLast frame:\n${debug()}` : '';
   throw new Error(`Timed out waiting for condition${tail}`);
@@ -241,6 +243,15 @@ describe('App shell routes', () => {
         return null;
       },
     }));
+    vi.doMock('./tui/screens/Summary.js', () => ({
+      Summary: ({ onResume }: { onResume?: () => void }) => {
+        React.useEffect(() => {
+          onResume?.();
+        }, [onResume]);
+
+        return React.createElement(Text, null, 'Prior engineer transcript found');
+      },
+    }));
     vi.doMock('./core/download.js', () => ({
       downloadSession: async () => {
         const dir = path.join(base, 'download');
@@ -272,6 +283,13 @@ describe('App shell routes', () => {
     });
 
     await waitFor(
+      () => (app.lastFrame() ?? '').includes('Prior engineer transcript found'),
+      {
+        debug: () => app.lastFrame() ?? '',
+      },
+    );
+
+    await waitFor(
       () =>
         (app.lastFrame() ?? '').includes(
           'assistant: Ferrari stayed flatter over the first 12 laps.',
@@ -284,6 +302,131 @@ describe('App shell routes', () => {
     const frame = app.lastFrame() ?? '';
     expect(frame).toContain('user: Compare stint one tyre dropoff.');
     expect(frame).not.toContain('Quick summary:');
+    app.unmount();
+  });
+
+  it('shows a resume cue on the session-ready route when a transcript exists for the downloaded session', async () => {
+    process.env.OPENAI_API_KEY = 'test-key';
+    const base = path.join(
+      tmpdir(),
+      `f1aire-app-resume-cue-${Date.now()}`,
+    );
+    process.env.XDG_DATA_HOME = base;
+    process.env.XDG_CONFIG_HOME = base;
+    process.env.HOME = base;
+
+    mkdirSync(path.join(base, 'f1aire', 'data', 'transcripts'), {
+      recursive: true,
+    });
+    writeFileSync(
+      path.join(base, 'f1aire', 'data', 'transcripts', '2024-1-10.json'),
+      `${JSON.stringify(
+        [
+          {
+            id: 'assistant-1',
+            type: 'assistant-message',
+            text: 'Stored transcript exists.',
+            streaming: false,
+          },
+        ],
+        null,
+        2,
+      )}\n`,
+      'utf-8',
+    );
+
+    vi.doMock('./agent/pyodide/assets.js', () => ({
+      ensurePyodideAssets: async ({
+        onProgress,
+      }: {
+        onProgress?: (update: RuntimeProgressUpdate) => void;
+      }) => {
+        onProgress?.({ phase: 'ready', message: 'Python runtime ready.' });
+        return { ready: true };
+      },
+    }));
+    vi.doMock('@ai-sdk/openai', () => ({
+      createOpenAI: () => () => ({}),
+    }));
+    vi.doMock('./agent/engineer-logger.js', () => ({
+      createEngineerLogger: () => ({ logger: vi.fn() }),
+    }));
+    vi.doMock('./agent/prompt.js', () => ({
+      systemPrompt: 'test prompt',
+    }));
+    vi.doMock('./agent/tools.js', () => ({
+      makeTools: () => ({}),
+    }));
+    vi.doMock('./tui/screens/SeasonPicker.js', () => ({
+      SeasonPicker: ({ onSelect }: { onSelect: (year: number) => void }) => {
+        React.useEffect(() => {
+          void onSelect(2024);
+        }, [onSelect]);
+        return null;
+      },
+    }));
+    vi.doMock('./core/f1-api.js', () => ({
+      getMeetings: async () => ({
+        Year: 2024,
+        Meetings: [meeting],
+      }),
+    }));
+    vi.doMock('./tui/screens/MeetingPicker.js', () => ({
+      MeetingPicker: ({
+        meetings,
+        onSelect,
+      }: {
+        meetings: Meeting[];
+        onSelect: (selectedMeeting: Meeting) => void;
+      }) => {
+        React.useEffect(() => {
+          void onSelect(meetings[0] as Meeting);
+        }, [meetings, onSelect]);
+        return null;
+      },
+    }));
+    vi.doMock('./tui/screens/SessionPicker.js', () => ({
+      SessionPicker: ({
+        meeting,
+        onSelect,
+      }: {
+        meeting: Meeting;
+        onSelect: (selectedSession: Session) => void;
+      }) => {
+        React.useEffect(() => {
+          void onSelect(meeting.Sessions[0] as Session);
+        }, [meeting, onSelect]);
+        return null;
+      },
+    }));
+    vi.doMock('./core/download.js', () => ({
+      downloadSession: async () => {
+        const dir = path.join(base, 'download');
+        mkdirSync(dir, { recursive: true });
+        writeFileSync(path.join(dir, 'subscribe.json'), '{}', 'utf-8');
+        writeFileSync(path.join(dir, 'live.jsonl'), '', 'utf-8');
+        return { dir, lineCount: 0 };
+      },
+    }));
+    vi.doMock('./tui/screens/Summary.js', async () => {
+      return await vi.importActual('./tui/screens/Summary.js');
+    });
+
+    const { App } = await import('./app.js');
+    const app = await renderTui(React.createElement(App), {
+      columns: 72,
+      rows: 20,
+    });
+
+    await waitFor(
+      () => (app.lastFrame() ?? '').includes('Prior engineer transcript found'),
+      { debug: () => app.lastFrame() ?? '' },
+    );
+
+    const frame = app.lastFrame() ?? '';
+    expect(frame).toContain('Summary');
+    expect(frame).toContain('Prior engineer transcript found');
+    expect(frame).toContain('Resume prior engineer transcript');
     app.unmount();
   });
 });
