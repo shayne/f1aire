@@ -18,8 +18,10 @@ export function watchSystemTheme(
   let timeout: ReturnType<typeof setTimeout> | undefined;
 
   async function poll(): Promise<void> {
-    const response = await querier.send(oscColor(11));
-    await querier.flush();
+    const [response] = await Promise.all([
+      querier.send(oscColor(11)),
+      querier.flush(),
+    ]);
 
     if (disposed) return;
 

@@ -53,4 +53,22 @@ describe('watchSystemTheme', () => {
 
     cleanup();
   });
+
+  it('flushes the OSC query batch before waiting on the OSC 11 response', async () => {
+    const setSystemTheme = vi.fn();
+    const querier = {
+      send: vi.fn().mockReturnValue(new Promise(() => {})),
+      flush: vi.fn().mockResolvedValue(undefined),
+    };
+
+    const cleanup = watchSystemTheme(querier, setSystemTheme);
+    await Promise.resolve();
+
+    expect(querier.send).toHaveBeenCalledWith(
+      expect.objectContaining({ request: oscColor(11).request }),
+    );
+    expect(querier.flush).toHaveBeenCalled();
+
+    cleanup();
+  });
 });
