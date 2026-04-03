@@ -46,6 +46,21 @@ function contrastRatio(foreground: string, background: Rgb): number {
   return (lighter + 0.05) / (darker + 0.05);
 }
 
+function expectShimmerBrighterThanBase({
+  base,
+  shimmer,
+  label,
+}: {
+  base: string;
+  shimmer: string;
+  label: string;
+}): void {
+  expect(
+    relativeLuminance(parseRgb(shimmer)),
+    `${label} shimmer should be brighter than its base status color`,
+  ).toBeGreaterThan(relativeLuminance(parseRgb(base)));
+}
+
 function expectThemeContrast(
   theme: F1aireTheme,
   background: Rgb,
@@ -101,5 +116,25 @@ describe('f1aire semantic theme tokens', () => {
 
   it('keeps the light palette readable on white terminals', () => {
     expectThemeContrast(lightTheme, LIGHT_BG);
+  });
+
+  it('uses brighter shimmer accents than base status colors', () => {
+    for (const theme of [darkTheme, lightTheme]) {
+      expectShimmerBrighterThanBase({
+        base: theme.status.thinking,
+        shimmer: theme.status.thinkingShimmer,
+        label: `${theme.name} status.thinking`,
+      });
+      expectShimmerBrighterThanBase({
+        base: theme.status.tool,
+        shimmer: theme.status.toolShimmer,
+        label: `${theme.name} status.tool`,
+      });
+      expectShimmerBrighterThanBase({
+        base: theme.status.error,
+        shimmer: theme.status.errorShimmer,
+        label: `${theme.name} status.error`,
+      });
+    }
   });
 });

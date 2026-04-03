@@ -64,7 +64,7 @@ export const darkTheme: F1aireTheme = {
   },
   status: {
     thinking: 'rgb(255,74,108)',
-    thinkingShimmer: 'rgb(255,43,30)',
+    thinkingShimmer: 'rgb(255,132,156)',
     tool: 'rgb(74,182,255)',
     toolShimmer: 'rgb(152,221,255)',
     error: 'rgb(255,69,58)',
