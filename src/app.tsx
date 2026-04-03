@@ -223,6 +223,7 @@ function AppImpl(): React.JSX.Element {
     }
     if (screen.name === 'summary') {
       clearPendingEngineer();
+      setApiKeyError(null);
       setSummaryHasPriorTranscript(false);
     }
 
