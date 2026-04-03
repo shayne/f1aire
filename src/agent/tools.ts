@@ -3,7 +3,6 @@ import { z } from 'zod';
 import type { SessionStore } from '../core/session-store.js';
 import type { RawPoint } from '../core/processors/types.js';
 import { normalizePoint } from '../core/processors/normalize.js';
-import { parseLapTimeMs } from '../core/summary.js';
 import { runPy } from './run-py.js';
 import { isPlainObject } from '../core/processors/merge.js';
 import { createPythonClient } from './pyodide/client.js';
@@ -11,15 +10,8 @@ import { buildPythonContext } from './pyodide/context.js';
 import { getPyodideBaseDir, getPyodideIndexUrl } from './pyodide/paths.js';
 import {
   decodeCarChannels,
-  decodeSegmentStatus,
   extractLapTimeMs,
-  extractSegmentStatuses,
-  extractSectorTimesMs,
-  isCleanLap,
   isPitLap,
-  parseGapSeconds,
-  parseIntervalSeconds,
-  smartGapToLeaderSeconds,
   trackStatusIsGreen,
 } from '../core/analysis-utils.js';
 import { createAnalysisContext } from '../core/analysis.js';

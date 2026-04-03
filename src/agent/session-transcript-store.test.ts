@@ -2,7 +2,6 @@ import {
   mkdir,
   mkdtemp,
   readFile,
-  rename,
   unlink,
   writeFile,
 } from 'node:fs/promises';

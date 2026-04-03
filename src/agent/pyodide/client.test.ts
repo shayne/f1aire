@@ -5,8 +5,10 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { describe, it, expect, vi } from 'vitest';
 import { createPythonClient, resolveWorkerSpec } from './client.js';
 
+type WorkerListener = (payload: unknown) => void;
+
 class FakeWorker {
-  listeners: Record<string, Function[]> = {};
+  listeners: Record<string, WorkerListener[]> = {};
   inited = false;
   postMessage = vi.fn((msg) => {
     if (msg.type === 'init') {
@@ -21,11 +23,11 @@ class FakeWorker {
       this.emit('message', { type: 'run-result', id: msg.id, ok: true, value: { ok: 1 } });
     }
   });
-  on(event: string, cb: Function) {
+  on(event: string, cb: WorkerListener) {
     this.listeners[event] = this.listeners[event] ?? [];
     this.listeners[event].push(cb);
   }
-  off(event: string, cb: Function) {
+  off(event: string, cb: WorkerListener) {
     this.listeners[event] = (this.listeners[event] ?? []).filter((listener) => listener !== cb);
   }
   removeAllListeners() {
@@ -140,7 +142,7 @@ describe('createPythonClient', () => {
 
   it('json-clones non-cloneable tool results before posting to the worker', async () => {
     class CloneCheckingWorker {
-      listeners: Record<string, Function[]> = {};
+      listeners: Record<string, WorkerListener[]> = {};
       inited = false;
       postMessage = vi.fn((msg) => {
         if (msg.type === 'init') {
@@ -153,11 +155,11 @@ describe('createPythonClient', () => {
           structuredClone(msg);
         }
       });
-      on(event: string, cb: Function) {
+      on(event: string, cb: WorkerListener) {
         this.listeners[event] = this.listeners[event] ?? [];
         this.listeners[event].push(cb);
       }
-      off(event: string, cb: Function) {
+      off(event: string, cb: WorkerListener) {
         this.listeners[event] = (this.listeners[event] ?? []).filter((listener) => listener !== cb);
       }
       removeAllListeners() {

@@ -17,24 +17,6 @@ type DownloadTopicResult = {
   invalidLines: number | null;
 };
 
-type DownloadManifestV1 = {
-  version: 1;
-  createdAt: string;
-  userAgent: string;
-  year: number;
-  meeting: { key: number; name: string; location: string };
-  session: { key: number; name: string; type: string; path: string };
-  prefix: string;
-  startUtc: string;
-  heartbeat: { utc: string; offsetMs: number };
-  required: {
-    SessionInfo: DownloadTopicResult;
-    Heartbeat: DownloadTopicResult;
-  };
-  topicsAttempted: string[];
-  topics: Record<string, DownloadTopicResult>;
-};
-
 type DownloadManifestV2 = {
   version: 2;
   createdAt: string;
