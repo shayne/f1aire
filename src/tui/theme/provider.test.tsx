@@ -1,7 +1,7 @@
 import React from 'react';
 import { Text } from '#ink';
 import { render } from 'ink-testing-library';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import {
   darkTheme,
   lightTheme,
@@ -10,6 +10,10 @@ import {
   useTheme,
   type F1aireTheme,
 } from '../theme.js';
+import {
+  resetCachedSystemThemeForTests,
+  setCachedSystemTheme,
+} from './system-theme.js';
 
 function Probe(): React.JSX.Element {
   const theme = useTheme();
@@ -29,6 +33,10 @@ function createProbeTheme(): F1aireTheme {
 }
 
 describe('ThemeProvider', () => {
+  afterEach(() => {
+    resetCachedSystemThemeForTests();
+  });
+
   it('exposes semantic color tokens to child components', () => {
     const { lastFrame } = render(
       <ThemeProvider value={createProbeTheme()}>
@@ -52,5 +60,17 @@ describe('ThemeProvider', () => {
     expect(lightTheme.transcript.assistant).toBe('rgb(215,119,87)');
     expect(lightTheme.composer.placeholder).toBe('rgb(102,102,102)');
     expect(lightTheme.status.thinkingShimmer).toBe('rgb(245,149,117)');
+  });
+
+  it('resolves the default provider theme from the cached system theme', () => {
+    setCachedSystemTheme('light');
+
+    const { lastFrame } = render(
+      <ThemeProvider>
+        <Probe />
+      </ThemeProvider>,
+    );
+
+    expect(lastFrame()).toBe('light:rgb(215,119,87)');
   });
 });
