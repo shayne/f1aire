@@ -2,8 +2,13 @@ import React from 'react';
 import { Text } from '#ink';
 import { render } from 'ink-testing-library';
 import { describe, expect, it } from 'vitest';
-import { ThemeProvider, useTheme } from './provider.js';
-import { darkTheme, type F1aireTheme } from './tokens.js';
+import {
+  darkTheme,
+  theme,
+  ThemeProvider,
+  useTheme,
+  type F1aireTheme,
+} from '../theme.js';
 
 function Probe(): React.JSX.Element {
   const theme = useTheme();
@@ -31,5 +36,10 @@ describe('ThemeProvider', () => {
     );
 
     expect(lastFrame()).toBe('dark:rgb(1,2,3)');
+  });
+
+  it('keeps the legacy theme singleton mapped to the default semantic theme', () => {
+    expect(theme.brand).toBe(darkTheme.text.brand);
+    expect(theme.status.tool).toBe(darkTheme.status.tool);
   });
 });

@@ -11,15 +11,11 @@ import { useEngineerShimmerAnimation } from './useEngineerShimmerAnimation.js';
 function getStatusColors(
   status: string,
   theme: F1aireTheme,
-): {
-  accentColor: Color;
-  shimmerColor: Color;
-} {
+): { accentColor: Color } {
   const normalized = status.toLowerCase();
   if (normalized.startsWith('error')) {
     return {
       accentColor: theme.status.error,
-      shimmerColor: theme.status.errorShimmer,
     };
   }
 
@@ -30,13 +26,11 @@ function getStatusColors(
   ) {
     return {
       accentColor: theme.status.tool,
-      shimmerColor: theme.status.toolShimmer,
     };
   }
 
   return {
     accentColor: theme.status.thinking,
-    shimmerColor: theme.status.thinkingShimmer,
   };
 }
 
@@ -55,7 +49,7 @@ export function EngineerStatusRow({
     message,
     !isStreaming,
   );
-  const { accentColor, shimmerColor } = getStatusColors(message, theme);
+  const { accentColor } = getStatusColors(message, theme);
 
   if (!isStreaming && message === 'Idle') {
     return <Box />;
@@ -79,8 +73,7 @@ export function EngineerStatusRow({
           <EngineerShimmerMessage
             message={message}
             glimmerIndex={glimmerIndex}
-            messageColor={accentColor}
-            shimmerColor={shimmerColor}
+            mode={mode}
           />
         ) : (
           <Text color={theme.status.idle} dimColor>

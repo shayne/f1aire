@@ -32,6 +32,7 @@ function createHeaderTheme(): F1aireTheme {
 
 describe('Header', () => {
   beforeEach(() => {
+    themeProvider.useTheme.mockReset();
     themeProvider.useTheme.mockReturnValue(createHeaderTheme());
   });
 
