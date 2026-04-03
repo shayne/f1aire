@@ -45,4 +45,35 @@ describe('buildTranscriptModel', () => {
     });
     expect(model.version).toContain('tool-1-result');
   });
+
+  it('uses an injected assistant renderer so model building stays pure', () => {
+    const model = buildTranscriptModel({
+      events: [
+        {
+          id: 'assistant-1',
+          type: 'assistant-message',
+          text: '**Bold pace**',
+          streaming: true,
+        },
+      ],
+      messageWidth: 72,
+      renderAssistantText: (text) => `rendered:${text}`,
+    });
+
+    expect(model.rows).toEqual([
+      {
+        id: 'assistant-1',
+        kind: 'message',
+        role: 'assistant',
+        label: 'Engineer',
+        lines: [
+          {
+            text: 'rendered:**Bold pace**',
+            plainText: 'rendered:**Bold pace**',
+          },
+        ],
+        streaming: true,
+      },
+    ]);
+  });
 });

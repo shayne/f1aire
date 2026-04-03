@@ -1,5 +1,4 @@
 import type { TranscriptEvent } from '../../../agent/transcript-events.js';
-import { renderMarkdownToTerminal } from '../../terminal-markdown.js';
 
 const ANSI_SGR_REGEX = /\x1b\[[0-9;]*m/g;
 
@@ -35,6 +34,7 @@ export type TranscriptModel = {
 export type BuildTranscriptModelOptions = {
   events: TranscriptEvent[];
   messageWidth: number;
+  renderAssistantText?: (text: string, width: number) => string;
 };
 
 function stripAnsi(text: string): string {
@@ -131,6 +131,7 @@ function buildRowVersion(row: TranscriptModelRow): string {
 export function buildTranscriptModel({
   events,
   messageWidth,
+  renderAssistantText = (text) => text,
 }: BuildTranscriptModelOptions): TranscriptModel {
   const rows = events.map((event): TranscriptModelRow => {
     if (event.type === 'user-message') {
@@ -151,7 +152,7 @@ export function buildTranscriptModel({
         role: 'assistant',
         label: 'Engineer',
         lines: wrapAnsiText(
-          renderMarkdownToTerminal(event.text, messageWidth),
+          renderAssistantText(event.text, messageWidth),
           messageWidth,
         ),
         streaming: event.streaming,

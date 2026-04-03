@@ -3,6 +3,7 @@ import { Text } from '#ink';
 import type { TranscriptEvent } from '../../../agent/transcript-events.js';
 import type { Color } from '../../../vendor/ink/styles.js';
 import type { ChatMessage } from '../../chat-state.js';
+import { renderMarkdownToTerminal } from '../../terminal-markdown.js';
 import { theme } from '../../theme.js';
 import { buildTranscriptModel } from './transcript-model.js';
 
@@ -116,6 +117,7 @@ function createTranscriptEventRows({
   const model = buildTranscriptModel({
     events,
     messageWidth,
+    renderAssistantText: renderMarkdownToTerminal,
   });
   const rows: TranscriptRow[] = [];
 
