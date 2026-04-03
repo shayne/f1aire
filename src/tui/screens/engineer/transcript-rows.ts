@@ -24,6 +24,19 @@ export type BuildTranscriptRowsOptions = {
   messageWidth: number;
 };
 
+export type BuildHistoricalTranscriptRowsOptions = {
+  messages: ChatMessage[];
+  messageWidth: number;
+};
+
+export type BuildLiveTranscriptRowsOptions = {
+  hasUserTurn: boolean;
+  streamingText: string;
+  isStreaming: boolean;
+  status: string | null;
+  messageWidth: number;
+};
+
 function wrapPlainTextLine(line: string, width: number): string[] {
   if (width <= 0) return [line];
   if (line.length <= width) return [line];
@@ -151,6 +164,39 @@ function createTranscriptEventRows({
   return rows;
 }
 
+export function buildHistoricalTranscriptRows({
+  messages,
+  messageWidth,
+}: BuildHistoricalTranscriptRowsOptions): TranscriptRow[] {
+  return createTranscriptEventRows({
+    messages,
+    streamingText: '',
+    isStreaming: false,
+    messageWidth,
+  });
+}
+
+export function buildLiveTranscriptRows({
+  hasUserTurn,
+  streamingText,
+  isStreaming,
+  status,
+  messageWidth,
+}: BuildLiveTranscriptRowsOptions): TranscriptRow[] {
+  const rows = createTranscriptEventRows({
+    messages: [],
+    streamingText,
+    isStreaming,
+    messageWidth,
+  });
+
+  if (!hasUserTurn && !isStreaming && !status) {
+    rows.push(...createOnboardingRows(messageWidth));
+  }
+
+  return rows;
+}
+
 export function buildTranscriptRows({
   messages,
   streamingText,
@@ -158,17 +204,21 @@ export function buildTranscriptRows({
   status,
   messageWidth,
 }: BuildTranscriptRowsOptions): TranscriptRow[] {
-  const rows: TranscriptRow[] = createTranscriptEventRows({
+  const rows = buildHistoricalTranscriptRows({
     messages,
-    streamingText,
-    isStreaming,
     messageWidth,
   });
   const hasUserTurn = messages.some((message) => message.role === 'user');
 
-  if (!hasUserTurn && !isStreaming && !status) {
-    rows.push(...createOnboardingRows(messageWidth));
-  }
+  rows.push(
+    ...buildLiveTranscriptRows({
+      hasUserTurn,
+      streamingText,
+      isStreaming,
+      status,
+      messageWidth,
+    }),
+  );
 
   return rows;
 }

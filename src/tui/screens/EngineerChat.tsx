@@ -8,7 +8,10 @@ import { EngineerDetails } from './engineer/EngineerDetails.js';
 import { EngineerSessionStrip } from './engineer/EngineerSessionStrip.js';
 import { EngineerShell } from './engineer/EngineerShell.js';
 import { EngineerStatusRow } from './engineer/EngineerStatusRow.js';
-import { buildTranscriptRows } from './engineer/transcript-rows.js';
+import {
+  buildHistoricalTranscriptRows,
+  buildLiveTranscriptRows,
+} from './engineer/transcript-rows.js';
 import { TranscriptViewport } from './engineer/TranscriptViewport.js';
 import { useEngineerScrollState } from './engineer/useEngineerScrollState.js';
 import { useComposerState } from './engineer/useComposerState.js';
@@ -34,18 +37,26 @@ function getSessionStripLabel({
   ].join(' · ');
 }
 
+function getHistoricalTranscriptVersion(messages: ChatMessage[]): string {
+  return messages
+    .map(({ role, content }) => `${role}:${content}`)
+    .join('\u0001');
+}
+
 function getTranscriptVersion({
-  messages,
+  historicalTranscriptVersion,
   streamingText,
   isStreaming,
   status,
 }: {
-  messages: ChatMessage[];
+  historicalTranscriptVersion: string;
   streamingText: string;
   isStreaming: boolean;
   status: string | null;
 }): string {
-  const parts = messages.map(({ role, content }) => `${role}:${content}`);
+  const parts = historicalTranscriptVersion
+    ? [historicalTranscriptVersion]
+    : [];
 
   if (isStreaming) {
     if (streamingText) {
@@ -130,27 +141,46 @@ export function EngineerChat({
 
   const sectionGap = compact ? 0 : 1;
 
-  const conversationRows = useMemo(
+  const hasUserTurn = useMemo(
+    () => messages.some((message) => message.role === 'user'),
+    [messages],
+  );
+  const historicalTranscriptRows = useMemo(
     () =>
-      buildTranscriptRows({
+      buildHistoricalTranscriptRows({
         messages,
+        messageWidth: messageContentWidth,
+      }),
+    [messageContentWidth, messages],
+  );
+  const liveTranscriptRows = useMemo(
+    () =>
+      buildLiveTranscriptRows({
+        hasUserTurn,
         streamingText,
         isStreaming,
         status,
         messageWidth: messageContentWidth,
       }),
-    [isStreaming, messageContentWidth, messages, status, streamingText],
+    [hasUserTurn, isStreaming, messageContentWidth, status, streamingText],
   );
-
+  const conversationRows = useMemo(
+    () => [...historicalTranscriptRows, ...liveTranscriptRows],
+    [historicalTranscriptRows, liveTranscriptRows],
+  );
+  const historicalTranscriptVersion = useMemo(
+    () => getHistoricalTranscriptVersion(messages),
+    [messages],
+  );
   const transcriptVersion = useMemo(
     () =>
       getTranscriptVersion({
-        messages,
+        historicalTranscriptVersion,
         streamingText,
         isStreaming,
         status,
       }),
-    [isStreaming, messages, status, streamingText],
+    [historicalTranscriptVersion, isStreaming, status, streamingText],
   );
   const {
     scrollRef,
