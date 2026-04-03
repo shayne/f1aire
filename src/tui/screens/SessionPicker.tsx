@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Text } from '#ink';
+import { Text, useTerminalSize } from '#ink';
 import type { Meeting, Session } from '../../core/types.js';
 import { SelectList } from '../components/SelectList.js';
 import { Panel } from '../components/Panel.js';
@@ -14,6 +14,7 @@ export function SessionPicker({
   onSelect: (session: Session) => void;
 }): React.JSX.Element {
   const theme = useTheme();
+  const { columns = 100 } = useTerminalSize();
   const sessions = meeting.Sessions;
   const [highlighted, setHighlighted] = useState<Session | null>(
     sessions[0] ?? null,
@@ -27,24 +28,36 @@ export function SessionPicker({
 
   return (
     <ScreenLayout
-      title={`Select a session for ${meeting.Name}`}
-      description="Choose the session to download and hand off to the engineer."
-      main={
-        <SelectList
-          items={sessions.map((session) => ({
-            key: String(session.Key),
-            label: `${session.Name} (${session.Type})`,
-            value: session,
-          }))}
-          onSelect={onSelect}
-          onHighlight={setHighlighted}
-        />
+      columns={columns}
+      title="Select a session"
+      subtitle={`Download a ${meeting.Name} session for the race engineer.`}
+      primary={
+        sessions.length > 0 ? (
+          <SelectList
+            items={sessions.map((session) => ({
+              key: String(session.Key),
+              label: `${session.Name} (${session.Type})`,
+              value: session,
+            }))}
+            onSelect={onSelect}
+            onHighlight={setHighlighted}
+          />
+        ) : (
+          <Panel title="No sessions" tone="muted">
+            <Text color={theme.text.primary}>
+              No sessions found for {meeting.Name}.
+            </Text>
+            <Text color={theme.text.muted} dimColor>
+              Go back and choose another meeting.
+            </Text>
+          </Panel>
+        )
       }
-      detail={
+      details={
         <Panel title="Session">
           {detailSession ? (
             <>
-              <Text>{detailSession.Name}</Text>
+              <Text color={theme.text.primary}>{detailSession.Name}</Text>
               <Text color={theme.text.muted} dimColor>
                 {detailSession.Type}
               </Text>
@@ -57,7 +70,8 @@ export function SessionPicker({
             </>
           ) : (
             <Text color={theme.text.muted} dimColor>
-              Highlight a session for details.
+              The current timing feed did not return any sessions for this
+              meeting.
             </Text>
           )}
         </Panel>

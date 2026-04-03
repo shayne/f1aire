@@ -4,7 +4,7 @@ import { renderTui } from '#ink/testing';
 import { SeasonPicker } from './SeasonPicker.js';
 
 describe('SeasonPicker', () => {
-  it('shows the active task and supporting copy without clipping on a narrow terminal', async () => {
+  it('shows first-run f1aire branding and concise next-step copy on a narrow terminal', async () => {
     const { lastFrame, unmount } = await renderTui(
       <SeasonPicker onSelect={vi.fn()} />,
       { columns: 72, rows: 20 },
@@ -13,7 +13,9 @@ describe('SeasonPicker', () => {
     const frame = lastFrame() ?? '';
 
     expect(frame).toContain('Select a season');
-    expect(frame).toContain('Start with a season');
+    expect(frame).toContain('f1aire');
+    expect(frame).toContain('Choose a championship year');
+    expect(frame).toContain('Load race weekends');
     expect(frame).not.toContain('╭');
     unmount();
   });

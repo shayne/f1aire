@@ -1,5 +1,5 @@
 import React from 'react';
-import { Text } from '#ink';
+import { Text, useTerminalSize } from '#ink';
 import { Panel } from '../components/Panel.js';
 import { ScreenLayout } from '../components/ScreenLayout.js';
 import { SelectList } from '../components/SelectList.js';
@@ -21,13 +21,15 @@ export function Settings({
   onAction: (action: SettingsAction) => void;
 }): React.JSX.Element {
   const theme = useTheme();
+  const { columns = 100 } = useTerminalSize();
   const presentLabel = (value: boolean) => (value ? 'present' : 'absent');
 
   return (
     <ScreenLayout
+      columns={columns}
       title="Settings"
-      description="Manage the OpenAI API key used by the race engineer."
-      main={
+      subtitle="Manage the OpenAI key f1aire uses for engineer chat."
+      primary={
         <SelectList
           items={[
             { label: 'Paste OpenAI API key', value: 'paste' as const },
@@ -42,8 +44,8 @@ export function Settings({
           onSelect={onAction}
         />
       }
-      detail={
-        <Panel title="OpenAI">
+      details={
+        <Panel title="OpenAI key">
           <Text>
             <Text color={theme.text.muted} dimColor>
               Env key
@@ -62,6 +64,12 @@ export function Settings({
             </Text>
             {`: ${status.inUse}`}
           </Text>
+          {status.inUse === 'none' ? (
+            <Text color={theme.text.muted} dimColor>
+              Paste a key here or export OPENAI_API_KEY before opening the
+              engineer.
+            </Text>
+          ) : null}
         </Panel>
       }
     />

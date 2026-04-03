@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Text } from '#ink';
+import { Text, useTerminalSize } from '#ink';
 import type { Meeting } from '../../core/types.js';
 import { SelectList } from '../components/SelectList.js';
 import { Panel } from '../components/Panel.js';
@@ -16,6 +16,7 @@ export function MeetingPicker({
   onSelect: (meeting: Meeting) => void;
 }): React.JSX.Element {
   const theme = useTheme();
+  const { columns = 100 } = useTerminalSize();
   const [highlighted, setHighlighted] = useState<Meeting | null>(
     meetings[0] ?? null,
   );
@@ -28,34 +29,47 @@ export function MeetingPicker({
 
   return (
     <ScreenLayout
-      title={`Select a meeting for ${year}`}
-      description="Pick the race weekend or test event you want to analyze."
-      main={
-        <SelectList
-          items={meetings.map((meeting) => ({
-            key: String(meeting.Key),
-            label: `${meeting.Name} (${meeting.Location})`,
-            value: meeting,
-          }))}
-          onSelect={onSelect}
-          onHighlight={setHighlighted}
-        />
+      columns={columns}
+      title="Select a meeting"
+      subtitle={`Choose a race weekend or test from the ${year} season.`}
+      primary={
+        meetings.length > 0 ? (
+          <SelectList
+            items={meetings.map((meeting) => ({
+              key: String(meeting.Key),
+              label: `${meeting.Name} (${meeting.Location})`,
+              value: meeting,
+            }))}
+            onSelect={onSelect}
+            onHighlight={setHighlighted}
+          />
+        ) : (
+          <Panel title="No meetings" tone="muted">
+            <Text color={theme.text.primary}>
+              No meetings found for {year}.
+            </Text>
+            <Text color={theme.text.muted} dimColor>
+              Go back and choose another season.
+            </Text>
+          </Panel>
+        )
       }
-      detail={
+      details={
         <Panel title="Meeting">
           {detailMeeting ? (
             <>
-              <Text>{detailMeeting.Name}</Text>
+              <Text color={theme.text.primary}>{detailMeeting.Name}</Text>
               <Text color={theme.text.muted} dimColor>
                 {detailMeeting.Location}
               </Text>
               <Text color={theme.text.muted} dimColor>
-                {detailMeeting.Sessions.length} sessions available
+                {detailMeeting.Sessions.length} sessions available.
               </Text>
             </>
           ) : (
             <Text color={theme.text.muted} dimColor>
-              Highlight a meeting for details.
+              The current timing feed did not return any meetings for this
+              season.
             </Text>
           )}
         </Panel>

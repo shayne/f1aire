@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from 'react';
-import { Text, Box } from '#ink';
+import { Text, Box, useTerminalSize } from '#ink';
 import { Panel } from '../components/Panel.js';
+import { ScreenLayout } from '../components/ScreenLayout.js';
+import { useTheme } from '../theme/provider.js';
 
 const SPINNER_FRAMES = ['|', '/', '-', '\\'];
 const BAR_WIDTH = 20;
@@ -12,6 +14,7 @@ type RuntimeProgress = {
 };
 
 function Spinner({ active }: { active: boolean }) {
+  const theme = useTheme();
   const [index, setIndex] = useState(0);
   useEffect(() => {
     if (!active) return;
@@ -22,7 +25,11 @@ function Spinner({ active }: { active: boolean }) {
     return () => clearInterval(id);
   }, [active]);
   if (!active) return null;
-  return <Text color="ansi:blackBright">{SPINNER_FRAMES[index]}</Text>;
+  return (
+    <Text color={theme.text.muted} dimColor>
+      {SPINNER_FRAMES[index]}
+    </Text>
+  );
 }
 
 function formatBytes(bytes: number) {
@@ -51,7 +58,9 @@ export function RuntimePreparing({
 }: {
   message: string;
   progress?: RuntimeProgress;
-}) {
+}): React.JSX.Element {
+  const theme = useTheme();
+  const { columns = 100 } = useTerminalSize();
   const isDownloading = progress?.phase === 'downloading';
   const totalBytes = progress?.totalBytes ?? 0;
   const downloadedBytes = progress?.downloadedBytes ?? 0;
@@ -60,22 +69,39 @@ export function RuntimePreparing({
   const showSpinner = progress?.phase === 'extracting' || (isDownloading && !hasTotal);
 
   return (
-    <Panel title="Python Runtime">
-      <Box flexDirection="column" gap={1}>
-        <Box gap={1}>
-          <Spinner active={showSpinner} />
-          <Text>{message}</Text>
-        </Box>
-        {hasTotal ? (
-          <Box flexDirection="column">
-            <Text color="ansi:cyan">{renderBar(percent)}</Text>
-            <Text color="ansi:blackBright">
-              {`${Math.round(percent * 100)}% (${formatBytes(downloadedBytes)} / ${formatBytes(totalBytes)})`}
-            </Text>
+    <ScreenLayout
+      columns={columns}
+      title="Preparing Python runtime"
+      subtitle="f1aire is starting the local tools used by engineer analysis."
+      primary={
+        <Panel title="Runtime status" tone="accent" paddingY={1}>
+          <Box flexDirection="column" gap={1}>
+            <Box gap={1}>
+              <Spinner active={showSpinner} />
+              <Text color={theme.text.primary}>{message}</Text>
+            </Box>
+            {hasTotal ? (
+              <Box flexDirection="column">
+                <Text color={theme.status.tool}>{renderBar(percent)}</Text>
+                <Text color={theme.text.muted} dimColor>
+                  {`${Math.round(percent * 100)}% (${formatBytes(downloadedBytes)} / ${formatBytes(totalBytes)})`}
+                </Text>
+              </Box>
+            ) : null}
           </Box>
-        ) : null}
-        <Text>First run may download ~200MB of assets.</Text>
-      </Box>
-    </Panel>
+        </Panel>
+      }
+      details={
+        <Panel title="First run">
+          <Text color={theme.text.muted} dimColor>
+            f1aire downloads Pyodide once and reuses it from your user data
+            directory.
+          </Text>
+          <Text color={theme.text.muted} dimColor>
+            First run may download ~200MB of assets. Keep this terminal open.
+          </Text>
+        </Panel>
+      }
+    />
   );
 }

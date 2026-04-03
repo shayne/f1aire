@@ -3,55 +3,81 @@ import { Box, Text, useTerminalSize } from '#ink';
 import { useTheme } from '../theme/provider.js';
 
 type ScreenLayoutProps = {
+  columns?: number;
   title: string;
+  subtitle?: string;
   description?: string;
-  main: React.ReactNode;
+  primary?: React.ReactNode;
+  main?: React.ReactNode;
+  details?: React.ReactNode;
   detail?: React.ReactNode;
   detailWidth?: number;
+  footer?: React.ReactNode;
   splitAt?: number;
 };
 
 export function ScreenLayout({
+  columns,
   title,
+  subtitle,
   description,
+  primary,
   main,
+  details,
   detail,
+  footer,
   detailWidth = 36,
-  splitAt = 84,
+  splitAt = 88,
 }: ScreenLayoutProps): React.JSX.Element {
   const theme = useTheme();
-  const { columns = 100 } = useTerminalSize();
-  const stacked = !detail || columns < splitAt;
+  const { columns: terminalColumns = 100 } = useTerminalSize();
+  const width = columns ?? terminalColumns;
+  const subtitleText = subtitle ?? description;
+  const primaryContent = primary ?? main;
+  const detailsContent = details ?? detail;
+  const stacked = !detailsContent || width < splitAt;
+  const compactHeading = width < 72;
 
   return (
     <Box flexDirection="column">
-      <Text>{title}</Text>
-      {description ? (
-        <Text color={theme.text.muted} dimColor>
-          {description}
+      <Box flexDirection="column" marginBottom={1}>
+        <Text color={theme.text.brand} bold wrap="truncate-end">
+          {title}
         </Text>
-      ) : null}
-      <Box flexDirection="column" marginTop={1}>
+        {subtitleText ? (
+          <Text color={theme.text.muted} dimColor wrap="truncate-end">
+            {compactHeading ? subtitleText : `· ${subtitleText}`}
+          </Text>
+        ) : null}
+      </Box>
+
+      <Box flexDirection="column">
         {stacked ? (
           <Box flexDirection="column">
-            <Box flexDirection="column">{main}</Box>
-            {detail ? (
+            <Box flexDirection="column">{primaryContent}</Box>
+            {detailsContent ? (
               <Box flexDirection="column" marginTop={1}>
-                {detail}
+                {detailsContent}
               </Box>
             ) : null}
           </Box>
         ) : (
           <Box flexDirection="row" gap={2}>
             <Box flexDirection="column" flexGrow={1}>
-              {main}
+              {primaryContent}
             </Box>
             <Box flexDirection="column" width={detailWidth} flexShrink={0}>
-              {detail}
+              {detailsContent}
             </Box>
           </Box>
         )}
       </Box>
+
+      {footer ? (
+        <Box flexDirection="column" marginTop={1}>
+          {footer}
+        </Box>
+      ) : null}
     </Box>
   );
 }
