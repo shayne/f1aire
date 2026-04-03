@@ -3,14 +3,15 @@ import { Text } from '#ink';
 import { SelectList } from '../components/SelectList.js';
 import { Panel } from '../components/Panel.js';
 import { ScreenLayout } from '../components/ScreenLayout.js';
-import { theme } from '../theme.js';
 import { getSeasonOptions } from '../season-utils.js';
+import { useTheme } from '../theme/provider.js';
 
 export function SeasonPicker({
   onSelect,
 }: {
   onSelect: (year: number) => void;
 }): React.JSX.Element {
+  const theme = useTheme();
   const currentYear = new Date().getFullYear();
   const seasons = useMemo(
     () => getSeasonOptions(currentYear),
@@ -42,12 +43,12 @@ export function SeasonPicker({
           {detailYear !== null ? (
             <>
               <Text>{detailYear}</Text>
-              <Text color={theme.subtle} dimColor>
+              <Text color={theme.text.muted} dimColor>
                 Load the list of championship weekends for this season.
               </Text>
             </>
           ) : (
-            <Text color={theme.subtle} dimColor>
+            <Text color={theme.text.muted} dimColor>
               Pick a year to continue.
             </Text>
           )}

@@ -5,6 +5,7 @@ import type { Meeting, Session } from '../../core/types.js';
 import type { ChatMessage } from '../chat-state.js';
 import type { Keybinding } from '../keybindings/actions.js';
 import { useKeybindings } from '../keybindings/use-keybindings.js';
+import { useTheme } from '../theme/provider.js';
 import { Composer } from './engineer/Composer.js';
 import { EngineerDetails } from './engineer/EngineerDetails.js';
 import { EngineerSessionStrip } from './engineer/EngineerSessionStrip.js';
@@ -119,6 +120,7 @@ export function EngineerChat({
   onConversationRender?: () => void;
   onRender?: () => void;
 }) {
+  const theme = useTheme();
   const { columns = 100, rows: terminalRows = 40 } = useTerminalSize();
   const rows = maxHeight ?? terminalRows;
   const compact = rows < 32;
@@ -147,8 +149,9 @@ export function EngineerChat({
       buildHistoricalTranscriptRows({
         messages,
         messageWidth: messageContentWidth,
+        theme,
       }),
-    [messageContentWidth, messages],
+    [messageContentWidth, messages, theme],
   );
   const liveTranscriptRows = useMemo(
     () =>
@@ -158,8 +161,16 @@ export function EngineerChat({
         isStreaming,
         status,
         messageWidth: messageContentWidth,
+        theme,
       }),
-    [hasUserTurn, isStreaming, messageContentWidth, status, streamingText],
+    [
+      hasUserTurn,
+      isStreaming,
+      messageContentWidth,
+      status,
+      streamingText,
+      theme,
+    ],
   );
   const conversationRows = useMemo(
     () => [...historicalTranscriptRows, ...liveTranscriptRows],

@@ -3,7 +3,8 @@ import { Box, Text, useInput } from '#ink';
 import { Panel } from '../../components/Panel.js';
 import type { Keybinding } from '../../keybindings/actions.js';
 import { useKeybindings } from '../../keybindings/use-keybindings.js';
-import { theme } from '../../theme.js';
+import { useTheme } from '../../theme/provider.js';
+import { darkTheme, type F1aireTheme } from '../../theme/tokens.js';
 import {
   getComposerVisibleLines,
   type ComposerState,
@@ -73,6 +74,7 @@ function renderVisibleLine(
   line: string,
   isCursorLine: boolean,
   cursorColumn: number,
+  theme: F1aireTheme = darkTheme,
 ): React.ReactNode {
   if (!isCursorLine) return line;
   const before = line.slice(0, cursorColumn);
@@ -80,22 +82,24 @@ function renderVisibleLine(
   return (
     <Text>
       {before}
-      <Text color={theme.accent}>▌</Text>
+      <Text color={theme.composer.caret}>▌</Text>
       {after}
     </Text>
   );
 }
 
-export function renderComposerPlaceholder(): React.ReactNode {
+export function renderComposerPlaceholder(
+  theme: F1aireTheme = darkTheme,
+): React.ReactNode {
   const placeholder =
     'Ask the engineer about pace, tyres, traffic, or strategy...';
 
   return (
-    <Text color={theme.subtle} dimColor>
-      <Text color={theme.subtle} inverse>
+    <Text color={theme.composer.placeholder} dimColor>
+      <Text color={theme.composer.placeholder} inverse>
         {placeholder[0] ?? ' '}
       </Text>
-      <Text color={theme.subtle} dimColor>
+      <Text color={theme.composer.placeholder} dimColor>
         {placeholder.slice(1)}
       </Text>
     </Text>
@@ -109,6 +113,7 @@ export function Composer({
   state: ComposerState;
   width: number;
 }): React.JSX.Element {
+  const theme = useTheme();
   const bindings = useMemo<Keybinding[]>(
     () => [
       {
@@ -147,19 +152,24 @@ export function Composer({
           const isEmptyDraft = state.draft.length === 0;
           const displayLine =
             isEmptyDraft && index === 0 ? (
-              renderComposerPlaceholder()
+              renderComposerPlaceholder(theme)
             ) : (
               renderVisibleLine(
                 line,
                 isCursorLine,
                 isCursorLine ? lineMeta.column : 0,
+                theme,
               )
             );
 
           return (
             <Box key={`${index}-${line}`}>
               <Text
-                color={index === 0 ? theme.accent : theme.subtle}
+                color={
+                  index === 0
+                    ? theme.composer.activeMarker
+                    : theme.composer.inactiveMarker
+                }
                 dimColor={index !== 0}
               >
                 {index === 0 ? '› ' : '  '}
@@ -169,7 +179,7 @@ export function Composer({
           );
         })}
         <Box>
-          <Text color={theme.subtle} dimColor>
+          <Text color={theme.text.muted} dimColor>
             enter send · shift+enter newline · tab details
           </Text>
         </Box>

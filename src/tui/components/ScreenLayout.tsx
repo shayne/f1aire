@@ -1,6 +1,6 @@
 import React from 'react';
 import { Box, Text, useTerminalSize } from '#ink';
-import { theme } from '../theme.js';
+import { useTheme } from '../theme/provider.js';
 
 type ScreenLayoutProps = {
   title: string;
@@ -19,6 +19,7 @@ export function ScreenLayout({
   detailWidth = 36,
   splitAt = 84,
 }: ScreenLayoutProps): React.JSX.Element {
+  const theme = useTheme();
   const { columns = 100 } = useTerminalSize();
   const stacked = !detail || columns < splitAt;
 
@@ -26,7 +27,7 @@ export function ScreenLayout({
     <Box flexDirection="column">
       <Text>{title}</Text>
       {description ? (
-        <Text color={theme.subtle} dimColor>
+        <Text color={theme.text.muted} dimColor>
           {description}
         </Text>
       ) : null}

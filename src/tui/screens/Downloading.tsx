@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Box, Text } from '#ink';
 import type { Meeting, Session } from '../../core/types.js';
 import { Panel } from '../components/Panel.js';
-import { theme } from '../theme.js';
+import { useTheme } from '../theme/provider.js';
 
 export function Downloading({
   meeting,
@@ -15,6 +15,7 @@ export function Downloading({
   onStart: () => Promise<string>;
   onComplete: (dir: string) => void;
 }): React.JSX.Element {
+  const theme = useTheme();
   const [status, setStatus] = useState('Starting download...');
   const onStartRef = useRef(onStart);
   const onCompleteRef = useRef(onComplete);
@@ -49,10 +50,10 @@ export function Downloading({
     <Panel title="Preparing session" tone="accent" paddingY={1}>
       <Box flexDirection="column">
         <Text>{meeting.Name}</Text>
-        <Text color={theme.subtle} dimColor>
+        <Text color={theme.text.muted} dimColor>
           {session.Name}
         </Text>
-        <Text color={theme.subtle} dimColor>
+        <Text color={theme.text.muted} dimColor>
           {status}
         </Text>
       </Box>

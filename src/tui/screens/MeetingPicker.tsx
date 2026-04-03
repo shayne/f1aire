@@ -4,7 +4,7 @@ import type { Meeting } from '../../core/types.js';
 import { SelectList } from '../components/SelectList.js';
 import { Panel } from '../components/Panel.js';
 import { ScreenLayout } from '../components/ScreenLayout.js';
-import { theme } from '../theme.js';
+import { useTheme } from '../theme/provider.js';
 
 export function MeetingPicker({
   year,
@@ -15,6 +15,7 @@ export function MeetingPicker({
   meetings: Meeting[];
   onSelect: (meeting: Meeting) => void;
 }): React.JSX.Element {
+  const theme = useTheme();
   const [highlighted, setHighlighted] = useState<Meeting | null>(
     meetings[0] ?? null,
   );
@@ -45,15 +46,15 @@ export function MeetingPicker({
           {detailMeeting ? (
             <>
               <Text>{detailMeeting.Name}</Text>
-              <Text color={theme.subtle} dimColor>
+              <Text color={theme.text.muted} dimColor>
                 {detailMeeting.Location}
               </Text>
-              <Text color={theme.subtle} dimColor>
+              <Text color={theme.text.muted} dimColor>
                 {detailMeeting.Sessions.length} sessions available
               </Text>
             </>
           ) : (
-            <Text color={theme.subtle} dimColor>
+            <Text color={theme.text.muted} dimColor>
               Highlight a meeting for details.
             </Text>
           )}

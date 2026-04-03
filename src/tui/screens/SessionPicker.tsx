@@ -4,7 +4,7 @@ import type { Meeting, Session } from '../../core/types.js';
 import { SelectList } from '../components/SelectList.js';
 import { Panel } from '../components/Panel.js';
 import { ScreenLayout } from '../components/ScreenLayout.js';
-import { theme } from '../theme.js';
+import { useTheme } from '../theme/provider.js';
 
 export function SessionPicker({
   meeting,
@@ -13,6 +13,7 @@ export function SessionPicker({
   meeting: Meeting;
   onSelect: (session: Session) => void;
 }): React.JSX.Element {
+  const theme = useTheme();
   const sessions = meeting.Sessions;
   const [highlighted, setHighlighted] = useState<Session | null>(
     sessions[0] ?? null,
@@ -44,18 +45,18 @@ export function SessionPicker({
           {detailSession ? (
             <>
               <Text>{detailSession.Name}</Text>
-              <Text color={theme.subtle} dimColor>
+              <Text color={theme.text.muted} dimColor>
                 {detailSession.Type}
               </Text>
-              <Text color={theme.subtle} dimColor>
+              <Text color={theme.text.muted} dimColor>
                 Start {detailSession.StartDate}
               </Text>
-              <Text color={theme.subtle} dimColor>
+              <Text color={theme.text.muted} dimColor>
                 End {detailSession.EndDate}
               </Text>
             </>
           ) : (
-            <Text color={theme.subtle} dimColor>
+            <Text color={theme.text.muted} dimColor>
               Highlight a session for details.
             </Text>
           )}

@@ -1,8 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Box, Text, useInput, type Key } from '#ink';
-import { theme } from '../theme.js';
-
-const menuAccentColor = theme.accent;
+import { useTheme } from '../theme/provider.js';
 
 type MenuAction =
   | { type: 'move'; delta: -1 | 1 }
@@ -73,6 +71,7 @@ export function MenuList<V>({
   onHighlight?: (item: V) => void;
   isFocused?: boolean;
 }): React.JSX.Element {
+  const theme = useTheme();
   const [index, setIndex] = useState(0);
   const indexRef = useRef(0);
 
@@ -130,7 +129,11 @@ export function MenuList<V>({
       {items.map((item, itemIndex) => (
         <Text
           key={item.key ?? item.label}
-          color={itemIndex === index ? menuAccentColor : theme.subtle}
+          color={
+            itemIndex === index
+              ? theme.chrome.selected
+              : theme.chrome.subtle
+          }
           dimColor={itemIndex !== index}
         >
           {itemIndex === index ? '› ' : '  '}

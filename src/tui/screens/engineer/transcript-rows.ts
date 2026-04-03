@@ -4,7 +4,7 @@ import type { TranscriptEvent } from '../../../agent/transcript-events.js';
 import type { Color } from '../../../vendor/ink/styles.js';
 import type { ChatMessage } from '../../chat-state.js';
 import { renderMarkdownToTerminal } from '../../terminal-markdown.js';
-import { theme } from '../../theme.js';
+import { darkTheme, type F1aireTheme } from '../../theme/tokens.js';
 import { buildTranscriptModel } from './transcript-model.js';
 
 type TranscriptRowKind = 'label' | 'message-line' | 'spacer' | 'pending-status';
@@ -22,11 +22,13 @@ export type BuildTranscriptRowsOptions = {
   isStreaming: boolean;
   status: string | null;
   messageWidth: number;
+  theme?: F1aireTheme;
 };
 
 export type BuildHistoricalTranscriptRowsOptions = {
   messages: ChatMessage[];
   messageWidth: number;
+  theme?: F1aireTheme;
 };
 
 export type BuildLiveTranscriptRowsOptions = {
@@ -35,6 +37,7 @@ export type BuildLiveTranscriptRowsOptions = {
   isStreaming: boolean;
   status: string | null;
   messageWidth: number;
+  theme?: F1aireTheme;
 };
 
 function wrapPlainTextLine(line: string, width: number): string[] {
@@ -69,7 +72,10 @@ function createSpacerRow(key: string): TranscriptRow {
   };
 }
 
-function createOnboardingRows(messageWidth: number): TranscriptRow[] {
+function createOnboardingRows(
+  messageWidth: number,
+  theme: F1aireTheme,
+): TranscriptRow[] {
   const lines = wrapPlainTextLine(
     'Ask about pace, tyres, pit windows, or traffic.',
     messageWidth,
@@ -82,7 +88,11 @@ function createOnboardingRows(messageWidth: number): TranscriptRow[] {
       plainText: line,
       node: React.createElement(
         Text,
-        { color: theme.subtle, dimColor: true, wrap: 'truncate-end' },
+        {
+          color: theme.transcript.auxiliary,
+          dimColor: true,
+          wrap: 'truncate-end',
+        },
         line,
       ),
     })),
@@ -95,11 +105,13 @@ function createTranscriptEventRows({
   streamingText,
   isStreaming,
   messageWidth,
+  theme,
 }: {
   messages: ChatMessage[];
   streamingText: string;
   isStreaming: boolean;
   messageWidth: number;
+  theme: F1aireTheme;
 }): TranscriptRow[] {
   const events: TranscriptEvent[] = messages.map((message, index) => {
     if (message.role === 'assistant') {
@@ -137,10 +149,10 @@ function createTranscriptEventRows({
   for (const row of model.rows) {
     const color: Color =
       row.role === 'assistant'
-        ? theme.assistant
+        ? theme.transcript.assistant
         : row.role === 'user'
-          ? theme.user
-          : theme.subtle;
+          ? theme.transcript.user
+          : theme.transcript.auxiliary;
 
     rows.push(createLabelRow(`${row.id}-label`, row.label, color));
 
@@ -167,12 +179,14 @@ function createTranscriptEventRows({
 export function buildHistoricalTranscriptRows({
   messages,
   messageWidth,
+  theme = darkTheme,
 }: BuildHistoricalTranscriptRowsOptions): TranscriptRow[] {
   return createTranscriptEventRows({
     messages,
     streamingText: '',
     isStreaming: false,
     messageWidth,
+    theme,
   });
 }
 
@@ -182,16 +196,18 @@ export function buildLiveTranscriptRows({
   isStreaming,
   status,
   messageWidth,
+  theme = darkTheme,
 }: BuildLiveTranscriptRowsOptions): TranscriptRow[] {
   const rows = createTranscriptEventRows({
     messages: [],
     streamingText,
     isStreaming,
     messageWidth,
+    theme,
   });
 
   if (!hasUserTurn && !isStreaming && !status) {
-    rows.push(...createOnboardingRows(messageWidth));
+    rows.push(...createOnboardingRows(messageWidth, theme));
   }
 
   return rows;
@@ -203,10 +219,12 @@ export function buildTranscriptRows({
   isStreaming,
   status,
   messageWidth,
+  theme = darkTheme,
 }: BuildTranscriptRowsOptions): TranscriptRow[] {
   const rows = buildHistoricalTranscriptRows({
     messages,
     messageWidth,
+    theme,
   });
   const hasUserTurn = messages.some((message) => message.role === 'user');
 
@@ -217,6 +235,7 @@ export function buildTranscriptRows({
       isStreaming,
       status,
       messageWidth,
+      theme,
     }),
   );
 

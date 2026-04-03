@@ -1,21 +1,26 @@
+import { darkTheme } from './theme/tokens.js';
+
+export { darkTheme, type F1aireTheme } from './theme/tokens.js';
+export { ThemeProvider, useTheme } from './theme/provider.js';
+
 export const theme = {
-  brand: 'rgb(215,119,87)',
-  accent: 'rgb(122,180,232)',
-  text: 'rgb(255,255,255)',
-  muted: 'rgb(153,153,153)',
-  subtle: 'rgb(153,153,153)',
-  border: 'rgb(136,136,136)',
-  panelTitle: 'rgb(255,255,255)',
-  user: 'rgb(122,180,232)',
-  assistant: 'rgb(215,119,87)',
-  assistantShimmer: 'rgb(235,159,127)',
+  brand: darkTheme.text.brand,
+  accent: darkTheme.chrome.selected,
+  text: darkTheme.text.primary,
+  muted: darkTheme.text.muted,
+  subtle: darkTheme.chrome.subtle,
+  border: darkTheme.chrome.border,
+  panelTitle: darkTheme.chrome.panelTitle,
+  user: darkTheme.transcript.user,
+  assistant: darkTheme.transcript.assistant,
+  assistantShimmer: darkTheme.status.thinkingShimmer,
   status: {
-    thinking: 'rgb(215,119,87)',
-    thinkingShimmer: 'rgb(235,159,127)',
-    tool: 'rgb(122,180,232)',
-    toolShimmer: 'rgb(183,224,255)',
-    error: 'rgb(255,107,128)',
-    errorShimmer: 'rgb(255,145,162)',
-    ok: 'rgb(78,186,101)',
+    thinking: darkTheme.status.thinking,
+    thinkingShimmer: darkTheme.status.thinkingShimmer,
+    tool: darkTheme.status.tool,
+    toolShimmer: darkTheme.status.toolShimmer,
+    error: darkTheme.status.error,
+    errorShimmer: darkTheme.status.errorShimmer,
+    ok: darkTheme.status.ok,
   },
 } as const;

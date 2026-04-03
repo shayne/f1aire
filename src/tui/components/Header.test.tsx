@@ -1,9 +1,40 @@
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import React from 'react';
 import { renderTui } from '#ink/testing';
+import { darkTheme, type F1aireTheme } from '../theme/tokens.js';
+
+const themeProvider = vi.hoisted(() => ({
+  useTheme: vi.fn(),
+}));
+
+vi.mock('../theme/provider.js', async () => {
+  const actual = await vi.importActual<typeof import('../theme/provider.js')>(
+    '../theme/provider.js',
+  );
+
+  return {
+    ...actual,
+    useTheme: themeProvider.useTheme,
+  };
+});
+
 import { Header } from './Header.js';
 
+function createHeaderTheme(): F1aireTheme {
+  return {
+    ...darkTheme,
+    text: {
+      ...darkTheme.text,
+      brand: 'rgb(1,2,3)',
+    },
+  };
+}
+
 describe('Header', () => {
+  beforeEach(() => {
+    themeProvider.useTheme.mockReturnValue(createHeaderTheme());
+  });
+
   it('renders a branded masthead without a boxed frame', async () => {
     const { lastFrame, unmount } = await renderTui(
       <Header
@@ -33,6 +64,17 @@ describe('Header', () => {
 
     expect(frame).toContain('f1aire');
     expect(frame).toContain('Virtual Race Engineer');
+    unmount();
+  });
+
+  it('reads the provider-supplied semantic token map', async () => {
+    const { lastFrame, unmount } = await renderTui(
+      <Header title="f1aire - Virtual Race Engineer" />,
+      { columns: 80, rows: 8 },
+    );
+
+    expect(lastFrame() ?? '').toContain('f1aire');
+    expect(themeProvider.useTheme).toHaveBeenCalled();
     unmount();
   });
 });

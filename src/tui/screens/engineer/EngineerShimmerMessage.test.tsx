@@ -2,7 +2,7 @@ import React from 'react';
 import { describe, expect, it } from 'vitest';
 import { Box } from '#ink';
 import { renderTui } from '#ink/testing';
-import { theme } from '../../theme.js';
+import { darkTheme } from '../../theme/tokens.js';
 import { EngineerShimmerMessage } from './EngineerShimmerMessage.js';
 
 describe('EngineerShimmerMessage', () => {
@@ -12,8 +12,8 @@ describe('EngineerShimmerMessage', () => {
         <EngineerShimmerMessage
           message="Thinking..."
           glimmerIndex={2}
-          messageColor={theme.status.thinking}
-          shimmerColor={theme.status.thinkingShimmer}
+          messageColor={darkTheme.status.thinking}
+          shimmerColor={darkTheme.status.thinkingShimmer}
         />
       </Box>,
     );
@@ -27,8 +27,8 @@ describe('EngineerShimmerMessage', () => {
       <EngineerShimmerMessage
         message=""
         glimmerIndex={0}
-        messageColor={theme.status.thinking}
-        shimmerColor={theme.status.thinkingShimmer}
+        messageColor={darkTheme.status.thinking}
+        shimmerColor={darkTheme.status.thinkingShimmer}
       />,
     );
 

@@ -1,10 +1,12 @@
 import React from 'react';
 import { Text } from '#ink';
-import { theme } from '../../theme.js';
+import { useTheme } from '../../theme/provider.js';
 
 export function EngineerSessionStrip({ label }: { label: string }) {
+  const theme = useTheme();
+
   return (
-    <Text color={theme.subtle} dimColor wrap="truncate-end">
+    <Text color={theme.chrome.subtle} dimColor wrap="truncate-end">
       {label}
     </Text>
   );

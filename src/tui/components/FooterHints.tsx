@@ -1,6 +1,6 @@
 import React from 'react';
 import { Text } from '#ink';
-import { theme } from '../theme.js';
+import { useTheme } from '../theme/provider.js';
 
 export function getFooterHintText(screen: string): string {
   if (screen === 'engineer') {
@@ -61,8 +61,10 @@ export function getFooterHintRowCount(screen: string, width: number): number {
 }
 
 export function FooterHints({ screen }: { screen: string }): React.JSX.Element {
+  const theme = useTheme();
+
   return (
-    <Text color={theme.subtle} dimColor>
+    <Text color={theme.chrome.subtle} dimColor>
       {getFooterHintText(screen)}
     </Text>
   );

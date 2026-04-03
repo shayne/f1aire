@@ -35,6 +35,7 @@ import { SessionPicker } from './tui/screens/SessionPicker.js';
 import { Settings, type SettingsAction } from './tui/screens/Settings.js';
 import { Summary } from './tui/screens/Summary.js';
 import { AppStateProvider, useAppState } from './tui/state/app-store.js';
+import { ThemeProvider } from './tui/theme/provider.js';
 
 function AppImpl(): React.JSX.Element {
   const [screen, setScreen] = useState<Screen>({ name: 'season' });
@@ -445,8 +446,10 @@ function AppImpl(): React.JSX.Element {
 
 export function App(): React.JSX.Element {
   return (
-    <AppStateProvider>
-      <AppImpl />
-    </AppStateProvider>
+    <ThemeProvider>
+      <AppStateProvider>
+        <AppImpl />
+      </AppStateProvider>
+    </ThemeProvider>
   );
 }

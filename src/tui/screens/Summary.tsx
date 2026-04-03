@@ -3,7 +3,7 @@ import { Box, Text } from '#ink';
 import type { Summary as SummaryData } from '../../core/summary.js';
 import { Panel } from '../components/Panel.js';
 import { createTerminalLink } from '../terminal-chrome.js';
-import { theme } from '../theme.js';
+import { useTheme } from '../theme/provider.js';
 
 export function Summary({
   summary,
@@ -12,15 +12,17 @@ export function Summary({
   summary: SummaryData;
   dir: string;
 }): React.JSX.Element {
+  const theme = useTheme();
+
   return (
     <Box flexDirection="column">
       <Text color={theme.status.ok}>Session ready</Text>
-      <Text color={theme.subtle} dimColor>
+      <Text color={theme.text.muted} dimColor>
         The race engineer can use this downloaded session immediately.
       </Text>
       <Box marginTop={1}>
         <Panel title="Session summary" tone="accent">
-          <Text color={theme.subtle} dimColor>
+          <Text color={theme.text.muted} dimColor>
             Data path
           </Text>
           <Text>{createTerminalLink(dir)}</Text>

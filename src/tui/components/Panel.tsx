@@ -1,6 +1,6 @@
 import React from 'react';
 import { Box, Text, type BoxProps } from '#ink';
-import { theme } from '../theme.js';
+import { useTheme } from '../theme/provider.js';
 
 type PanelProps = {
   title: string;
@@ -19,7 +19,9 @@ export function Panel({
   paddingY = 0,
   boxProps,
 }: PanelProps): React.JSX.Element {
-  const titleColor = tone === 'accent' ? theme.accent : theme.panelTitle;
+  const theme = useTheme();
+  const titleColor =
+    tone === 'accent' ? theme.chrome.selected : theme.chrome.panelTitle;
   const titleIsMuted = tone !== 'accent';
 
   return (

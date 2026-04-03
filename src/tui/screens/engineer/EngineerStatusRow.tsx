@@ -1,13 +1,17 @@
 import React, { useMemo } from 'react';
 import { Box, Text } from '#ink';
 import type { Color } from '../../../vendor/ink/styles.js';
-import { theme } from '../../theme.js';
+import { useTheme } from '../../theme/provider.js';
+import type { F1aireTheme } from '../../theme/tokens.js';
 import { getEngineerStatusMode } from './engineer-status-animation.js';
 import { EngineerStatusGlyph } from './EngineerStatusGlyph.js';
 import { EngineerShimmerMessage } from './EngineerShimmerMessage.js';
 import { useEngineerShimmerAnimation } from './useEngineerShimmerAnimation.js';
 
-function getStatusColors(status: string): {
+function getStatusColors(
+  status: string,
+  theme: F1aireTheme,
+): {
   accentColor: Color;
   shimmerColor: Color;
 } {
@@ -43,6 +47,7 @@ export function EngineerStatusRow({
   status: string;
   isStreaming: boolean;
 }): React.JSX.Element {
+  const theme = useTheme();
   const message = status.trim() || 'Idle';
   const mode = useMemo(() => getEngineerStatusMode(message), [message]);
   const [animationRef, glimmerIndex, time] = useEngineerShimmerAnimation(
@@ -50,7 +55,7 @@ export function EngineerStatusRow({
     message,
     !isStreaming,
   );
-  const { accentColor, shimmerColor } = getStatusColors(message);
+  const { accentColor, shimmerColor } = getStatusColors(message, theme);
 
   if (!isStreaming && message === 'Idle') {
     return <Box />;
@@ -78,7 +83,7 @@ export function EngineerStatusRow({
             shimmerColor={shimmerColor}
           />
         ) : (
-          <Text color={theme.subtle} dimColor>
+          <Text color={theme.status.idle} dimColor>
             {message}
           </Text>
         )}

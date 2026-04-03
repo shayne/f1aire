@@ -3,7 +3,7 @@ import { Text } from '#ink';
 import { Panel } from '../components/Panel.js';
 import { ScreenLayout } from '../components/ScreenLayout.js';
 import { SelectList } from '../components/SelectList.js';
-import { theme } from '../theme.js';
+import { useTheme } from '../theme/provider.js';
 
 export type KeyStatus = {
   envKeyPresent: boolean;
@@ -20,6 +20,7 @@ export function Settings({
   status: KeyStatus;
   onAction: (action: SettingsAction) => void;
 }): React.JSX.Element {
+  const theme = useTheme();
   const presentLabel = (value: boolean) => (value ? 'present' : 'absent');
 
   return (
@@ -44,19 +45,19 @@ export function Settings({
       detail={
         <Panel title="OpenAI">
           <Text>
-            <Text color={theme.subtle} dimColor>
+            <Text color={theme.text.muted} dimColor>
               Env key
             </Text>
             {`: ${presentLabel(status.envKeyPresent)}`}
           </Text>
           <Text>
-            <Text color={theme.subtle} dimColor>
+            <Text color={theme.text.muted} dimColor>
               Stored key
             </Text>
             {`: ${presentLabel(status.storedKeyPresent)}`}
           </Text>
           <Text>
-            <Text color={theme.subtle} dimColor>
+            <Text color={theme.text.muted} dimColor>
               In use
             </Text>
             {`: ${status.inUse}`}
