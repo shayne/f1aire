@@ -3,6 +3,7 @@ import path from 'node:path';
 import { tmpdir } from 'node:os';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import React from 'react';
+import { Text } from '#ink';
 import { renderTui } from '#ink/testing';
 import type { Meeting, Session } from './core/types.js';
 
@@ -30,22 +31,20 @@ const waitFor = async (
   throw new Error(`Timed out waiting for condition${tail}`);
 };
 
+const stripAnsi = (value: string) => value.replace(/\u001b\[[0-9;]*m/g, '');
+const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
+
 type RuntimeProgressUpdate = {
   phase: 'downloading' | 'extracting' | 'ready';
   message: string;
 };
 
-function mockEngineerRouteBoot({
-  base,
-  EngineerChat,
-}: {
-  base: string;
-  EngineerChat?: (props: { maxHeight?: number }) => React.ReactNode;
-}) {
+function mockEngineerRouteBoot({ base }: { base: string }) {
   process.env.OPENAI_API_KEY = 'test-key';
   process.env.XDG_DATA_HOME = base;
   process.env.XDG_CONFIG_HOME = base;
   process.env.HOME = base;
+  let didSelectSession = false;
 
   vi.doMock('./agent/pyodide/assets.js', () => ({
     ensurePyodideAssets: async ({
@@ -63,7 +62,12 @@ function mockEngineerRouteBoot({
   vi.doMock('./agent/engineer.js', () => ({
     createEngineerSession: () => ({
       close: vi.fn(),
-      send: vi.fn(async function* () {}),
+      send: vi.fn(async function* () {
+        yield Array.from(
+          { length: 32 },
+          (_, index) => `response row ${index + 1}`,
+        ).join('\n');
+      }),
     }),
   }));
   vi.doMock('./agent/engineer-logger.js', () => ({
@@ -135,9 +139,12 @@ function mockEngineerRouteBoot({
       onSelect: (session: Session) => void;
     }) => {
       React.useEffect(() => {
+        if (didSelectSession) return;
+        didSelectSession = true;
         void onSelect(meeting.Sessions[0]);
       }, [meeting, onSelect]);
-      return null;
+
+      return didSelectSession ? <Text>Session picker ready</Text> : null;
     },
   }));
   vi.doMock('./core/download.js', () => ({
@@ -149,21 +156,14 @@ function mockEngineerRouteBoot({
       return { dir, lineCount: 0 };
     },
   }));
-
-  if (EngineerChat) {
-    vi.doMock('./tui/screens/EngineerChat.js', () => ({
-      EngineerChat,
-    }));
-  } else {
-    vi.doMock('./tui/screens/EngineerChat.js', async () => {
-      return await vi.importActual('./tui/screens/EngineerChat.js');
-    });
-  }
 }
 
-describe('App engineer shell', () => {
-  it('removes the global header and footer on the engineer route', async () => {
-    const base = path.join(tmpdir(), `f1aire-engineer-shell-${Date.now()}`);
+describe('App engineer keybindings', () => {
+  it('keeps composer and transcript bindings above global nav in engineer mode while Escape still exits', async () => {
+    const base = path.join(
+      tmpdir(),
+      `f1aire-engineer-keybindings-${Date.now()}`,
+    );
     mockEngineerRouteBoot({ base });
 
     const { App } = await import('./app.js');
@@ -172,32 +172,57 @@ describe('App engineer shell', () => {
     await waitFor(() => (app.lastFrame() ?? '').includes('Ask the engineer'), {
       debug: () => app.lastFrame() ?? '',
     });
+    await tick();
 
-    const frame = app.lastFrame() ?? '';
-    expect(frame).toContain('Ask the engineer');
-    expect(frame).toContain('Quick summary:');
-    expect(frame).toContain('Winner: unavailable');
-    expect(frame).not.toContain('Quick summary: Winner: unavailable');
-    expect(frame).not.toContain('…');
-    expect(frame).not.toContain('F1aire - Virtual Race Engineer');
-    expect(frame).not.toContain('s settings');
-    app.unmount();
-  });
+    const processExitSpy = vi
+      .spyOn(process, 'exit')
+      .mockImplementation((() => undefined) as typeof process.exit);
 
-  it('does not pass a fixed maxHeight to the engineer screen so the shell can pin its bottom slot fullscreen', async () => {
-    const base = path.join(
-      tmpdir(),
-      `f1aire-engineer-shell-maxheight-${Date.now()}`,
+    app.stdin.write('q');
+    expect(processExitSpy).not.toHaveBeenCalled();
+    await waitFor(
+      () => stripAnsi(app.lastFrame() ?? '').includes('› q'),
+      { debug: () => app.lastFrame() ?? '' },
     );
-    const EngineerChat = vi.fn(() => null);
-    mockEngineerRouteBoot({ base, EngineerChat });
 
-    const { App } = await import('./app.js');
-    const app = await renderTui(<App />);
+    app.stdin.write('b');
+    await waitFor(
+      () => stripAnsi(app.lastFrame() ?? '').includes('› qb'),
+      { debug: () => app.lastFrame() ?? '' },
+    );
 
-    await waitFor(() => EngineerChat.mock.calls.length > 0);
+    app.stdin.write('\x7f');
+    await waitFor(
+      () =>
+        stripAnsi(app.lastFrame() ?? '').includes('› q') &&
+        !stripAnsi(app.lastFrame() ?? '').includes('› qb'),
+      { debug: () => app.lastFrame() ?? '' },
+    );
 
-    expect(EngineerChat.mock.calls.at(-1)?.[0]?.maxHeight).toBeUndefined();
+    expect(processExitSpy).not.toHaveBeenCalled();
+    expect(stripAnsi(app.lastFrame() ?? '')).toContain('Ask the engineer');
+
+    app.stdin.write('\r');
+    await waitFor(
+      () => stripAnsi(app.lastFrame() ?? '').includes('response row 32'),
+      { debug: () => app.lastFrame() ?? '' },
+    );
+
+    app.stdin.write('\u001b[5~');
+    await waitFor(
+      () =>
+        stripAnsi(app.lastFrame() ?? '').includes(
+          'Viewing earlier output · pgdn to return live',
+        ),
+      { debug: () => app.lastFrame() ?? '' },
+    );
+
+    app.stdin.write('\u001b');
+    await waitFor(
+      () => stripAnsi(app.lastFrame() ?? '').includes('Session picker ready'),
+      { debug: () => app.lastFrame() ?? '' },
+    );
+
     app.unmount();
   });
 });
