@@ -10,7 +10,7 @@ function Harness({
   bindings: Keybinding[];
 }): React.JSX.Element | null {
   useKeybindings({
-    activeContexts: ['engineer', 'transcript'],
+    activeContexts: ['global', 'transcript'],
     bindings,
   });
   return null;
@@ -29,7 +29,7 @@ describe('useKeybindings', () => {
           {
             action: 'global.back',
             context: 'global',
-            key: { escape: true },
+            key: { pageUp: true },
             run: onGlobal,
           },
           {
