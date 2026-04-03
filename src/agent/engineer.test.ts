@@ -54,6 +54,145 @@ describe('engineer session', () => {
     expect(stopWhen({ steps: new Array(16).fill({}) })).toBe(true);
   });
 
+  it('runs a final no-tool synthesis pass when the tool-step cap is reached without text', async () => {
+    const firstResponseMessages = [
+      {
+        role: 'assistant',
+        content: [
+          {
+            type: 'tool-call',
+            toolCallId: 'call-1',
+            toolName: 'run_py',
+            input: { code: '1 + 1' },
+          },
+        ],
+      },
+      {
+        role: 'tool',
+        content: [
+          {
+            type: 'tool-result',
+            toolCallId: 'call-1',
+            toolName: 'run_py',
+            output: {
+              type: 'json',
+              value: { pace: 'stable', degradationMsPerLap: Number.NaN },
+            },
+          },
+        ],
+      },
+    ];
+    const expectedSynthesisMessages = [
+      { role: 'user', content: 'Summarize the pace.' },
+      {
+        role: 'assistant',
+        content: [
+          {
+            type: 'tool-call',
+            toolCallId: 'call-1',
+            toolName: 'run_py',
+            input: { code: '1 + 1' },
+          },
+        ],
+      },
+      {
+        role: 'tool',
+        content: [
+          {
+            type: 'tool-result',
+            toolCallId: 'call-1',
+            toolName: 'run_py',
+            output: {
+              type: 'json',
+              value: { pace: 'stable', degradationMsPerLap: null },
+            },
+          },
+        ],
+      },
+      {
+        role: 'user',
+        content:
+          'Write the final answer from the tool results above. Do not call tools again.',
+      },
+    ];
+    const streamTextFn = vi
+      .fn()
+      .mockImplementationOnce(async () => ({
+        fullStream: (async function* () {
+          yield {
+            type: 'tool-call',
+            toolCallId: 'call-1',
+            toolName: 'run_py',
+          };
+          yield {
+            type: 'tool-result',
+            toolCallId: 'call-1',
+            toolName: 'run_py',
+          };
+        })(),
+        finishReason: Promise.resolve('tool-calls'),
+        steps: Promise.resolve(new Array(16).fill({})),
+        response: Promise.resolve({ messages: firstResponseMessages }),
+        text: Promise.resolve(''),
+      }))
+      .mockImplementationOnce(async ({ messages, tools }) => {
+        expect(tools).toBeUndefined();
+        expect(messages).toEqual(expectedSynthesisMessages);
+
+        return {
+          fullStream: (async function* () {
+            yield {
+              type: 'text-delta',
+              id: 't1',
+              text: 'Long-run pace was stable.',
+            };
+          })(),
+          finishReason: Promise.resolve('stop'),
+          steps: Promise.resolve([{}]),
+        } as any;
+      });
+
+    const session = createEngineerSession({
+      model: {} as any,
+      tools: {} as any,
+      system: 'x',
+      streamTextFn: streamTextFn as any,
+    });
+
+    const chunks: string[] = [];
+    for await (const chunk of session.send('Summarize the pace.')) {
+      chunks.push(chunk);
+    }
+
+    expect(chunks.join('')).toBe('Long-run pace was stable.');
+    expect(streamTextFn).toHaveBeenCalledTimes(2);
+    expect(session.getTranscriptEvents()).toEqual([
+      {
+        id: 'user-1',
+        type: 'user-message',
+        text: 'Summarize the pace.',
+      },
+      {
+        id: 'call-1',
+        type: 'tool-call',
+        toolName: 'run_py',
+        label: 'Running tool: run_py',
+      },
+      {
+        id: 'call-1-result',
+        type: 'tool-result',
+        toolName: 'run_py',
+        label: 'Processing result: run_py',
+      },
+      {
+        id: 'assistant-1',
+        type: 'assistant-message',
+        text: 'Long-run pace was stable.',
+        streaming: false,
+      },
+    ]);
+  });
+
   it('stores transcript events for user text, tool lifecycle, and assistant output', async () => {
     const initialTranscript: TranscriptEvent[] = [
       {

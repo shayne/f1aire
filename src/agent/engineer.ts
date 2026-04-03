@@ -1,4 +1,9 @@
-import { stepCountIs, streamText, type ToolSet } from 'ai';
+import {
+  stepCountIs,
+  streamText,
+  type ModelMessage,
+  type ToolSet,
+} from 'ai';
 import type { LanguageModel } from 'ai';
 import { formatUnknownError } from './error-utils.js';
 import type {
@@ -9,7 +14,9 @@ import type {
   UserMessageEvent,
 } from './transcript-events.js';
 
-type Message = { role: 'user' | 'assistant'; content: string };
+const MAX_ENGINEER_TOOL_STEPS = 16;
+const FINAL_SYNTHESIS_PROMPT =
+  'Write the final answer from the tool results above. Do not call tools again.';
 
 type CreateEngineerSessionArgs = {
   model: LanguageModel;
@@ -41,8 +48,37 @@ function cloneTranscriptEvent(event: TranscriptEvent): TranscriptEvent {
   return { ...event };
 }
 
-function createInitialMessages(initialTranscript: TranscriptEvent[]): Message[] {
-  return initialTranscript.flatMap((event): Message[] => {
+function normalizeContinuationValue(value: unknown): unknown {
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? value : null;
+  }
+
+  if (Array.isArray(value)) {
+    return value.map((item) => normalizeContinuationValue(item));
+  }
+
+  if (!value || typeof value !== 'object') {
+    return value;
+  }
+
+  return Object.fromEntries(
+    Object.entries(value).map(([key, nestedValue]) => [
+      key,
+      normalizeContinuationValue(nestedValue),
+    ]),
+  );
+}
+
+function normalizeContinuationMessages(messages: ModelMessage[]): ModelMessage[] {
+  return messages.map(
+    (message) => normalizeContinuationValue(message) as ModelMessage,
+  );
+}
+
+function createInitialMessages(
+  initialTranscript: TranscriptEvent[],
+): ModelMessage[] {
+  return initialTranscript.flatMap((event): ModelMessage[] => {
     if (event.type === 'user-message') {
       return [{ role: 'user', content: event.text }];
     }
@@ -176,25 +212,10 @@ export function createEngineerSession({
       let hadText = false;
       let finishReason: string | undefined;
       let stepCount: number | undefined;
-      try {
-        const result = await streamTextFn({
-          model,
-          system,
-          messages,
-          tools,
-          // Allow enough steps for tool retries (e.g. python self-healing) while
-          // keeping an upper bound so a bad loop can't run forever.
-          stopWhen: stepCountIs(16),
-          onError({ error }) {
-            errorMessage = formatUnknownError(error);
-            logger?.({
-              type: 'stream-error',
-              error: errorMessage,
-            });
-            onEvent?.({ type: 'stream-error', error: errorMessage });
-          },
-        });
 
+      async function* consumeResult(
+        result: Awaited<ReturnType<typeof streamTextFn>>,
+      ) {
         for await (const part of result.fullStream) {
           onEvent?.({ type: 'stream-part', part });
           if (part.type !== 'text-delta') {
@@ -242,12 +263,67 @@ export function createEngineerSession({
           }
         }
 
+        let responseMessages: ModelMessage[] = [];
+
         try {
           finishReason = await result.finishReason;
           stepCount = (await result.steps).length;
         } catch {
           finishReason = undefined;
           stepCount = undefined;
+        }
+
+        try {
+          responseMessages = normalizeContinuationMessages([
+            ...(await result.response).messages,
+          ]);
+        } catch {
+          responseMessages = [];
+        }
+
+        return responseMessages;
+      }
+
+      try {
+        const result = await streamTextFn({
+          model,
+          system,
+          messages,
+          tools,
+          // Allow enough steps for tool retries (e.g. python self-healing) while
+          // keeping an upper bound so a bad loop can't run forever.
+          stopWhen: stepCountIs(MAX_ENGINEER_TOOL_STEPS),
+          onError({ error }) {
+            errorMessage = formatUnknownError(error);
+            logger?.({
+              type: 'stream-error',
+              error: errorMessage,
+            });
+            onEvent?.({ type: 'stream-error', error: errorMessage });
+          },
+        });
+
+        const responseMessages = yield* consumeResult(result);
+
+        if (
+          !hadText &&
+          !errorMessage &&
+          sawToolCall &&
+          finishReason === 'tool-calls' &&
+          stepCount === MAX_ENGINEER_TOOL_STEPS &&
+          responseMessages.length > 0
+        ) {
+          const synthesisResult = await streamTextFn({
+            model,
+            system,
+            messages: [
+              ...messages,
+              ...responseMessages,
+              { role: 'user', content: FINAL_SYNTHESIS_PROMPT },
+            ],
+          });
+
+          yield* consumeResult(synthesisResult);
         }
 
         if (!hadText) {
