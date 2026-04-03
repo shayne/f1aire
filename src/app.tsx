@@ -235,13 +235,13 @@ function AppImpl(): React.JSX.Element {
       return false;
     }
 
-    void (async () => {
-      const pending = takePendingEngineer();
-      if (!pending) {
-        setSummaryHasPriorTranscript(false);
-        return;
-      }
+    const pending = takePendingEngineer();
+    if (!pending) {
+      setSummaryHasPriorTranscript(false);
+      return;
+    }
 
+    void (async () => {
       const keyToUse = await resolveApiKeyForUse();
       if (!keyToUse) {
         queuePendingEngineer(pending);
@@ -251,7 +251,11 @@ function AppImpl(): React.JSX.Element {
       }
 
       await startEngineer(pending, keyToUse);
-    })();
+    })().catch((err) => {
+      queuePendingEngineer(pending);
+      setSummaryHasPriorTranscript(true);
+      setApiKeyError(formatUnknownError(err));
+    });
   }, [
     queuePendingEngineer,
     resolveApiKeyForUse,
