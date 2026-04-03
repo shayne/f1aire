@@ -215,7 +215,10 @@ function AppImpl(): React.JSX.Element {
 
   const handleGlobalBack = useCallback((): void => {
     if (screen.name === 'apiKey') {
-      clearPendingEngineer();
+      if (screen.returnTo.name !== 'summary') {
+        clearPendingEngineer();
+        setSummaryHasPriorTranscript(false);
+      }
       setApiKeyError(null);
     }
     if (screen.name === 'summary') {
@@ -234,7 +237,10 @@ function AppImpl(): React.JSX.Element {
 
     void (async () => {
       const pending = takePendingEngineer();
-      if (!pending) return;
+      if (!pending) {
+        setSummaryHasPriorTranscript(false);
+        return;
+      }
 
       const keyToUse = await resolveApiKeyForUse();
       if (!keyToUse) {
@@ -433,14 +439,21 @@ function AppImpl(): React.JSX.Element {
                       dir,
                     };
 
-                    const transcriptEvents = await loadTranscriptEvents({
-                      dataDir: getDataDir('f1aire'),
-                      sessionKey: getTranscriptSessionKey({
-                        year: screen.year,
-                        meetingKey: screen.meeting.Key,
-                        sessionKey: screen.session.Key,
-                      }),
-                    });
+                    let transcriptEvents: Awaited<
+                      ReturnType<typeof loadTranscriptEvents>
+                    > = [];
+                    try {
+                      transcriptEvents = await loadTranscriptEvents({
+                        dataDir: getDataDir('f1aire'),
+                        sessionKey: getTranscriptSessionKey({
+                          year: screen.year,
+                          meetingKey: screen.meeting.Key,
+                          sessionKey: screen.session.Key,
+                        }),
+                      });
+                    } catch {
+                      transcriptEvents = [];
+                    }
 
                     if (transcriptEvents.length > 0) {
                       queuePendingEngineer(pending);
@@ -474,7 +487,16 @@ function AppImpl(): React.JSX.Element {
                       return;
                     }
                     await startEngineer(pending, key);
-                  })();
+                  })().catch((err) => {
+                    clearPendingEngineer();
+                    setSummaryHasPriorTranscript(false);
+                    setApiKeyError(formatUnknownError(err));
+                    setScreen(
+                      getBackScreen(screen) ?? {
+                        name: 'season',
+                      },
+                    );
+                  });
                 }}
                 onStart={async () => {
                   const root = getDataDir('f1aire');

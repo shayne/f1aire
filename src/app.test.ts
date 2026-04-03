@@ -429,4 +429,296 @@ describe('App shell routes', () => {
     expect(frame).toContain('Resume prior engineer transcript');
     app.unmount();
   });
+
+  it('keeps the summary resume action live after backing out of the API-key prompt', async () => {
+    delete process.env.OPENAI_API_KEY;
+    const base = path.join(
+      tmpdir(),
+      `f1aire-app-resume-back-${Date.now()}`,
+    );
+    process.env.XDG_DATA_HOME = base;
+    process.env.XDG_CONFIG_HOME = base;
+    process.env.HOME = base;
+    let resumeSummary: (() => void) | undefined;
+    let triggerGlobalBack: (() => boolean | void) | undefined;
+
+    mkdirSync(path.join(base, 'f1aire', 'data', 'transcripts'), {
+      recursive: true,
+    });
+    writeFileSync(
+      path.join(base, 'f1aire', 'data', 'transcripts', '2024-1-10.json'),
+      `${JSON.stringify(
+        [
+          {
+            id: 'assistant-1',
+            type: 'assistant-message',
+            text: 'Stored transcript exists.',
+            streaming: false,
+          },
+        ],
+        null,
+        2,
+      )}\n`,
+      'utf-8',
+    );
+
+    vi.doMock('./agent/pyodide/assets.js', () => ({
+      ensurePyodideAssets: async ({
+        onProgress,
+      }: {
+        onProgress?: (update: RuntimeProgressUpdate) => void;
+      }) => {
+        onProgress?.({ phase: 'ready', message: 'Python runtime ready.' });
+        return { ready: true };
+      },
+    }));
+    vi.doMock('./tui/screens/SeasonPicker.js', () => ({
+      SeasonPicker: ({ onSelect }: { onSelect: (year: number) => void }) => {
+        React.useEffect(() => {
+          void onSelect(2024);
+        }, [onSelect]);
+        return null;
+      },
+    }));
+    vi.doMock('./core/f1-api.js', () => ({
+      getMeetings: async () => ({
+        Year: 2024,
+        Meetings: [meeting],
+      }),
+    }));
+    vi.doMock('./tui/screens/MeetingPicker.js', () => ({
+      MeetingPicker: ({
+        meetings,
+        onSelect,
+      }: {
+        meetings: Meeting[];
+        onSelect: (selectedMeeting: Meeting) => void;
+      }) => {
+        React.useEffect(() => {
+          void onSelect(meetings[0] as Meeting);
+        }, [meetings, onSelect]);
+        return null;
+      },
+    }));
+    vi.doMock('./tui/screens/SessionPicker.js', () => ({
+      SessionPicker: ({
+        meeting,
+        onSelect,
+      }: {
+        meeting: Meeting;
+        onSelect: (selectedSession: Session) => void;
+      }) => {
+        React.useEffect(() => {
+          void onSelect(meeting.Sessions[0] as Session);
+        }, [meeting, onSelect]);
+        return null;
+      },
+    }));
+    vi.doMock('./core/download.js', () => ({
+      downloadSession: async () => {
+        const dir = path.join(base, 'download');
+        mkdirSync(dir, { recursive: true });
+        writeFileSync(path.join(dir, 'subscribe.json'), '{}', 'utf-8');
+        writeFileSync(path.join(dir, 'live.jsonl'), '', 'utf-8');
+        return { dir, lineCount: 0 };
+      },
+    }));
+    vi.doMock('./tui/screens/Summary.js', () => ({
+      Summary: ({ onResume }: { onResume?: () => void }) => {
+        resumeSummary = onResume;
+        return React.createElement(
+          Text,
+          null,
+          'Prior engineer transcript found',
+        );
+      },
+    }));
+    vi.doMock('./tui/keybindings/use-keybindings.js', () => ({
+      useKeybindings: ({
+        bindings,
+      }: {
+        bindings: Array<{
+          action: string;
+          context: string;
+          key: { escape?: boolean };
+          run: () => boolean | void;
+        }>;
+      }) => {
+        triggerGlobalBack = bindings.find(
+          (binding) =>
+            binding.action === 'global.back' &&
+            binding.context === 'global' &&
+            binding.key.escape,
+        )?.run;
+      },
+    }));
+
+    const { App } = await import('./app.js');
+    const app = await renderTui(React.createElement(App), {
+      columns: 72,
+      rows: 20,
+    });
+
+    await waitFor(
+      () =>
+        (app.lastFrame() ?? '').includes('Prior engineer transcript found') &&
+        typeof resumeSummary === 'function',
+      { debug: () => app.lastFrame() ?? '' },
+    );
+
+    resumeSummary?.();
+    await waitFor(() => (app.lastFrame() ?? '').includes('OpenAI API Key'), {
+      debug: () => app.lastFrame() ?? '',
+    });
+
+    triggerGlobalBack?.();
+    await waitFor(
+      () =>
+        (app.lastFrame() ?? '').includes('Prior engineer transcript found') &&
+        typeof resumeSummary === 'function',
+      { debug: () => app.lastFrame() ?? '' },
+    );
+
+    resumeSummary?.();
+    await waitFor(() => (app.lastFrame() ?? '').includes('OpenAI API Key'), {
+      debug: () => app.lastFrame() ?? '',
+    });
+
+    app.unmount();
+  });
+
+  it('falls back to a fresh engineer session when transcript probing fails during download completion', async () => {
+    process.env.OPENAI_API_KEY = 'test-key';
+    const base = path.join(
+      tmpdir(),
+      `f1aire-app-transcript-probe-error-${Date.now()}`,
+    );
+    process.env.XDG_DATA_HOME = base;
+    process.env.XDG_CONFIG_HOME = base;
+    process.env.HOME = base;
+
+    vi.doMock('./agent/session-transcript-store.js', async () => {
+      const actual = await vi.importActual<
+        typeof import('./agent/session-transcript-store.js')
+      >('./agent/session-transcript-store.js');
+
+      return {
+        ...actual,
+        loadTranscriptEvents: vi.fn(async () => {
+          throw Object.assign(new Error('permission denied'), {
+            code: 'EACCES',
+          });
+        }),
+      };
+    });
+    vi.doMock('./agent/pyodide/assets.js', () => ({
+      ensurePyodideAssets: async ({
+        onProgress,
+      }: {
+        onProgress?: (update: RuntimeProgressUpdate) => void;
+      }) => {
+        onProgress?.({ phase: 'ready', message: 'Python runtime ready.' });
+        return { ready: true };
+      },
+    }));
+    vi.doMock('@ai-sdk/openai', () => ({
+      createOpenAI: () => () => ({}),
+    }));
+    vi.doMock('./agent/engineer.js', () => ({
+      createEngineerSession: ({ initialTranscript }: { initialTranscript: [] }) => ({
+        getTranscriptEvents: () => initialTranscript,
+        send: vi.fn(async function* () {}),
+      }),
+    }));
+    vi.doMock('./agent/engineer-logger.js', () => ({
+      createEngineerLogger: () => ({ logger: vi.fn() }),
+    }));
+    vi.doMock('./agent/prompt.js', () => ({
+      systemPrompt: 'test prompt',
+    }));
+    vi.doMock('./agent/tools.js', () => ({
+      makeTools: () => ({}),
+    }));
+    vi.doMock('./tui/screens/SeasonPicker.js', () => ({
+      SeasonPicker: ({ onSelect }: { onSelect: (year: number) => void }) => {
+        React.useEffect(() => {
+          void onSelect(2024);
+        }, [onSelect]);
+        return null;
+      },
+    }));
+    vi.doMock('./core/f1-api.js', () => ({
+      getMeetings: async () => ({
+        Year: 2024,
+        Meetings: [meeting],
+      }),
+    }));
+    vi.doMock('./tui/screens/MeetingPicker.js', () => ({
+      MeetingPicker: ({
+        meetings,
+        onSelect,
+      }: {
+        meetings: Meeting[];
+        onSelect: (selectedMeeting: Meeting) => void;
+      }) => {
+        React.useEffect(() => {
+          void onSelect(meetings[0] as Meeting);
+        }, [meetings, onSelect]);
+        return null;
+      },
+    }));
+    vi.doMock('./tui/screens/SessionPicker.js', () => ({
+      SessionPicker: ({
+        meeting,
+        onSelect,
+      }: {
+        meeting: Meeting;
+        onSelect: (selectedSession: Session) => void;
+      }) => {
+        React.useEffect(() => {
+          void onSelect(meeting.Sessions[0] as Session);
+        }, [meeting, onSelect]);
+        return null;
+      },
+    }));
+    vi.doMock('./core/download.js', () => ({
+      downloadSession: async () => {
+        const dir = path.join(base, 'download');
+        mkdirSync(dir, { recursive: true });
+        writeFileSync(path.join(dir, 'subscribe.json'), '{}', 'utf-8');
+        writeFileSync(path.join(dir, 'live.jsonl'), '', 'utf-8');
+        return { dir, lineCount: 0 };
+      },
+    }));
+    vi.doMock('./tui/screens/EngineerChat.js', () => ({
+      EngineerChat: ({
+        messages,
+      }: {
+        messages: { role: 'user' | 'assistant'; content: string }[];
+      }) =>
+        React.createElement(
+          Text,
+          null,
+          messages
+            .map((message) => `${message.role}: ${message.content}`)
+            .join('\n'),
+        ),
+    }));
+
+    const { App } = await import('./app.js');
+    const app = await renderTui(React.createElement(App), {
+      columns: 72,
+      rows: 20,
+    });
+
+    await waitFor(
+      () => (app.lastFrame() ?? '').includes('assistant: Quick summary:'),
+      { debug: () => app.lastFrame() ?? '' },
+    );
+
+    expect(app.lastFrame() ?? '').not.toContain(
+      'Resume prior engineer transcript',
+    );
+    app.unmount();
+  });
 });

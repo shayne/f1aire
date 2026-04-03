@@ -430,10 +430,15 @@ export function useEngineerSession({
       sessionKey: pending.session.Key,
     });
     transcriptSessionKeyRef.current = transcriptSessionKey;
-    const storedTranscript = await loadTranscriptEvents({
-      dataDir: getDataDir('f1aire'),
-      sessionKey: transcriptSessionKey,
-    });
+    let storedTranscript: TranscriptEvent[] = [];
+    try {
+      storedTranscript = await loadTranscriptEvents({
+        dataDir: getDataDir('f1aire'),
+        sessionKey: transcriptSessionKey,
+      });
+    } catch {
+      storedTranscript = [];
+    }
     const initialTranscript =
       storedTranscript.length > 0
         ? storedTranscript
