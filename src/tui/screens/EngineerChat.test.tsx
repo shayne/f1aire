@@ -270,6 +270,34 @@ describe('EngineerChat', () => {
     unmount();
   });
 
+  it('keeps the composer visible in fullscreen mode after resizing to a compact terminal', async () => {
+    const rendered = await renderTui(
+      <EngineerChat
+        {...baseProps}
+        messages={makeMessages(18)}
+        pythonCode={'import numpy as np\nprint("hi")\n2+2'}
+      />,
+      { columns: 100, rows: 40 },
+    );
+
+    await tick();
+    expect(stripAnsi(rendered.lastFrame() ?? '')).toContain(
+      'Ask the engineer about pace, tyres, traffic, or strategy...',
+    );
+
+    rendered.resize(72, 24);
+    await tick();
+
+    const compactFrame = stripAnsi(rendered.lastFrame() ?? '');
+    expect(compactFrame).toContain(
+      'Ask the engineer about pace, tyres, traffic, or strategy...',
+    );
+    expect(compactFrame).toContain(
+      'enter send · shift+enter newline · tab details',
+    );
+    rendered.unmount();
+  });
+
   it('shows the transcript pause/live workflow with PageUp and PageDown', async () => {
     const { stdin, lastFrame, unmount } = await renderTui(
       <EngineerChat

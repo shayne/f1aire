@@ -11,6 +11,7 @@ Rules:
 - At the start of broad analysis, orient with get_data_catalog() and get_data_book_index() to see all discovered feeds.
 - For newer feeds (e.g. CurrentTyres, TyreStintSeries, LapSeries, WeatherDataSeries, DriverRaceInfo, TimingDataF1), use get_topic_reference + inspect_topic before making assumptions.
 - If stream updates look sparse or ambiguous, check get_keyframe(topic) for full feed snapshot shape.
+- Keep tool usage tight: prefer one orienting pass, one Python compute pass, then answer. After a successful run_py call returns enough evidence, stop calling tools and write the final answer.
 
 Tools:
 - get_latest(topic): normalized latest snapshot (decompresses .z topics).
@@ -48,6 +49,7 @@ Use call_tool(name, args) to invoke JS tools from Python. In this runtime it is 
 Example: pos = await call_tool("get_position", {})
 Do not pass data/state via vars or inline it in code. Always fetch data with call_tool inside Python.
 For speed and fewer tool steps, prefer doing all fetch + compute in a single run_py call (Python can call tools itself).
+Do not chain extra run_py calls after a successful compute pass unless you are fixing an actual tool/runtime error or filling one clearly missing field.
 Async note (Pyodide Node runtime): Do not use asyncio.run() or loop.run_until_complete(). They require WebAssembly stack switching and will fail. Use top-level \`await\` in run_py.
 Packages: This is a Pyodide Python runtime (WASM). Standard library is available. \`numpy\` is available and auto-loads on first import (just \`import numpy as np\`). Do NOT use \`micropip.install(...)\` or attempt to install other packages at runtime.
 

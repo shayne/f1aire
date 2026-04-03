@@ -174,6 +174,8 @@ export function createEngineerSession({
       };
       let buffer = '';
       let hadText = false;
+      let finishReason: string | undefined;
+      let stepCount: number | undefined;
       try {
         const result = await streamTextFn({
           model,
@@ -182,7 +184,7 @@ export function createEngineerSession({
           tools,
           // Allow enough steps for tool retries (e.g. python self-healing) while
           // keeping an upper bound so a bad loop can't run forever.
-          stopWhen: stepCountIs(8),
+          stopWhen: stepCountIs(16),
           onError({ error }) {
             errorMessage = formatUnknownError(error);
             logger?.({
@@ -240,6 +242,14 @@ export function createEngineerSession({
           }
         }
 
+        try {
+          finishReason = await result.finishReason;
+          stepCount = (await result.steps).length;
+        } catch {
+          finishReason = undefined;
+          stepCount = undefined;
+        }
+
         if (!hadText) {
           if (errorMessage) {
             buffer = `Error: ${errorMessage}`;
@@ -279,6 +289,8 @@ export function createEngineerSession({
         outputLength: buffer.length,
         hadText,
         sawToolCall,
+        finishReason,
+        stepCount,
       });
       onEvent?.({
         type: 'send-finish',

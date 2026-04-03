@@ -21,7 +21,7 @@ describe('engineer session', () => {
     expect(parts.join('')).toBe('ok');
   });
 
-  it('allows enough tool steps for python self-healing', async () => {
+  it('allows enough tool steps for multi-stage python analysis', async () => {
     const streamTextFn = vi.fn(
       async () =>
         ({
@@ -46,9 +46,12 @@ describe('engineer session', () => {
     const [{ stopWhen }] = streamTextFn.mock.calls[0] ?? [];
     expect(stopWhen).toBeTypeOf('function');
 
-    // stepCountIs(N) stops when steps.length === N.
-    expect(stopWhen({ steps: new Array(7).fill({}) })).toBe(false);
-    expect(stopWhen({ steps: new Array(8).fill({}) })).toBe(true);
+    // Long-running pace analysis can legitimately consume 8+ tool/model steps
+    // before the final text step. Keep a higher hard cap while still bounding
+    // pathological loops.
+    expect(stopWhen({ steps: new Array(8).fill({}) })).toBe(false);
+    expect(stopWhen({ steps: new Array(15).fill({}) })).toBe(false);
+    expect(stopWhen({ steps: new Array(16).fill({}) })).toBe(true);
   });
 
   it('stores transcript events for user text, tool lifecycle, and assistant output', async () => {
