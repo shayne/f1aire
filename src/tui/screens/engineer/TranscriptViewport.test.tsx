@@ -48,4 +48,29 @@ describe('TranscriptViewport', () => {
     expect(frame).toContain('newer update');
     unmount();
   });
+
+  it('renders only the visible row slice between top and bottom spacers', async () => {
+    const { lastFrame, unmount } = await renderTui(
+      <TranscriptViewport
+        rows={[
+          {
+            key: 'window-row',
+            kind: 'message-line',
+            plainText: 'window row',
+            node: <Text>window row</Text>,
+          },
+        ]}
+        topSpacerRows={40}
+        bottomSpacerRows={80}
+        scrollHint={null}
+      />,
+    );
+
+    const frame = lastFrame() ?? '';
+
+    expect(frame).toContain('window row');
+    expect(frame).not.toContain('older update');
+    expect(frame).not.toContain('newer update');
+    unmount();
+  });
 });

@@ -12,6 +12,7 @@ import { buildTranscriptRows } from './engineer/transcript-rows.js';
 import { TranscriptViewport } from './engineer/TranscriptViewport.js';
 import { useEngineerScrollState } from './engineer/useEngineerScrollState.js';
 import { useComposerState } from './engineer/useComposerState.js';
+import { useVirtualTranscriptRows } from './engineer/useVirtualTranscriptRows.js';
 
 function getSessionStripLabel({
   year,
@@ -154,6 +155,8 @@ export function EngineerChat({
   const {
     scrollRef,
     dividerYRef,
+    scrollOffset,
+    viewportRows,
     scrollHint,
     newMessageCount,
     jumpToLatest,
@@ -162,9 +165,17 @@ export function EngineerChat({
     handleWheelUp,
     handleWheelDown,
   } = useEngineerScrollState({
+    estimatedViewportRows: rows,
     messageCount: messages.length,
+    rowCount: conversationRows.length,
     transcriptVersion,
   });
+  const { visibleRows, topSpacerRows, bottomSpacerRows } =
+    useVirtualTranscriptRows({
+      rows: conversationRows,
+      viewportRows,
+      scrollOffset,
+    });
 
   const detailsActivity = useMemo(
     () => (isStreaming ? activity.slice(0, -1) : activity),
@@ -217,7 +228,9 @@ export function EngineerChat({
       onPillClick={jumpToLatest}
       scrollable={
         <TranscriptViewport
-          rows={conversationRows}
+          rows={visibleRows}
+          topSpacerRows={topSpacerRows}
+          bottomSpacerRows={bottomSpacerRows}
           scrollHint={scrollHint}
           onScrollHintClick={jumpToLatest}
           onRender={onConversationRender}
@@ -230,10 +243,7 @@ export function EngineerChat({
             pythonCode={pythonCode ?? ''}
             isExpanded={detailsExpanded}
           />
-          <EngineerStatusRow
-            status={liveStatus}
-            isStreaming={isStreaming}
-          />
+          <EngineerStatusRow status={liveStatus} isStreaming={isStreaming} />
           <ComposerPanel
             onSend={onSend}
             isStreaming={isStreaming}

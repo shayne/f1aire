@@ -1,21 +1,22 @@
-import {
-  useEffect,
-  useRef,
-  useState,
-  type RefObject,
-} from 'react';
+import { useEffect, useRef, useState, type RefObject } from 'react';
 import { type ScrollBoxHandle } from '#ink';
 import { useUnseenDivider } from '../../../vendor/components/FullscreenLayout.js';
 
 export function useEngineerScrollState({
+  estimatedViewportRows,
   messageCount,
+  rowCount,
   transcriptVersion,
 }: {
+  estimatedViewportRows: number;
   messageCount: number;
+  rowCount: number;
   transcriptVersion: string;
 }): {
   scrollRef: RefObject<ScrollBoxHandle | null>;
   dividerYRef: RefObject<number | null>;
+  scrollOffset: number;
+  viewportRows: number;
   scrollHint: string | null;
   newMessageCount: number;
   jumpToLatest: () => void;
@@ -29,7 +30,17 @@ export function useEngineerScrollState({
     useUnseenDivider(messageCount);
   const pausedTranscriptVersionRef = useRef<string | null>(null);
   const pausedMessageCountRef = useRef(0);
+  const [pausedScrollOffset, setPausedScrollOffset] = useState(() => rowCount);
+  const [measuredViewportRows, setMeasuredViewportRows] = useState(
+    () => estimatedViewportRows,
+  );
   const [isScrolledUp, setIsScrolledUp] = useState(false);
+  const viewportRows = isScrolledUp
+    ? measuredViewportRows
+    : estimatedViewportRows;
+  const scrollOffset = isScrolledUp
+    ? Math.min(pausedScrollOffset, Math.max(0, rowCount - viewportRows))
+    : Math.max(0, rowCount - viewportRows);
 
   useEffect(() => {
     if (dividerIndex === null) {
@@ -43,13 +54,23 @@ export function useEngineerScrollState({
     const handle = scrollRef.current;
     if (!handle) return false;
 
-    const pageStep = Math.max(1, Math.floor(handle.getViewportHeight() * 0.7));
+    const nextViewportRows = Math.max(0, handle.getViewportHeight());
+    const pageStep = Math.max(1, Math.floor(nextViewportRows * 0.7));
+    const maxOffset = Math.max(0, rowCount - nextViewportRows);
 
     if (!isScrolledUp) {
       pausedTranscriptVersionRef.current = transcriptVersion;
       pausedMessageCountRef.current = messageCount;
+      setPausedScrollOffset(Math.max(0, maxOffset - pageStep));
+    } else {
+      setPausedScrollOffset((current) =>
+        Math.max(0, Math.min(current, maxOffset) - pageStep),
+      );
     }
 
+    setMeasuredViewportRows((current) =>
+      current === nextViewportRows ? current : nextViewportRows,
+    );
     setIsScrolledUp(true);
     handle.scrollBy(-pageStep);
     onScrollAway(handle);
@@ -60,16 +81,23 @@ export function useEngineerScrollState({
     const handle = scrollRef.current;
     if (!handle) return false;
 
-    const lineStep = Math.max(
-      1,
-      Math.floor(handle.getViewportHeight() * 0.2),
-    );
+    const lineStep = Math.max(1, Math.floor(handle.getViewportHeight() * 0.2));
+    const nextViewportRows = Math.max(0, handle.getViewportHeight());
+    const maxOffset = Math.max(0, rowCount - nextViewportRows);
 
     if (!isScrolledUp) {
       pausedTranscriptVersionRef.current = transcriptVersion;
       pausedMessageCountRef.current = messageCount;
+      setPausedScrollOffset(Math.max(0, maxOffset - lineStep));
+    } else {
+      setPausedScrollOffset((current) =>
+        Math.max(0, Math.min(current, maxOffset) - lineStep),
+      );
     }
 
+    setMeasuredViewportRows((current) =>
+      current === nextViewportRows ? current : nextViewportRows,
+    );
     setIsScrolledUp(true);
     handle.scrollBy(-lineStep);
     onScrollAway(handle);
@@ -88,25 +116,28 @@ export function useEngineerScrollState({
       return false;
     }
 
-    const lineStep = Math.max(
-      1,
-      Math.floor(handle.getViewportHeight() * 0.2),
-    );
-    const max = Math.max(
-      0,
-      handle.getScrollHeight() - handle.getViewportHeight(),
-    );
-    const nextTop = handle.getScrollTop() + handle.getPendingDelta() + lineStep;
+    const lineStep = Math.max(1, Math.floor(handle.getViewportHeight() * 0.2));
+    const nextViewportRows = Math.max(0, handle.getViewportHeight());
+    const max = Math.max(0, rowCount - nextViewportRows);
+    const nextOffset = Math.min(max, scrollOffset + lineStep);
 
-    if (nextTop >= max) {
+    if (nextOffset >= max) {
       jumpToNew(handle);
       pausedTranscriptVersionRef.current = null;
       pausedMessageCountRef.current = 0;
+      setMeasuredViewportRows((current) =>
+        current === nextViewportRows ? current : nextViewportRows,
+      );
+      setPausedScrollOffset(max);
       setIsScrolledUp(false);
       onRepin();
       return true;
     }
 
+    setMeasuredViewportRows((current) =>
+      current === nextViewportRows ? current : nextViewportRows,
+    );
+    setPausedScrollOffset(nextOffset);
     handle.scrollBy(lineStep);
     return true;
   };
@@ -126,6 +157,11 @@ export function useEngineerScrollState({
     jumpToNew(handle);
     pausedTranscriptVersionRef.current = null;
     pausedMessageCountRef.current = 0;
+    const nextViewportRows = Math.max(0, handle.getViewportHeight());
+    setMeasuredViewportRows((current) =>
+      current === nextViewportRows ? current : nextViewportRows,
+    );
+    setPausedScrollOffset(Math.max(0, rowCount - nextViewportRows));
     setIsScrolledUp(false);
     onRepin();
     return true;
@@ -144,6 +180,11 @@ export function useEngineerScrollState({
     jumpToNew(handle);
     pausedTranscriptVersionRef.current = null;
     pausedMessageCountRef.current = 0;
+    const nextViewportRows = Math.max(0, handle.getViewportHeight());
+    setMeasuredViewportRows((current) =>
+      current === nextViewportRows ? current : nextViewportRows,
+    );
+    setPausedScrollOffset(Math.max(0, rowCount - nextViewportRows));
     setIsScrolledUp(false);
     onRepin();
   };
@@ -164,6 +205,8 @@ export function useEngineerScrollState({
   return {
     scrollRef,
     dividerYRef,
+    scrollOffset,
+    viewportRows,
     scrollHint,
     newMessageCount,
     jumpToLatest,

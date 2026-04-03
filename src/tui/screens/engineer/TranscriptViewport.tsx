@@ -5,6 +5,8 @@ import type { TranscriptRow } from './transcript-rows.js';
 
 type TranscriptViewportProps = {
   rows: TranscriptRow[];
+  topSpacerRows?: number;
+  bottomSpacerRows?: number;
   scrollHint: string | null;
   onScrollHintClick?: () => void;
   onRender?: () => void;
@@ -12,6 +14,8 @@ type TranscriptViewportProps = {
 
 export const TranscriptViewport = React.memo(function TranscriptViewport({
   rows,
+  topSpacerRows = 0,
+  bottomSpacerRows = 0,
   scrollHint,
   onScrollHintClick,
   onRender,
@@ -40,9 +44,13 @@ export const TranscriptViewport = React.memo(function TranscriptViewport({
 
   return (
     <Box flexDirection="column">
+      {topSpacerRows > 0 ? <Box flexShrink={0} height={topSpacerRows} /> : null}
       {rows.map((row) => (
         <Box key={row.key}>{row.node}</Box>
       ))}
+      {bottomSpacerRows > 0 ? (
+        <Box flexShrink={0} height={bottomSpacerRows} />
+      ) : null}
     </Box>
   );
 });

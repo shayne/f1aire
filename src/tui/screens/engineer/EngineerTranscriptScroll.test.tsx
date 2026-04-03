@@ -41,7 +41,11 @@ function makeMessages(count: number) {
 describe('EngineerChat transcript scroll', () => {
   it('shows a jump-to-latest affordance after PageUp and clears it after PageDown', async () => {
     const { stdin, lastFrame, unmount } = await renderTui(
-      <EngineerChat {...baseProps} maxHeight={14} messages={makeMessages(20)} />,
+      <EngineerChat
+        {...baseProps}
+        maxHeight={14}
+        messages={makeMessages(20)}
+      />,
       { columns: 120, rows: 40 },
     );
 
@@ -106,6 +110,86 @@ describe('EngineerChat transcript scroll', () => {
     const frame = stripAnsi(lastFrame() ?? '');
     expect(frame).toContain('Jump to bottom');
     expect(frame).not.toContain('Hard runners observed:  Jump to bottom');
+    unmount();
+  });
+
+  it('starts on a bounded live window for long transcripts and can still return after scrollback', async () => {
+    const { stdin, lastFrame, unmount } = await renderTui(
+      <EngineerChat
+        {...baseProps}
+        maxHeight={14}
+        messages={makeMessages(120)}
+      />,
+      { columns: 120, rows: 40 },
+    );
+
+    await tick();
+
+    const liveFrame = stripAnsi(lastFrame() ?? '');
+    expect(liveFrame).toContain('message 120');
+    expect(liveFrame).not.toMatch(/\n\s*message 1\n/);
+
+    stdin.write('\u001b[5~');
+    await tick();
+    await tick();
+
+    expect(stripAnsi(lastFrame() ?? '')).toContain('Jump to bottom');
+
+    stdin.write('\u001b[6~');
+    await tick();
+    await tick();
+
+    const latestFrame = stripAnsi(lastFrame() ?? '');
+    expect(latestFrame).toContain('message 120');
+    expect(latestFrame).not.toContain('Jump to bottom');
+    unmount();
+  });
+
+  it('keeps sticky bottom live for new stream rows and shows the paused hint when scrolled up', async () => {
+    const { stdin, lastFrame, rerender, unmount } = await renderTui(
+      <EngineerChat
+        {...baseProps}
+        maxHeight={14}
+        messages={makeMessages(60)}
+        streamingText="stream chunk 1"
+        isStreaming
+      />,
+      { columns: 120, rows: 40 },
+    );
+
+    await tick();
+
+    rerender(
+      <EngineerChat
+        {...baseProps}
+        maxHeight={14}
+        messages={makeMessages(60)}
+        streamingText="stream chunk 2"
+        isStreaming
+      />,
+    );
+    await tick();
+
+    expect(stripAnsi(lastFrame() ?? '')).toContain('stream chunk 2');
+
+    stdin.write('\u001b[5~');
+    await tick();
+    await tick();
+
+    rerender(
+      <EngineerChat
+        {...baseProps}
+        maxHeight={14}
+        messages={makeMessages(60)}
+        streamingText="stream chunk 3"
+        isStreaming
+      />,
+    );
+    await tick();
+
+    const pausedFrame = stripAnsi(lastFrame() ?? '');
+    expect(pausedFrame).toContain('New updates below · pgdn to catch up');
+    expect(pausedFrame).toContain('1 new message');
     unmount();
   });
 });
