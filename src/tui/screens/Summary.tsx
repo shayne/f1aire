@@ -10,11 +10,13 @@ import { useTheme } from '../theme/provider.js';
 export function Summary({
   hasPriorTranscript = false,
   onResume,
+  resumeError,
   summary,
   dir,
 }: {
   hasPriorTranscript?: boolean;
   onResume?: () => void;
+  resumeError?: string | null;
   summary: SummaryData;
   dir: string;
 }): React.JSX.Element {
@@ -32,10 +34,19 @@ export function Summary({
             <Text color={theme.status.ok}>Downloaded and indexed.</Text>
             {hasPriorTranscript ? (
               <Box marginTop={1}>
-                <Text color={theme.text.muted} dimColor>
-                  Prior engineer transcript found. Press Enter to continue the
-                  previous session.
-                </Text>
+                <Box flexDirection="column">
+                  <Text color={theme.text.muted} dimColor>
+                    Prior engineer transcript found. Press Enter to continue the
+                    previous session.
+                  </Text>
+                  {resumeError ? (
+                    <Box marginTop={1}>
+                      <Text color={theme.status.error}>
+                        Resume failed: {resumeError}
+                      </Text>
+                    </Box>
+                  ) : null}
+                </Box>
               </Box>
             ) : null}
             <Box marginTop={1} flexDirection="column">

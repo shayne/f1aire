@@ -240,6 +240,7 @@ function AppImpl(): React.JSX.Element {
       setSummaryHasPriorTranscript(false);
       return;
     }
+    setApiKeyError(null);
 
     void (async () => {
       const keyToUse = await resolveApiKeyForUse();
@@ -537,6 +538,7 @@ function AppImpl(): React.JSX.Element {
                 dir={screen.dir}
                 hasPriorTranscript={summaryHasPriorTranscript}
                 onResume={handleSummaryContinue}
+                resumeError={apiKeyError}
               />
             )}
           </>

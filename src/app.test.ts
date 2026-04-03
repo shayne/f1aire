@@ -413,12 +413,23 @@ describe('App shell routes', () => {
       },
     }));
     vi.doMock('./tui/screens/Summary.js', () => ({
-      Summary: ({ onResume }: { onResume?: () => void }) => {
+      Summary: ({
+        onResume,
+        resumeError,
+      }: {
+        onResume?: () => void;
+        resumeError?: string | null;
+      }) => {
         resumeSummary = onResume;
         return React.createElement(
           Text,
           null,
-          'Prior engineer transcript found',
+          [
+            'Prior engineer transcript found',
+            resumeError ? `Resume failed: ${resumeError}` : null,
+          ]
+            .filter(Boolean)
+            .join('\n'),
         );
       },
     }));
@@ -464,7 +475,9 @@ describe('App shell routes', () => {
     await waitFor(
       () =>
         createEngineerSession.mock.calls.length === 1 &&
-        (app.lastFrame() ?? '').includes('Prior engineer transcript found'),
+        (app.lastFrame() ?? '').includes(
+          'Resume failed: engineer boot failed',
+        ),
       { debug: () => app.lastFrame() ?? '' },
     );
 

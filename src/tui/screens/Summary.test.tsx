@@ -42,4 +42,27 @@ describe('Summary', () => {
     expect(lastFrame() ?? '').toContain('Prior engineer transcript found');
     unmount();
   });
+
+  it('shows a concise inline resume error when a prior resume attempt failed', async () => {
+    const { lastFrame, unmount } = await renderTui(
+      <Summary
+        dir="/tmp/f1aire/session"
+        hasPriorTranscript={true}
+        onResume={() => {}}
+        resumeError="engineer boot failed"
+        summary={{
+          winner: null,
+          fastestLap: null,
+          totalLaps: null,
+        }}
+      />,
+      { columns: 90, rows: 20 },
+    );
+
+    const frame = lastFrame() ?? '';
+
+    expect(frame).toContain('Resume failed: engineer boot failed');
+    expect(frame).toContain('Resume prior engineer transcript');
+    unmount();
+  });
 });
