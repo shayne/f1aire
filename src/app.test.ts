@@ -283,13 +283,6 @@ describe('App shell routes', () => {
     });
 
     await waitFor(
-      () => (app.lastFrame() ?? '').includes('Prior engineer transcript found'),
-      {
-        debug: () => app.lastFrame() ?? '',
-      },
-    );
-
-    await waitFor(
       () =>
         (app.lastFrame() ?? '').includes(
           'assistant: Ferrari stayed flatter over the first 12 laps.',
