@@ -205,6 +205,41 @@ describe('EngineerChat', () => {
     unmount();
   });
 
+  it('keeps the session strip, transcript, status row, and composer in shell-owned order', async () => {
+    const { lastFrame, unmount } = await renderTui(
+      <EngineerChat
+        {...baseProps}
+        maxHeight={44}
+        messages={[
+          { role: 'user', content: 'Need sector three diagnosis.' },
+          { role: 'assistant', content: 'Exit traction is the limiter.' },
+        ]}
+        asOfLabel="Lap 12"
+        status="Comparing traces"
+        activity={['Loaded telemetry', 'Comparing traces']}
+        pythonCode={'print("overlay")'}
+      />,
+    );
+
+    await tick();
+
+    const frame = stripAnsi(lastFrame() ?? '');
+    const stripIndex = frame.indexOf('2025 Test GP · Race · Lap 12');
+    const transcriptIndex = frame.indexOf('Exit traction is the limiter.');
+    const detailsIndex = frame.indexOf('Python');
+    const statusIndex = frame.lastIndexOf('Comparing traces');
+    const composerIndex = frame.indexOf(
+      'Ask the engineer about pace, tyres, traffic, or strategy...',
+    );
+
+    expect(stripIndex).toBeGreaterThanOrEqual(0);
+    expect(transcriptIndex).toBeGreaterThan(stripIndex);
+    expect(detailsIndex).toBeGreaterThan(transcriptIndex);
+    expect(statusIndex).toBeGreaterThan(detailsIndex);
+    expect(composerIndex).toBeGreaterThan(statusIndex);
+    unmount();
+  });
+
   it('auto-collapses details when the terminal becomes compact so the composer stays visible', async () => {
     const { lastFrame, rerender, unmount } = await renderTui(
       <EngineerChat

@@ -2,6 +2,11 @@ import { performance } from 'node:perf_hooks';
 
 export type PerfLogger = (event: Record<string, unknown>) => void;
 
+export type RenderBudgetEvent = {
+  type: 'render-budget';
+  durationMs: number;
+};
+
 export type EventLoopLagOptions = {
   intervalMs?: number;
   warnMs?: number;
@@ -35,5 +40,30 @@ export function startEventLoopLagMonitor({
 
   return () => {
     clearIntervalFn(id);
+  };
+}
+
+export function createRenderBudgetLogger({
+  warnMs,
+  now = () => performance.now(),
+  write = () => {},
+}: {
+  warnMs: number;
+  now?: () => number;
+  write?: (event: RenderBudgetEvent) => void;
+}) {
+  return function measureRender<T>(work: () => T): T {
+    const start = now();
+    const value = work();
+    const durationMs = now() - start;
+
+    if (durationMs >= warnMs) {
+      write({
+        type: 'render-budget',
+        durationMs,
+      });
+    }
+
+    return value;
   };
 }

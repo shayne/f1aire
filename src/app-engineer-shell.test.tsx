@@ -3,6 +3,7 @@ import path from 'node:path';
 import { tmpdir } from 'node:os';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import React from 'react';
+import { Box, Text } from '#ink';
 import { renderTui } from '#ink/testing';
 import type { Meeting, Session } from './core/types.js';
 
@@ -198,6 +199,35 @@ describe('App engineer shell', () => {
     await waitFor(() => EngineerChat.mock.calls.length > 0);
 
     expect(EngineerChat.mock.calls.at(-1)?.[0]?.maxHeight).toBeUndefined();
+    app.unmount();
+  });
+
+  it('renders the engineer route flush-left so app-level chrome does not own the engineer shell boundary', async () => {
+    const base = path.join(
+      tmpdir(),
+      `f1aire-engineer-shell-flush-left-${Date.now()}`,
+    );
+    mockEngineerRouteBoot({
+      base,
+      EngineerChat: () => (
+        <Box>
+          <Text>SHELL-ROOT</Text>
+        </Box>
+      ),
+    });
+
+    const { App } = await import('./app.js');
+    const app = await renderTui(<App />);
+
+    await waitFor(() => (app.lastFrame() ?? '').includes('SHELL-ROOT'), {
+      debug: () => app.lastFrame() ?? '',
+    });
+
+    const frame = app.lastFrame() ?? '';
+    const firstRenderedLine =
+      frame.split('\n').find((line) => line.trim().length > 0) ?? '';
+    expect(firstRenderedLine.trim()).toBe('SHELL-ROOT');
+    expect(firstRenderedLine.startsWith('  ')).toBe(false);
     app.unmount();
   });
 });
