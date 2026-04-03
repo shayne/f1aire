@@ -54,12 +54,12 @@ describe('ThemeProvider', () => {
 
   it('defines a light palette with dark body text and the same semantic token shape', () => {
     expect(lightTheme.name).toBe('light');
-    expect(lightTheme.text.primary).toBe('rgb(0,0,0)');
-    expect(lightTheme.text.brand).toBe('rgb(215,119,87)');
-    expect(lightTheme.transcript.user).toBe('rgb(37,99,235)');
-    expect(lightTheme.transcript.assistant).toBe('rgb(215,119,87)');
-    expect(lightTheme.composer.placeholder).toBe('rgb(102,102,102)');
-    expect(lightTheme.status.thinkingShimmer).toBe('rgb(245,149,117)');
+    expect(lightTheme.text.primary).toBe('rgb(17,17,17)');
+    expect(lightTheme.text.brand).toBe('rgb(203,14,38)');
+    expect(lightTheme.transcript.user).toBe('rgb(0,98,179)');
+    expect(lightTheme.transcript.assistant).toBe('rgb(176,0,52)');
+    expect(lightTheme.composer.placeholder).toBe('rgb(91,88,80)');
+    expect(lightTheme.status.thinkingShimmer).toBe('rgb(220,68,64)');
   });
 
   it('resolves the default provider theme from the cached system theme', () => {
@@ -71,6 +71,6 @@ describe('ThemeProvider', () => {
       </ThemeProvider>,
     );
 
-    expect(lastFrame()).toBe('light:rgb(215,119,87)');
+    expect(lastFrame()).toBe('light:rgb(203,14,38)');
   });
 });
