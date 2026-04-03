@@ -1,6 +1,6 @@
 import { darkTheme } from './theme/tokens.js';
 
-export { darkTheme, type F1aireTheme } from './theme/tokens.js';
+export { darkTheme, lightTheme, type F1aireTheme } from './theme/tokens.js';
 export { ThemeProvider, useTheme } from './theme/provider.js';
 
 export const theme = {
