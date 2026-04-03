@@ -3,7 +3,11 @@ import { createReadStream, createWriteStream } from 'node:fs';
 import * as fs from 'node:fs/promises';
 import { Readable } from 'node:stream';
 import unbzip2Stream from 'unbzip2-stream';
-import { getPyodideBaseDir } from './paths.js';
+import {
+  getPyodideBaseDir,
+  getPyodideIndexUrl,
+  PYODIDE_RUNTIME_FILES,
+} from './paths.js';
 
 function getTarballName(version: string) {
   return `pyodide-${version}.tar.bz2`;
@@ -31,6 +35,21 @@ export async function ensurePyodideAssets({
   extract?: (tarPath: string, destDir: string) => Promise<void>;
   onProgress?: (update: PyodideProgress) => void;
 }) {
+  await fs.mkdir(baseDir, { recursive: true });
+
+  const runtimeDir = getPyodideIndexUrl();
+  try {
+    await Promise.all(
+      PYODIDE_RUNTIME_FILES.map((fileName) =>
+        fs.access(path.join(runtimeDir, fileName)),
+      ),
+    );
+    onProgress?.({ phase: 'ready', message: 'Python runtime ready.' });
+    return { ready: true };
+  } catch {
+    // Fall back to the cache directory bootstrap below.
+  }
+
   const marker = path.join(baseDir, 'pyodide-lock.json');
   try {
     await fs.access(marker);
@@ -53,7 +72,6 @@ export async function ensurePyodideAssets({
       // fall through to download/extract
     }
 
-    await fs.mkdir(baseDir, { recursive: true });
     onProgress?.({ phase: 'downloading', message: 'Downloading Python runtime...' });
     const tarPath = await download(getTarballUrl(version), baseDir, (progress) => {
       onProgress?.({

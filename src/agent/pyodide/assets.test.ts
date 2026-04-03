@@ -1,6 +1,7 @@
 import path from 'node:path';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ensurePyodideAssets } from './assets.js';
+import { getPyodideIndexUrl } from './paths.js';
 
 const tmpRoot = path.join(process.cwd(), '.tmp-pyodide-test');
 
@@ -50,6 +51,28 @@ describe('ensurePyodideAssets', () => {
       expect.any(String),
       'utf-8',
     );
+  });
+
+  it('skips the tarball download when the bundled pyodide runtime is available', async () => {
+    const runtimeDir = getPyodideIndexUrl();
+    const baseDir = path.join(tmpRoot, 'package-cache');
+    accessMock.mockImplementation(async (filePath) => {
+      if (String(filePath).startsWith(runtimeDir)) return undefined;
+      throw new Error('missing');
+    });
+    const download = vi.fn().mockResolvedValue(path.join(tmpRoot, 'pyodide.tar.bz2'));
+    const extract = vi.fn().mockResolvedValue(undefined);
+
+    await ensurePyodideAssets({
+      version: '0.29.3',
+      baseDir,
+      download,
+      extract,
+    });
+
+    expect(mkdirMock).toHaveBeenCalledWith(baseDir, { recursive: true });
+    expect(download).not.toHaveBeenCalled();
+    expect(extract).not.toHaveBeenCalled();
   });
 
   it('checks for the pyodide lockfile marker before downloading', async () => {
