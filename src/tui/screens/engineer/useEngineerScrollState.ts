@@ -21,6 +21,8 @@ export function useEngineerScrollState({
   jumpToLatest: () => void;
   handlePageUp: () => boolean;
   handlePageDown: () => boolean;
+  handleWheelUp: () => boolean;
+  handleWheelDown: () => boolean;
 } {
   const scrollRef = useRef<ScrollBoxHandle | null>(null);
   const { dividerIndex, dividerYRef, onScrollAway, onRepin, jumpToNew } =
@@ -51,6 +53,61 @@ export function useEngineerScrollState({
     setIsScrolledUp(true);
     handle.scrollBy(-pageStep);
     onScrollAway(handle);
+    return true;
+  };
+
+  const handleWheelUp = () => {
+    const handle = scrollRef.current;
+    if (!handle) return false;
+
+    const lineStep = Math.max(
+      1,
+      Math.floor(handle.getViewportHeight() * 0.2),
+    );
+
+    if (!isScrolledUp) {
+      pausedTranscriptVersionRef.current = transcriptVersion;
+      pausedMessageCountRef.current = messageCount;
+    }
+
+    setIsScrolledUp(true);
+    handle.scrollBy(-lineStep);
+    onScrollAway(handle);
+    return true;
+  };
+
+  const handleWheelDown = () => {
+    const handle = scrollRef.current;
+    if (!isScrolledUp || !handle) {
+      if (!handle) {
+        pausedTranscriptVersionRef.current = null;
+        pausedMessageCountRef.current = 0;
+        setIsScrolledUp(false);
+        onRepin();
+      }
+      return false;
+    }
+
+    const lineStep = Math.max(
+      1,
+      Math.floor(handle.getViewportHeight() * 0.2),
+    );
+    const max = Math.max(
+      0,
+      handle.getScrollHeight() - handle.getViewportHeight(),
+    );
+    const nextTop = handle.getScrollTop() + handle.getPendingDelta() + lineStep;
+
+    if (nextTop >= max) {
+      jumpToNew(handle);
+      pausedTranscriptVersionRef.current = null;
+      pausedMessageCountRef.current = 0;
+      setIsScrolledUp(false);
+      onRepin();
+      return true;
+    }
+
+    handle.scrollBy(lineStep);
     return true;
   };
 
@@ -112,5 +169,7 @@ export function useEngineerScrollState({
     jumpToLatest,
     handlePageUp,
     handlePageDown,
+    handleWheelUp,
+    handleWheelDown,
   };
 }

@@ -268,6 +268,33 @@ describe('EngineerChat', () => {
     unmount();
   });
 
+  it('shows the transcript pause/live workflow with mouse wheel scrolling', async () => {
+    const { stdin, lastFrame, unmount } = await renderTui(
+      <EngineerChat
+        {...baseProps}
+        maxHeight={14}
+        messages={makeMessages(16)}
+      />,
+    );
+
+    await tick();
+
+    stdin.write('\u001b[<64;20;8M');
+    await tick();
+
+    expect(stripAnsi(lastFrame() ?? '')).toContain(
+      'Viewing earlier output · pgdn to return live',
+    );
+
+    stdin.write('\u001b[<65;20;8M');
+    await tick();
+
+    expect(stripAnsi(lastFrame() ?? '')).not.toContain(
+      'Viewing earlier output · pgdn to return live',
+    );
+    unmount();
+  });
+
   it('keeps the latest transcript rows visible while live', async () => {
     const { lastFrame, unmount } = await renderTui(
       <EngineerChat

@@ -159,6 +159,8 @@ export function EngineerChat({
     jumpToLatest,
     handlePageUp,
     handlePageDown,
+    handleWheelUp,
+    handleWheelDown,
   } = useEngineerScrollState({
     messageCount: messages.length,
     transcriptVersion,
@@ -187,6 +189,14 @@ export function EngineerChat({
 
     if (key.pageDown) {
       return handlePageDown();
+    }
+
+    if (key.wheelUp) {
+      return handleWheelUp();
+    }
+
+    if (key.wheelDown) {
+      return handleWheelDown();
     }
 
     if (key.tab || input === '\t') {
