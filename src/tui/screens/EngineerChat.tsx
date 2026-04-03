@@ -1,8 +1,10 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Box, type Key, useTerminalSize } from '#ink';
+import { Box, useTerminalSize } from '#ink';
 import type { Summary as SummaryData } from '../../core/summary.js';
 import type { Meeting, Session } from '../../core/types.js';
 import type { ChatMessage } from '../chat-state.js';
+import type { Keybinding } from '../keybindings/actions.js';
+import { useKeybindings } from '../keybindings/use-keybindings.js';
 import { Composer } from './engineer/Composer.js';
 import { EngineerDetails } from './engineer/EngineerDetails.js';
 import { EngineerSessionStrip } from './engineer/EngineerSessionStrip.js';
@@ -73,20 +75,16 @@ type ComposerPanelProps = {
   onSend: (text: string) => void;
   isStreaming: boolean;
   width: number;
-  onInterceptInput?: (input: string, key: Key) => boolean;
 };
 
 const ComposerPanel = React.memo(function ComposerPanel({
   onSend,
   isStreaming,
   width,
-  onInterceptInput,
 }: ComposerPanelProps) {
   const state = useComposerState({ onSend, isStreaming });
 
-  return (
-    <Composer state={state} width={width} onInterceptInput={onInterceptInput} />
-  );
+  return <Composer state={state} width={width} />;
 });
 
 export function EngineerChat({
@@ -98,7 +96,6 @@ export function EngineerChat({
   year,
   meeting,
   session,
-  summary,
   activity,
   pythonCode,
   asOfLabel,
@@ -223,29 +220,55 @@ export function EngineerChat({
       }),
     [asOfLabel, liveStatus, meeting, session, year],
   );
-  const handleComposerIntercept = (input: string, key: Key) => {
-    if (key.pageUp) {
-      return handlePageUp();
-    }
-
-    if (key.pageDown) {
-      return handlePageDown();
-    }
-
-    if (key.wheelUp) {
-      return handleWheelUp();
-    }
-
-    if (key.wheelDown) {
-      return handleWheelDown();
-    }
-
-    if (key.tab || input === '\t') {
-      setDetailsExpanded((current) => !current);
-      return true;
-    }
-    return false;
-  };
+  const keybindings = useMemo<Keybinding[]>(
+    () => [
+      {
+        action: 'transcript.pageUp',
+        context: 'transcript',
+        key: { pageUp: true },
+        run: handlePageUp,
+      },
+      {
+        action: 'transcript.pageDown',
+        context: 'transcript',
+        key: { pageDown: true },
+        run: handlePageDown,
+      },
+      {
+        action: 'transcript.wheelUp',
+        context: 'transcript',
+        key: { wheelUp: true },
+        run: handleWheelUp,
+      },
+      {
+        action: 'transcript.wheelDown',
+        context: 'transcript',
+        key: { wheelDown: true },
+        run: handleWheelDown,
+      },
+      {
+        action: 'engineer.toggleDetails',
+        context: 'engineer',
+        key: { tab: true },
+        run: () => {
+          setDetailsExpanded((current) => !current);
+        },
+      },
+      {
+        action: 'engineer.toggleDetails',
+        context: 'engineer',
+        key: { input: '\t' },
+        run: () => {
+          setDetailsExpanded((current) => !current);
+        },
+      },
+    ],
+    [handlePageDown, handlePageUp, handleWheelDown, handleWheelUp],
+  );
+  useKeybindings({
+    activeContexts: ['engineer', 'transcript'],
+    bindings: keybindings,
+  });
 
   return (
     <EngineerShell
@@ -278,7 +301,6 @@ export function EngineerChat({
             onSend={onSend}
             isStreaming={isStreaming}
             width={composerContentWidth}
-            onInterceptInput={handleComposerIntercept}
           />
         </Box>
       }

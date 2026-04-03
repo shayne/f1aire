@@ -215,12 +215,6 @@ export function useComposerState({
     commit({ type: 'reset' });
   }, [commit, isStreaming, onSend]);
 
-  const isModifiedEnterSequence = useCallback((input: string) => {
-    return (
-      input === '\u001b[13;2u' || input === '\u001b[13;2~' || input === '[13;2u'
-    );
-  }, []);
-
   const handleInput = useCallback(
     (input: string, key: Key) => {
       if (key.ctrl && input === 'c') return;

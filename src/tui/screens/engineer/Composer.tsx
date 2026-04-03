@@ -1,6 +1,8 @@
 import React, { useMemo } from 'react';
-import { Box, Text, useInput, type Key } from '#ink';
+import { Box, Text, useInput } from '#ink';
 import { Panel } from '../../components/Panel.js';
+import type { Keybinding } from '../../keybindings/actions.js';
+import { useKeybindings } from '../../keybindings/use-keybindings.js';
 import { theme } from '../../theme.js';
 import {
   getComposerVisibleLines,
@@ -103,19 +105,26 @@ export function renderComposerPlaceholder(): React.ReactNode {
 export function Composer({
   state,
   width,
-  onInterceptInput,
 }: {
   state: ComposerState;
   width: number;
-  onInterceptInput?: (input: string, key: Key) => boolean;
 }): React.JSX.Element {
-  useInput(
-    (input, key) => {
-      if (onInterceptInput?.(input, key)) return;
-      state.handleInput(input, key);
-    },
-    { isActive: true },
+  const bindings = useMemo<Keybinding[]>(
+    () => [
+      {
+        action: 'composer.submit',
+        context: 'composer',
+        key: { return: true, shift: false },
+        run: state.submit,
+      },
+    ],
+    [state.submit],
   );
+  useKeybindings({
+    activeContexts: ['composer'],
+    bindings,
+  });
+  useInput(state.handleInput, { isActive: true });
 
   const lineMeta = useMemo(
     () => getComposerLayout(state.draft, state.cursor, width),

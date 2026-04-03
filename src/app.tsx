@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Box, useInput, useStdout, useTerminalSize } from '#ink';
 import { formatUnknownError } from './agent/error-utils.js';
 import {
@@ -21,6 +21,8 @@ import {
   getFooterHintRowCount,
 } from './tui/components/FooterHints.js';
 import { Header } from './tui/components/Header.js';
+import type { Keybinding } from './tui/keybindings/actions.js';
+import { useKeybindings } from './tui/keybindings/use-keybindings.js';
 import { getBackScreen, type Screen } from './tui/navigation.js';
 import { writeTerminalTitle } from './tui/terminal-chrome.js';
 import { Downloading } from './tui/screens/Downloading.js';
@@ -201,19 +203,75 @@ function AppImpl(): React.JSX.Element {
     return ['F1aire'];
   }, [screen]);
 
-  useInput((input, key) => {
-    if (screen.name === 'engineer' || screen.name === 'apiKey') {
-      if (key.escape) {
-        if (screen.name === 'apiKey') {
-          clearPendingEngineer();
-          setApiKeyError(null);
-        }
-        const next = getBackScreen(screen);
-        if (next) setScreen(next);
-      }
-      if (key.ctrl && input === 'c') process.exit(0);
-      return;
+  const handleGlobalBack = useCallback((): void => {
+    if (screen.name === 'apiKey') {
+      clearPendingEngineer();
+      setApiKeyError(null);
     }
+
+    const next = getBackScreen(screen);
+    if (next) setScreen(next);
+  }, [clearPendingEngineer, screen]);
+
+  const globalBindings = useMemo<Keybinding[]>(
+    () => [
+      {
+        action: 'global.back' as const,
+        context: 'global' as const,
+        key: { escape: true },
+        run: handleGlobalBack,
+      },
+      {
+        action: 'global.back' as const,
+        context: 'global' as const,
+        key: { backspace: true },
+        run: () => {
+          if (screen.name === 'engineer' || screen.name === 'apiKey') {
+            return false;
+          }
+          handleGlobalBack();
+        },
+      },
+      {
+        action: 'global.back' as const,
+        context: 'global' as const,
+        key: { input: 'b' },
+        run: () => {
+          if (screen.name === 'engineer' || screen.name === 'apiKey') {
+            return false;
+          }
+          handleGlobalBack();
+        },
+      },
+      {
+        action: 'global.quit' as const,
+        context: 'global' as const,
+        key: { input: 'q' },
+        run: () => {
+          if (screen.name === 'engineer' || screen.name === 'apiKey') {
+            return false;
+          }
+          process.exit(0);
+        },
+      },
+      {
+        action: 'global.quit' as const,
+        context: 'global' as const,
+        key: { ctrl: true, input: 'c' },
+        run: () => {
+          process.exit(0);
+        },
+      },
+    ],
+    [handleGlobalBack, screen.name],
+  );
+
+  useKeybindings({
+    activeContexts: ['global'],
+    bindings: globalBindings,
+  });
+
+  useInput((input) => {
     if (
       input === 's' &&
       runtimeReady &&
@@ -224,12 +282,6 @@ function AppImpl(): React.JSX.Element {
     ) {
       setApiKeyError(null);
       setScreen({ name: 'settings', returnTo: screen });
-      return;
-    }
-    if (input === 'q') process.exit(0);
-    if (input === 'b' || key.backspace || key.escape) {
-      const next = getBackScreen(screen);
-      if (next) setScreen(next);
     }
   });
 
