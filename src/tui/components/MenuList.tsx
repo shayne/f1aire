@@ -132,6 +132,7 @@ export function MenuList<V>({
       {items.map((item, itemIndex) => (
         <Box key={item.key ?? item.label} height={1} width="100%">
           <Text
+            key={itemIndex === index ? 'selected' : 'idle'}
             color={
               itemIndex === index ? theme.chrome.selected : theme.chrome.subtle
             }

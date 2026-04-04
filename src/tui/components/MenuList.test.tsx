@@ -4,10 +4,17 @@ import path from 'node:path';
 import React from 'react';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { renderTui } from '#ink/testing';
+import instances from '../../vendor/ink/instances.js';
+import type { DOMElement } from '../../vendor/ink/dom.js';
+import { darkTheme } from '../theme/tokens.js';
 import { MenuList } from './MenuList.js';
 
 const waitForTick = () => new Promise((resolve) => setTimeout(resolve, 0));
 const lockPath = path.join(tmpdir(), 'f1aire-terminal-widget-tests.lock');
+
+type InkInstanceWithRootNode = {
+  rootNode: DOMElement;
+};
 
 async function acquireLock() {
   for (;;) {
@@ -32,6 +39,36 @@ async function acquireLock() {
 
 async function releaseLock() {
   await rm(lockPath, { recursive: true, force: true });
+}
+
+function readMenuRows(stdout: NodeJS.WriteStream) {
+  const instance = instances.get(stdout) as InkInstanceWithRootNode | undefined;
+  const rootNode = instance?.rootNode;
+  const listNode = rootNode?.childNodes[0];
+
+  if (!listNode || listNode.nodeName === '#text') {
+    return [];
+  }
+
+  return listNode.childNodes.map((rowNode) => {
+    if (rowNode.nodeName === '#text') {
+      return { label: rowNode.nodeValue, textStyles: {} };
+    }
+
+    const textNode = rowNode.childNodes[0];
+    if (!textNode || textNode.nodeName === '#text') {
+      return { label: '', textStyles: {} };
+    }
+
+    const label = textNode.childNodes
+      .map((child) => (child.nodeName === '#text' ? child.nodeValue : ''))
+      .join('');
+
+    return {
+      label,
+      textStyles: textNode.textStyles ?? {},
+    };
+  });
 }
 
 describe('MenuList', () => {
@@ -169,6 +206,46 @@ describe('MenuList', () => {
     expect(ui.lastFrame()).toContain('› 2026');
     expect(ui.lastFrame()).not.toContain('╭');
     expect(ui.lastFrame()).not.toContain('╰');
+    ui.unmount();
+  });
+
+  it('moves selected and dim styling with the highlighted row', async () => {
+    const ui = await renderTui(
+      <MenuList
+        items={[
+          { label: 'Resume chat', value: 'resume' },
+          { label: 'New conversation', value: 'fresh' },
+        ]}
+        onSelect={() => {}}
+      />,
+    );
+
+    await waitForTick();
+    expect(readMenuRows(ui.stdout)).toEqual([
+      {
+        label: '› Resume chat',
+        textStyles: { color: darkTheme.chrome.selected },
+      },
+      {
+        label: '  New conversation',
+        textStyles: { color: darkTheme.chrome.subtle, dim: true },
+      },
+    ]);
+
+    ui.stdin.write('\u001b[B');
+    await waitForTick();
+
+    expect(ui.lastFrame()).toContain('› New conversation');
+    expect(readMenuRows(ui.stdout)).toEqual([
+      {
+        label: '  Resume chat',
+        textStyles: { color: darkTheme.chrome.subtle, dim: true },
+      },
+      {
+        label: '› New conversation',
+        textStyles: { color: darkTheme.chrome.selected },
+      },
+    ]);
     ui.unmount();
   });
 });
