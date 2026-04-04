@@ -7,21 +7,48 @@ import { SelectList } from '../components/SelectList.js';
 import { createTerminalLink } from '../terminal-chrome.js';
 import { useTheme } from '../theme/provider.js';
 
+export type SummaryLaunchAction = 'resume' | 'fresh';
+
 export function Summary({
   hasPriorTranscript = false,
+  launchAction = null,
   onResume,
+  onStartFresh,
   resumeError,
   summary,
   dir,
 }: {
   hasPriorTranscript?: boolean;
+  launchAction?: SummaryLaunchAction | null;
   onResume?: () => void;
+  onStartFresh?: () => void;
   resumeError?: string | null;
   summary: SummaryData;
   dir: string;
 }): React.JSX.Element {
   const theme = useTheme();
   const { columns = 100 } = useTerminalSize();
+  const isLaunchingEngineer = launchAction != null;
+  const summaryActions = [
+    ...(hasPriorTranscript && onResume
+      ? ([
+          {
+            label: 'Resume chat',
+            value: 'resume' as const,
+          },
+        ] as const)
+      : []),
+    ...(onStartFresh
+      ? ([
+          {
+            label: hasPriorTranscript
+              ? 'New conversation'
+              : 'Start conversation',
+            value: 'fresh' as const,
+          },
+        ] as const)
+      : []),
+  ];
 
   return (
     <ScreenLayout
@@ -36,8 +63,8 @@ export function Summary({
               <Box marginTop={1}>
                 <Box flexDirection="column">
                   <Text color={theme.text.muted} dimColor>
-                    Prior engineer transcript found. Press Enter to continue the
-                    previous session.
+                    Prior engineer transcript found. Resume it, or start a new
+                    conversation with this session data.
                   </Text>
                   {resumeError ? (
                     <Box marginTop={1}>
@@ -64,16 +91,25 @@ export function Summary({
               </Text>
             </Box>
           </Panel>
-          {hasPriorTranscript && onResume ? (
+          {isLaunchingEngineer ? (
+            <Box marginTop={1}>
+              <Text color={theme.status.tool}>
+                Preparing engineer session...
+              </Text>
+            </Box>
+          ) : null}
+          {summaryActions.length > 0 ? (
             <Box marginTop={1}>
               <SelectList
-                items={[
-                  {
-                    label: 'Resume prior engineer transcript',
-                    value: 'resume' as const,
-                  },
-                ]}
-                onSelect={() => onResume()}
+                isFocused={!isLaunchingEngineer}
+                items={summaryActions}
+                onSelect={(action) => {
+                  if (action === 'resume') {
+                    onResume?.();
+                    return;
+                  }
+                  onStartFresh?.();
+                }}
               />
             </Box>
           ) : null}

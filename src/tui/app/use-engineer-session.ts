@@ -48,6 +48,10 @@ export type PendingEngineer = Omit<
   dir: string;
 };
 
+type StartEngineerOptions = {
+  resumeTranscript?: boolean;
+};
+
 type KeyStatus = {
   envKeyPresent: boolean;
   storedKeyPresent: boolean;
@@ -166,9 +170,7 @@ function createSummaryTranscript(summaryText: string): TranscriptEvent[] {
   ];
 }
 
-function transcriptEventsToMessages(
-  events: TranscriptEvent[],
-): ChatMessage[] {
+function transcriptEventsToMessages(events: TranscriptEvent[]): ChatMessage[] {
   return events.flatMap((event): ChatMessage[] => {
     if (event.type === 'user-message') {
       return [{ role: 'user', content: event.text }];
@@ -218,7 +220,11 @@ export function useEngineerSession({
   messages: ChatMessage[];
   pythonCodePreview: string;
   queuePendingEngineer: (pending: PendingEngineer) => void;
-  startEngineer: (pending: PendingEngineer, apiKey: string) => Promise<void>;
+  startEngineer: (
+    pending: PendingEngineer,
+    apiKey: string,
+    options?: StartEngineerOptions,
+  ) => Promise<void>;
   streamStatus: string | null;
   streamingText: string;
   summary: SummaryData | null;
@@ -355,7 +361,9 @@ export function useEngineerSession({
   const startEngineer = async (
     pending: PendingEngineer,
     apiKey: string,
+    options: StartEngineerOptions = {},
   ) => {
+    const resumeTranscript = options.resumeTranscript ?? true;
     const livePath = path.join(pending.dir, 'live.jsonl');
     const lines = fs.readFileSync(livePath, 'utf-8');
     const computedSummary = summarizeFromLines(lines);
@@ -431,18 +439,28 @@ export function useEngineerSession({
     });
     transcriptSessionKeyRef.current = transcriptSessionKey;
     let storedTranscript: TranscriptEvent[] = [];
-    try {
-      storedTranscript = await loadTranscriptEvents({
-        dataDir: getDataDir('f1aire'),
-        sessionKey: transcriptSessionKey,
-      });
-    } catch {
-      storedTranscript = [];
+    if (resumeTranscript) {
+      try {
+        storedTranscript = await loadTranscriptEvents({
+          dataDir: getDataDir('f1aire'),
+          sessionKey: transcriptSessionKey,
+        });
+      } catch {
+        storedTranscript = [];
+      }
     }
     const initialTranscript =
       storedTranscript.length > 0
         ? storedTranscript
         : createSummaryTranscript(summaryText);
+
+    if (!resumeTranscript) {
+      await saveTranscriptEvents({
+        dataDir: getDataDir('f1aire'),
+        sessionKey: transcriptSessionKey,
+        events: initialTranscript,
+      });
+    }
 
     engineerRef.current = createEngineerSession({
       model,

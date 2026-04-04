@@ -168,6 +168,119 @@ describe('useEngineerSession', () => {
     app.unmount();
   });
 
+  it('starts a fresh engineer transcript and overwrites prior history when resume is disabled', async () => {
+    const dataRoot = await mkdtemp(
+      path.join(os.tmpdir(), 'f1aire-engineer-session-fresh-'),
+    );
+    const dir = path.join(dataRoot, 'download');
+    await writeSessionFixture(dir);
+    await mkdir(path.join(dataRoot, 'f1aire', 'data', 'transcripts'), {
+      recursive: true,
+    });
+    await writeFile(
+      path.join(dataRoot, 'f1aire', 'data', 'transcripts', '2025-24-10.json'),
+      `${JSON.stringify(
+        [
+          {
+            id: 'assistant-1',
+            type: 'assistant-message',
+            text: 'Old transcript that should be replaced.',
+            streaming: false,
+          },
+        ],
+        null,
+        2,
+      )}\n`,
+      'utf-8',
+    );
+    process.env.XDG_DATA_HOME = dataRoot;
+
+    const createEngineerSession = vi.fn(({ initialTranscript }) => ({
+      getTranscriptEvents: () => initialTranscript,
+      send: vi.fn(async function* () {}),
+    }));
+    vi.doMock('@ai-sdk/openai', () => ({
+      createOpenAI: () => () => ({}),
+    }));
+    vi.doMock('../../agent/engineer.js', () => ({
+      createEngineerSession,
+    }));
+    vi.doMock('../../agent/engineer-logger.js', () => ({
+      createEngineerLogger: () => ({ logger: vi.fn() }),
+    }));
+    vi.doMock('../../agent/prompt.js', () => ({ systemPrompt: 'test prompt' }));
+    vi.doMock('../../agent/tools.js', () => ({ makeTools: () => ({}) }));
+
+    const { useEngineerSession } = await import('./use-engineer-session.js');
+
+    function Harness({ dir }: { dir: string }) {
+      const [screen, setScreen] = useState<Screen>({ name: 'season' });
+      const startedRef = useRef(false);
+      const engineer = useEngineerSession({
+        keyStatus: {
+          envKeyPresent: true,
+          storedKeyPresent: false,
+          inUse: 'env',
+        },
+        resolveApiKeyForUse: async () => 'test-key',
+        screenName: screen.name,
+        setScreen,
+        storedApiKey: null,
+      });
+
+      useEffect(() => {
+        if (startedRef.current) return;
+        startedRef.current = true;
+        void engineer.startEngineer(
+          {
+            year: 2025,
+            meetings: [meeting],
+            meeting,
+            session,
+            dir,
+          },
+          'test-key',
+          { resumeTranscript: false },
+        );
+      }, [dir]);
+
+      const renderedMessages = engineer.messages
+        .map((message) => `${message.role}: ${message.content}`)
+        .join('\n');
+
+      return <Text>{`${screen.name}\n${renderedMessages}`}</Text>;
+    }
+
+    const app = await renderTui(<Harness dir={dir} />);
+
+    await waitFor(
+      () =>
+        (app.lastFrame() ?? '').includes('engineer') &&
+        (app.lastFrame() ?? '').includes('assistant: Quick summary:'),
+      { debug: () => app.lastFrame() ?? '' },
+    );
+
+    const frame = app.lastFrame() ?? '';
+    expect(frame).toContain('- Winner: unavailable');
+    expect(frame).not.toContain('Old transcript that should be replaced.');
+
+    await expect(
+      readFile(
+        path.join(dataRoot, 'f1aire', 'data', 'transcripts', '2025-24-10.json'),
+        'utf-8',
+      ).then((raw) => JSON.parse(raw)),
+    ).resolves.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: 'assistant-message',
+          text: expect.stringContaining('Quick summary:'),
+        }),
+      ]),
+    );
+
+    app.unmount();
+  });
+
   it('saves transcript events after a successful user turn', async () => {
     const dataRoot = await mkdtemp(
       path.join(os.tmpdir(), 'f1aire-engineer-session-'),

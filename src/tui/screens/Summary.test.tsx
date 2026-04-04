@@ -43,6 +43,53 @@ describe('Summary', () => {
     unmount();
   });
 
+  it('offers both resume and new-conversation actions when a prior transcript exists', async () => {
+    const { lastFrame, unmount } = await renderTui(
+      <Summary
+        dir="/tmp/f1aire/session"
+        hasPriorTranscript={true}
+        onResume={() => {}}
+        onStartFresh={() => {}}
+        summary={{
+          winner: null,
+          fastestLap: null,
+          totalLaps: null,
+        }}
+      />,
+      { columns: 90, rows: 20 },
+    );
+
+    const frame = lastFrame() ?? '';
+
+    expect(frame).toContain('Resume chat');
+    expect(frame).toContain('New conversation');
+    unmount();
+  });
+
+  it('shows an immediate startup state while the engineer session is being prepared', async () => {
+    const { lastFrame, unmount } = await renderTui(
+      <Summary
+        dir="/tmp/f1aire/session"
+        hasPriorTranscript={true}
+        launchAction="resume"
+        onResume={() => {}}
+        onStartFresh={() => {}}
+        summary={{
+          winner: null,
+          fastestLap: null,
+          totalLaps: null,
+        }}
+      />,
+      { columns: 90, rows: 20 },
+    );
+
+    const frame = lastFrame() ?? '';
+
+    expect(frame).toContain('Preparing engineer session...');
+    expect(frame).toContain('Resume chat');
+    unmount();
+  });
+
   it('shows a concise inline resume error when a prior resume attempt failed', async () => {
     const { lastFrame, unmount } = await renderTui(
       <Summary
@@ -62,7 +109,7 @@ describe('Summary', () => {
     const frame = lastFrame() ?? '';
 
     expect(frame).toContain('Resume failed: engineer boot failed');
-    expect(frame).toContain('Resume prior engineer transcript');
+    expect(frame).toContain('Resume chat');
     unmount();
   });
 });

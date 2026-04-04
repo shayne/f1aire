@@ -45,6 +45,7 @@ type RuntimeProgressUpdate = {
 afterEach(() => {
   process.env = { ...originalEnv };
   vi.restoreAllMocks();
+  vi.doUnmock('./tui/app/use-engineer-session.js');
   vi.resetModules();
 });
 
@@ -69,15 +70,19 @@ async function waitFor(
 
 describe('getBackScreen', () => {
   it('returns season from meeting', () => {
-    expect(getBackScreen({ name: 'meeting', year, meetings })).toEqual({ name: 'season' });
+    expect(getBackScreen({ name: 'meeting', year, meetings })).toEqual({
+      name: 'season',
+    });
   });
 
   it('returns meeting from session', () => {
-    expect(getBackScreen({ name: 'session', year, meetings, meeting })).toEqual({
-      name: 'meeting',
-      year,
-      meetings,
-    });
+    expect(getBackScreen({ name: 'session', year, meetings, meeting })).toEqual(
+      {
+        name: 'meeting',
+        year,
+        meetings,
+      },
+    );
   });
 
   it('returns session from downloading', () => {
@@ -93,7 +98,14 @@ describe('getBackScreen', () => {
 
   it('returns session from summary', () => {
     expect(
-      getBackScreen({ name: 'summary', year, meetings, meeting, summary, dir: '/tmp' }),
+      getBackScreen({
+        name: 'summary',
+        year,
+        meetings,
+        meeting,
+        summary,
+        dir: '/tmp',
+      }),
     ).toEqual({
       name: 'session',
       year,
@@ -131,7 +143,9 @@ describe('App shell routes', () => {
     await waitFor(
       () =>
         (app.lastFrame() ?? '').includes('Select a season') &&
-        (app.lastFrame() ?? '').includes('Start a f1aire race-engineer session'),
+        (app.lastFrame() ?? '').includes(
+          'Start a f1aire race-engineer session',
+        ),
       {
         debug: () => app.lastFrame() ?? '',
       },
@@ -249,7 +263,11 @@ describe('App shell routes', () => {
           onResume?.();
         }, [onResume]);
 
-        return React.createElement(Text, null, 'Prior engineer transcript found');
+        return React.createElement(
+          Text,
+          null,
+          'Prior engineer transcript found',
+        );
       },
     }));
     vi.doMock('./core/download.js', () => ({
@@ -298,12 +316,180 @@ describe('App shell routes', () => {
     app.unmount();
   });
 
-  it('keeps a failed direct summary resume retryable when engineer startup rejects', async () => {
+  it('shows a preparing state immediately after the summary resume action while engineer startup is still in flight', async () => {
     process.env.OPENAI_API_KEY = 'test-key';
     const base = path.join(
       tmpdir(),
-      `f1aire-app-resume-retry-${Date.now()}`,
+      `f1aire-app-summary-launching-${Date.now()}`,
     );
+    process.env.XDG_DATA_HOME = base;
+    process.env.XDG_CONFIG_HOME = base;
+    process.env.HOME = base;
+    let resumeSummary: (() => void) | undefined;
+    let resolveStart: (() => void) | undefined;
+    let queuedPending: {
+      year: number;
+      meetings: Meeting[];
+      meeting: Meeting;
+      session: Session;
+      dir: string;
+    } | null = null;
+
+    mkdirSync(path.join(base, 'f1aire', 'data', 'transcripts'), {
+      recursive: true,
+    });
+    writeFileSync(
+      path.join(base, 'f1aire', 'data', 'transcripts', '2024-1-10.json'),
+      `${JSON.stringify(
+        [
+          {
+            id: 'assistant-1',
+            type: 'assistant-message',
+            text: 'Stored transcript exists.',
+            streaming: false,
+          },
+        ],
+        null,
+        2,
+      )}\n`,
+      'utf-8',
+    );
+
+    vi.doMock('./agent/pyodide/assets.js', () => ({
+      ensurePyodideAssets: async ({
+        onProgress,
+      }: {
+        onProgress?: (update: RuntimeProgressUpdate) => void;
+      }) => {
+        onProgress?.({ phase: 'ready', message: 'Python runtime ready.' });
+        return { ready: true };
+      },
+    }));
+    vi.doMock('./tui/app/use-engineer-session.js', () => ({
+      useEngineerSession: () => ({
+        activity: [],
+        clearPendingEngineer: () => {
+          queuedPending = null;
+        },
+        handleSend: vi.fn(async () => {}),
+        isStreaming: false,
+        messages: [],
+        pythonCodePreview: '',
+        queuePendingEngineer: (pending: NonNullable<typeof queuedPending>) => {
+          queuedPending = pending;
+        },
+        startEngineer: vi.fn(
+          () =>
+            new Promise<void>((resolve) => {
+              resolveStart = resolve;
+            }),
+        ),
+        streamStatus: null,
+        streamingText: '',
+        summary: null,
+        takePendingEngineer: () => {
+          const pending = queuedPending;
+          queuedPending = null;
+          return pending;
+        },
+        timeCursor: { latest: true },
+      }),
+    }));
+    vi.doMock('./tui/screens/SeasonPicker.js', () => ({
+      SeasonPicker: ({ onSelect }: { onSelect: (year: number) => void }) => {
+        React.useEffect(() => {
+          void onSelect(2024);
+        }, [onSelect]);
+        return null;
+      },
+    }));
+    vi.doMock('./core/f1-api.js', () => ({
+      getMeetings: async () => ({
+        Year: 2024,
+        Meetings: [meeting],
+      }),
+    }));
+    vi.doMock('./tui/screens/MeetingPicker.js', () => ({
+      MeetingPicker: ({
+        meetings,
+        onSelect,
+      }: {
+        meetings: Meeting[];
+        onSelect: (selectedMeeting: Meeting) => void;
+      }) => {
+        React.useEffect(() => {
+          void onSelect(meetings[0] as Meeting);
+        }, [meetings, onSelect]);
+        return null;
+      },
+    }));
+    vi.doMock('./tui/screens/SessionPicker.js', () => ({
+      SessionPicker: ({
+        meeting,
+        onSelect,
+      }: {
+        meeting: Meeting;
+        onSelect: (selectedSession: Session) => void;
+      }) => {
+        React.useEffect(() => {
+          void onSelect(meeting.Sessions[0] as Session);
+        }, [meeting, onSelect]);
+        return null;
+      },
+    }));
+    vi.doMock('./core/download.js', () => ({
+      downloadSession: async () => {
+        const dir = path.join(base, 'download');
+        mkdirSync(dir, { recursive: true });
+        writeFileSync(path.join(dir, 'subscribe.json'), '{}', 'utf-8');
+        writeFileSync(path.join(dir, 'live.jsonl'), '', 'utf-8');
+        return { dir, lineCount: 0 };
+      },
+    }));
+    vi.doMock('./tui/screens/Summary.js', () => ({
+      Summary: ({
+        launchAction,
+        onResume,
+      }: {
+        launchAction?: 'resume' | 'fresh' | null;
+        onResume?: () => void;
+      }) => {
+        resumeSummary = onResume;
+        return React.createElement(
+          Text,
+          null,
+          launchAction ? 'Preparing engineer session...' : 'Summary ready',
+        );
+      },
+    }));
+
+    const { App } = await import('./app.js');
+    const app = await renderTui(React.createElement(App), {
+      columns: 72,
+      rows: 20,
+    });
+
+    await waitFor(
+      () =>
+        (app.lastFrame() ?? '').includes('Summary ready') &&
+        typeof resumeSummary === 'function',
+      { debug: () => app.lastFrame() ?? '' },
+    );
+
+    resumeSummary?.();
+
+    await waitFor(
+      () => (app.lastFrame() ?? '').includes('Preparing engineer session...'),
+      { debug: () => app.lastFrame() ?? '' },
+    );
+
+    resolveStart?.();
+    app.unmount();
+  });
+
+  it('keeps a failed direct summary resume retryable when engineer startup rejects', async () => {
+    process.env.OPENAI_API_KEY = 'test-key';
+    const base = path.join(tmpdir(), `f1aire-app-resume-retry-${Date.now()}`);
     process.env.XDG_DATA_HOME = base;
     process.env.XDG_CONFIG_HOME = base;
     process.env.HOME = base;
@@ -468,9 +654,7 @@ describe('App shell routes', () => {
     await waitFor(
       () =>
         createEngineerSession.mock.calls.length === 1 &&
-        (app.lastFrame() ?? '').includes(
-          'Resume failed: engineer boot failed',
-        ),
+        (app.lastFrame() ?? '').includes('Resume failed: engineer boot failed'),
       { debug: () => app.lastFrame() ?? '' },
     );
 
@@ -678,9 +862,7 @@ describe('App shell routes', () => {
     await waitFor(
       () =>
         createEngineerSession.mock.calls.length === 1 &&
-        (app.lastFrame() ?? '').includes(
-          'Resume failed: engineer boot failed',
-        ),
+        (app.lastFrame() ?? '').includes('Resume failed: engineer boot failed'),
       { debug: () => app.lastFrame() ?? '' },
     );
 
@@ -701,10 +883,7 @@ describe('App shell routes', () => {
 
   it('shows a resume cue on the session-ready route when a transcript exists for the downloaded session', async () => {
     process.env.OPENAI_API_KEY = 'test-key';
-    const base = path.join(
-      tmpdir(),
-      `f1aire-app-resume-cue-${Date.now()}`,
-    );
+    const base = path.join(tmpdir(), `f1aire-app-resume-cue-${Date.now()}`);
     process.env.XDG_DATA_HOME = base;
     process.env.XDG_CONFIG_HOME = base;
     process.env.HOME = base;
@@ -820,16 +999,13 @@ describe('App shell routes', () => {
     const frame = app.lastFrame() ?? '';
     expect(frame).toContain('Summary');
     expect(frame).toContain('Prior engineer transcript found');
-    expect(frame).toContain('Resume prior engineer transcript');
+    expect(frame).toContain('Resume chat');
     app.unmount();
   });
 
   it('keeps the summary resume action live after backing out of the API-key prompt', async () => {
     delete process.env.OPENAI_API_KEY;
-    const base = path.join(
-      tmpdir(),
-      `f1aire-app-resume-back-${Date.now()}`,
-    );
+    const base = path.join(tmpdir(), `f1aire-app-resume-back-${Date.now()}`);
     process.env.XDG_DATA_HOME = base;
     process.env.XDG_CONFIG_HOME = base;
     process.env.HOME = base;
@@ -1019,7 +1195,11 @@ describe('App shell routes', () => {
       createOpenAI: () => () => ({}),
     }));
     vi.doMock('./agent/engineer.js', () => ({
-      createEngineerSession: ({ initialTranscript }: { initialTranscript: [] }) => ({
+      createEngineerSession: ({
+        initialTranscript,
+      }: {
+        initialTranscript: [];
+      }) => ({
         getTranscriptEvents: () => initialTranscript,
         send: vi.fn(async function* () {}),
       }),
@@ -1110,9 +1290,7 @@ describe('App shell routes', () => {
       { debug: () => app.lastFrame() ?? '' },
     );
 
-    expect(app.lastFrame() ?? '').not.toContain(
-      'Resume prior engineer transcript',
-    );
+    expect(app.lastFrame() ?? '').not.toContain('Resume chat');
     app.unmount();
   });
 });

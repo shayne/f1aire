@@ -96,49 +96,52 @@ export function MenuList<V>({
     }
   };
 
-  useInput((input, key) => {
-    if (items.length === 0) {
-      return;
-    }
-
-    for (const action of parseMenuActions(input, key)) {
-      if (action.type === 'move') {
-        moveHighlight(action.delta);
-        continue;
+  useInput(
+    (input, key) => {
+      if (items.length === 0) {
+        return;
       }
 
-      if (action.type === 'select') {
-        if (action.index >= items.length) {
+      for (const action of parseMenuActions(input, key)) {
+        if (action.type === 'move') {
+          moveHighlight(action.delta);
           continue;
         }
 
-        const next = action.index;
-        indexRef.current = next;
-        setIndex(next);
-        onHighlight?.(items[next]!.value);
-        onSelect(items[next]!.value);
-        continue;
-      }
+        if (action.type === 'select') {
+          if (action.index >= items.length) {
+            continue;
+          }
 
-      submitCurrent();
-    }
-  }, { isActive: isFocused });
+          const next = action.index;
+          indexRef.current = next;
+          setIndex(next);
+          onHighlight?.(items[next]!.value);
+          onSelect(items[next]!.value);
+          continue;
+        }
+
+        submitCurrent();
+      }
+    },
+    { isActive: isFocused },
+  );
 
   return (
     <Box flexDirection="column">
       {items.map((item, itemIndex) => (
-        <Text
-          key={item.key ?? item.label}
-          color={
-            itemIndex === index
-              ? theme.chrome.selected
-              : theme.chrome.subtle
-          }
-          dimColor={itemIndex !== index}
-        >
-          {itemIndex === index ? '› ' : '  '}
-          {item.label}
-        </Text>
+        <Box key={item.key ?? item.label} height={1} width="100%">
+          <Text
+            color={
+              itemIndex === index ? theme.chrome.selected : theme.chrome.subtle
+            }
+            dimColor={itemIndex !== index}
+            wrap="truncate-end"
+          >
+            {itemIndex === index ? '› ' : '  '}
+            {item.label}
+          </Text>
+        </Box>
       ))}
     </Box>
   );
