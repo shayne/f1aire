@@ -33,6 +33,13 @@ describe('systemPrompt', () => {
 
   it('mentions the lap series tool for position progression questions', () => {
     expect(systemPrompt).toContain('get_lap_series');
+    expect(systemPrompt).toContain('lap-position history');
+  });
+
+  it('routes grid position questions to TimingAppData.GridPos', () => {
+    expect(systemPrompt).toContain('GridPosition/GridPos');
+    expect(systemPrompt).toContain('TimingAppData');
+    expect(systemPrompt).toContain('GridPos');
   });
 
   it('mentions the overtake series tool for race-dynamics questions', () => {

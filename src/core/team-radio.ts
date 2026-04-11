@@ -746,6 +746,8 @@ async function transcribeAudioFile(opts: {
   apiKey: string;
   model: string;
   apiBase?: string;
+  chatGptAccountId?: string;
+  chatGptTranscription?: boolean;
   fetchImpl?: typeof fetch;
 }): Promise<string> {
   const fetchImpl = opts.fetchImpl ?? fetch;
@@ -763,21 +765,33 @@ async function transcribeAudioFile(opts: {
   try {
     const buffer = await fs.readFile(opts.filePath);
     const form = new FormData();
-    form.set('model', opts.model);
+    if (!opts.chatGptTranscription) {
+      form.set('model', opts.model);
+    }
     form.set(
       'file',
       new Blob([buffer], { type: guessAudioContentType(opts.filePath) }),
       path.basename(opts.filePath),
     );
 
-    const response = await fetchImpl(`${apiBase}/audio/transcriptions`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${opts.apiKey}`,
+    const response = await fetchImpl(
+      opts.chatGptTranscription
+        ? `${apiBase}/transcribe`
+        : `${apiBase}/audio/transcriptions`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${opts.apiKey}`,
+          originator: 'f1aire',
+          'User-Agent': USER_AGENT,
+          ...(opts.chatGptAccountId
+            ? { 'ChatGPT-Account-Id': opts.chatGptAccountId }
+            : {}),
+        },
+        body: form,
+        signal: controller.signal,
       },
-      body: form,
-      signal: controller.signal,
-    });
+    );
     const bodyText = await response.text();
     if (!response.ok) {
       const detail = truncateErrorText(bodyText);
@@ -1018,6 +1032,8 @@ export async function transcribeTeamRadioCapture(opts: {
   forceTranscription?: boolean;
   backend?: TeamRadioTranscriptionBackend;
   apiKey?: string | null;
+  chatGptAccountId?: string;
+  chatGptTranscription?: boolean;
   model?: string;
   apiBase?: string;
   localCommand?: string;
@@ -1088,6 +1104,8 @@ export async function transcribeTeamRadioCapture(opts: {
       apiKey,
       model: requestedModel,
       apiBase: opts.apiBase,
+      chatGptAccountId: opts.chatGptAccountId,
+      chatGptTranscription: opts.chatGptTranscription,
       fetchImpl: opts.transcriptionFetchImpl,
     });
   }

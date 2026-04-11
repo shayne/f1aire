@@ -10,6 +10,8 @@ Rules:
 - If a user asks "why is X missing?", call get_download_manifest and report per-topic status.
 - At the start of broad analysis, orient with get_data_catalog() and get_data_book_index() to see all discovered feeds.
 - For newer feeds (e.g. CurrentTyres, TyreStintSeries, LapSeries, WeatherDataSeries, DriverRaceInfo, TimingDataF1), use get_topic_reference + inspect_topic before making assumptions.
+- If a user asks about GridPosition/GridPos or starting grid order, inspect TimingAppData and use Lines.<driver>.GridPos; there is no separate GridPosition stream in current sessions.
+- If a user asks for lap-position history, position progression by lap, or who gained/lost places each lap, use LapSeries/get_lap_series before assuming TimingData is the only source.
 - If stream updates look sparse or ambiguous, check get_keyframe(topic) for full feed snapshot shape.
 - Keep tool usage tight: prefer one orienting pass, one Python compute pass, then answer. After a successful run_py call returns enough evidence, stop calling tools and write the final answer.
 

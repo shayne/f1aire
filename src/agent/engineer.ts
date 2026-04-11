@@ -4,6 +4,7 @@ import {
   type ModelMessage,
   type ToolSet,
 } from 'ai';
+import type { SharedV3ProviderOptions } from '@ai-sdk/provider';
 import type { LanguageModel } from 'ai';
 import { formatUnknownError } from './error-utils.js';
 import type {
@@ -17,12 +18,14 @@ import type {
 const MAX_ENGINEER_TOOL_STEPS = 16;
 const FINAL_SYNTHESIS_PROMPT =
   'Write the final answer from the tool results above. Do not call tools again.';
+const USER_CANCEL_REASON = 'user-cancel';
 
 type CreateEngineerSessionArgs = {
   model: LanguageModel;
   tools: ToolSet;
-  system: string;
+  system?: string;
   initialTranscript?: TranscriptEvent[];
+  providerOptions?: SharedV3ProviderOptions;
   streamTextFn?: typeof streamText;
   logger?: (event: Record<string, unknown>) => void | Promise<void>;
   onEvent?: (event: { type: string; [key: string]: unknown }) => void;
@@ -96,6 +99,7 @@ export function createEngineerSession({
   tools,
   system,
   initialTranscript = [],
+  providerOptions,
   streamTextFn = streamText,
   logger,
   onEvent,
@@ -112,6 +116,7 @@ export function createEngineerSession({
     'assistant',
   );
   let nextToolEventId = getNextEventSequence(transcriptEvents, 'tool');
+  let activeAbortController: AbortController | null = null;
 
   const getToolName = (part: unknown): string | undefined => {
     const value =
@@ -179,6 +184,9 @@ export function createEngineerSession({
   };
 
   return {
+    cancel() {
+      activeAbortController?.abort(USER_CANCEL_REASON);
+    },
     getTranscriptEvents() {
       return transcriptEvents.map((event) => cloneTranscriptEvent(event));
     },
@@ -212,6 +220,8 @@ export function createEngineerSession({
       let hadText = false;
       let finishReason: string | undefined;
       let stepCount: number | undefined;
+      const abortController = new AbortController();
+      activeAbortController = abortController;
 
       async function* consumeResult(
         result: Awaited<ReturnType<typeof streamTextFn>>,
@@ -286,9 +296,11 @@ export function createEngineerSession({
 
       try {
         const result = await streamTextFn({
+          abortSignal: abortController.signal,
           model,
-          system,
+          ...(system ? { system } : {}),
           messages,
+          ...(providerOptions ? { providerOptions } : {}),
           tools,
           // Allow enough steps for tool retries (e.g. python self-healing) while
           // keeping an upper bound so a bad loop can't run forever.
@@ -314,16 +326,22 @@ export function createEngineerSession({
           responseMessages.length > 0
         ) {
           const synthesisResult = await streamTextFn({
+            abortSignal: abortController.signal,
             model,
-            system,
+            ...(system ? { system } : {}),
             messages: [
               ...messages,
               ...responseMessages,
               { role: 'user', content: FINAL_SYNTHESIS_PROMPT },
             ],
+            ...(providerOptions ? { providerOptions } : {}),
           });
 
           yield* consumeResult(synthesisResult);
+        }
+
+        if (abortController.signal.aborted) {
+          return;
         }
 
         if (!hadText) {
@@ -346,6 +364,29 @@ export function createEngineerSession({
           yield buffer;
         }
       } catch (error) {
+        if (abortController.signal.aborted) {
+          const cancelledAssistantEvent =
+            assistantEvent as AssistantMessageEvent | null;
+          if (cancelledAssistantEvent) {
+            cancelledAssistantEvent.text = buffer;
+            cancelledAssistantEvent.streaming = false;
+            if (buffer) {
+              messages.push({ role: 'assistant', content: buffer });
+            }
+          }
+          logger?.({
+            type: 'send-cancel',
+            outputLength: buffer.length,
+            hadText,
+          });
+          onEvent?.({
+            type: 'send-cancel',
+            outputLength: buffer.length,
+            hadText,
+          });
+          return;
+        }
+
         const formattedError = `Error: ${formatUnknownError(error)}`;
         buffer = buffer ? `${buffer}\n\n${formattedError}` : formattedError;
         const event = ensureAssistantEvent();
@@ -354,7 +395,14 @@ export function createEngineerSession({
         messages.push({ role: 'assistant', content: buffer });
         throw error;
       } finally {
+        if (activeAbortController === abortController) {
+          activeAbortController = null;
+        }
         resetPendingToolEvents();
+      }
+
+      if (abortController.signal.aborted) {
+        return;
       }
 
       const finalAssistantEvent = ensureAssistantEvent();

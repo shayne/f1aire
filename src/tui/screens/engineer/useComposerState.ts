@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useReducer, useRef } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
-import type { Key } from '#ink';
+import type { InputEvent, Key } from '#ink';
 
 export const COMPOSER_VISIBLE_LINE_CAP = 5;
 
@@ -10,7 +10,7 @@ export type ComposerState = {
   visibleLines: string[];
   setDraft: Dispatch<SetStateAction<string>>;
   setCursor: Dispatch<SetStateAction<number>>;
-  handleInput: (input: string, key: Key) => void;
+  handleInput: (input: string, key: Key, event?: InputEvent) => void;
   submit: () => void;
 };
 
@@ -147,7 +147,14 @@ export function getComposerVisibleLines(
   return lines.slice(-COMPOSER_VISIBLE_LINE_CAP);
 }
 
-function parseComposerInput(input: string): ParsedComposerInput[] {
+function parseComposerInput(
+  input: string,
+  {
+    preserveNewlines = false,
+  }: {
+    preserveNewlines?: boolean;
+  } = {},
+): ParsedComposerInput[] {
   const actions: ParsedComposerInput[] = [];
   let buffer = '';
 
@@ -172,7 +179,7 @@ function parseComposerInput(input: string): ParsedComposerInput[] {
     const char = input[index];
     if (char === '\r' || char === '\n') {
       flushBuffer();
-      actions.push({ type: 'submit' });
+      actions.push({ type: preserveNewlines ? 'newline' : 'submit' });
       if (char === '\r' && input[index + 1] === '\n') {
         index += 2;
       } else {
@@ -216,11 +223,22 @@ export function useComposerState({
   }, [commit, isStreaming, onSend]);
 
   const handleInput = useCallback(
-    (input: string, key: Key) => {
+    (input: string, key: Key, event?: InputEvent) => {
       if (key.ctrl && input === 'c') return;
 
-      if (key.return) {
-        const next = applyComposerEnter(stateRef.current, key.shift);
+      const rawSequence = event?.keypress.sequence;
+      const isBracketedPaste = event?.keypress.isPasted === true;
+      const isModifiedEnterSequence =
+        rawSequence === '\u001b[13;2~' ||
+        rawSequence === '\u001b[13;2u' ||
+        input === '\u001b[13;2~' ||
+        input === '\u001b[13;2u';
+
+      if (key.return || isModifiedEnterSequence) {
+        const next = applyComposerEnter(
+          stateRef.current,
+          key.shift || isModifiedEnterSequence,
+        );
         if (next.shouldSubmit) {
           submit();
           return;
@@ -230,7 +248,9 @@ export function useComposerState({
       }
 
       if (input.length > 0) {
-        for (const action of parseComposerInput(input)) {
+        for (const action of parseComposerInput(input, {
+          preserveNewlines: isBracketedPaste,
+        })) {
           if (action.type === 'insert') {
             commit({ type: 'insert', text: action.text });
             continue;

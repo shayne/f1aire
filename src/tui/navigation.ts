@@ -4,6 +4,8 @@ import type { Meeting, Session } from '../core/types.js';
 export type Screen =
   | { name: 'season' }
   | { name: 'settings'; returnTo: Screen }
+  | { name: 'openaiAuth'; returnTo: Screen }
+  | { name: 'chatGptAuth'; returnTo: Screen }
   | { name: 'apiKey'; returnTo: Screen }
   | { name: 'meeting'; year: number; meetings: Meeting[] }
   | { name: 'session'; year: number; meetings: Meeting[]; meeting: Meeting }
@@ -32,7 +34,12 @@ export type Screen =
     };
 
 export function getBackScreen(screen: Screen): Screen | null {
-  if (screen.name === 'settings' || screen.name === 'apiKey') {
+  if (
+    screen.name === 'settings' ||
+    screen.name === 'openaiAuth' ||
+    screen.name === 'chatGptAuth' ||
+    screen.name === 'apiKey'
+  ) {
     return screen.returnTo;
   }
   if (screen.name === 'meeting') return { name: 'season' };

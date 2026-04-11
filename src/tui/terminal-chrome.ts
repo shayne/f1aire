@@ -17,6 +17,18 @@ type TerminalLinkOptions = {
   supportsHyperlinks?: boolean;
 };
 
+function getTerminalLinkHref(target: string): string {
+  if (
+    target.startsWith('https://') ||
+    target.startsWith('http://') ||
+    target.startsWith('file://')
+  ) {
+    return target;
+  }
+
+  return pathToFileURL(target).href;
+}
+
 function getScreenLabel(screenName: string): string | null {
   switch (screenName) {
     case 'apiKey':
@@ -79,12 +91,12 @@ export function supportsHyperlinks(
 }
 
 export function createTerminalLink(
-  filePath: string,
-  { label = filePath, supportsHyperlinks: supported }: TerminalLinkOptions = {},
+  target: string,
+  { label = target, supportsHyperlinks: supported }: TerminalLinkOptions = {},
 ): string {
   const canLink = supported ?? supportsHyperlinks();
   if (!canLink) return label;
-  const href = pathToFileURL(filePath).href;
+  const href = getTerminalLinkHref(target);
   return `${OSC8_START}${href}${OSC8_END}${label}${OSC8_START}${OSC8_END}`;
 }
 

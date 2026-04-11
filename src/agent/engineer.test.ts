@@ -2,6 +2,8 @@ import { describe, it, expect, vi } from 'vitest';
 import type { TranscriptEvent } from './transcript-events.js';
 import { createEngineerSession } from './engineer.js';
 
+const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
+
 describe('engineer session', () => {
   it('returns a session with send()', async () => {
     const session = createEngineerSession({
@@ -52,6 +54,51 @@ describe('engineer session', () => {
     expect(stopWhen({ steps: new Array(8).fill({}) })).toBe(false);
     expect(stopWhen({ steps: new Array(15).fill({}) })).toBe(false);
     expect(stopWhen({ steps: new Array(16).fill({}) })).toBe(true);
+  });
+
+  it('passes provider options through to model calls', async () => {
+    const streamTextFn = vi.fn(
+      async () =>
+        ({
+          fullStream: (async function* () {
+            yield { type: 'text-delta', id: 't1', text: 'ok' };
+          })(),
+        }) as any,
+    );
+
+    const session = createEngineerSession({
+      model: {} as any,
+      tools: {} as any,
+      providerOptions: {
+        openai: {
+          instructions: 'Use the system prompt as top-level instructions.',
+          store: false,
+          systemMessageMode: 'remove',
+        },
+      },
+      streamTextFn: streamTextFn as any,
+    });
+
+    const parts: string[] = [];
+    for await (const chunk of session.send('hello')) parts.push(chunk);
+
+    expect(parts.join('')).toBe('ok');
+    expect(streamTextFn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        providerOptions: {
+          openai: {
+            instructions: 'Use the system prompt as top-level instructions.',
+            store: false,
+            systemMessageMode: 'remove',
+          },
+        },
+      }),
+    );
+    expect(streamTextFn).toHaveBeenCalledWith(
+      expect.not.objectContaining({
+        system: expect.anything(),
+      }),
+    );
   });
 
   it('runs a final no-tool synthesis pass when the tool-step cap is reached without text', async () => {
@@ -335,6 +382,68 @@ describe('engineer session', () => {
         id: 'assistant-1',
         type: 'assistant-message',
         text: 'Error: stream setup failed',
+        streaming: false,
+      },
+    ]);
+  });
+
+  it('cancels an in-flight send without appending fallback error text', async () => {
+    let activeSignal: AbortSignal | undefined;
+    let resolveStreamStarted: (() => void) | null = null;
+    const streamStarted = new Promise<void>((resolve) => {
+      resolveStreamStarted = resolve;
+    });
+    const streamTextFn = vi.fn(
+      async ({ abortSignal }) => {
+        activeSignal = abortSignal;
+
+        return {
+          fullStream: (async function* () {
+            yield { type: 'text-delta', id: 't1', text: 'Partial answer' };
+            resolveStreamStarted?.();
+            await new Promise<void>((resolve, reject) => {
+              abortSignal?.addEventListener(
+                'abort',
+                () => reject(abortSignal.reason),
+                { once: true },
+              );
+            });
+          })(),
+        } as any;
+      },
+    );
+
+    const session = createEngineerSession({
+      model: {} as any,
+      tools: {} as any,
+      system: 'x',
+      streamTextFn: streamTextFn as any,
+    });
+
+    const chunks: string[] = [];
+    const sendPromise = (async () => {
+      for await (const chunk of session.send('Hello')) {
+        chunks.push(chunk);
+      }
+    })();
+
+    await streamStarted;
+    session.cancel();
+    await sendPromise;
+    await tick();
+
+    expect(activeSignal?.aborted).toBe(true);
+    expect(chunks).toEqual(['Partial answer']);
+    expect(session.getTranscriptEvents()).toEqual([
+      {
+        id: 'user-1',
+        type: 'user-message',
+        text: 'Hello',
+      },
+      {
+        id: 'assistant-1',
+        type: 'assistant-message',
+        text: 'Partial answer',
         streaming: false,
       },
     ]);

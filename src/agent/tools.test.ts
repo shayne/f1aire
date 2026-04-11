@@ -2065,6 +2065,109 @@ describe('tools', () => {
     }
   });
 
+  it('transcribe_team_radio uses ChatGPT OAuth auth when available', async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockImplementation(async (input, init) => {
+        const url = String(input);
+        if (url.endsWith('/transcribe')) {
+          expect(
+            (init?.headers as Record<string, string> | undefined)
+              ?.Authorization,
+          ).toBe('Bearer chatgpt-access-token');
+          expect(
+            (init?.headers as Record<string, string> | undefined)?.[
+              'ChatGPT-Account-Id'
+            ],
+          ).toBe('acct-chatgpt');
+          return new Response(
+            JSON.stringify({ text: 'Copy, strat Plan B.' }),
+            {
+              status: 200,
+              headers: { 'Content-Type': 'application/json' },
+            },
+          );
+        }
+        return new Response('team-radio-audio', { status: 200 });
+      });
+
+    const previousXdgDataHome = process.env.XDG_DATA_HOME;
+    const xdgDataHome = mkdtempSync(
+      path.join(tmpdir(), 'f1aire-tools-team-radio-chatgpt-'),
+    );
+    process.env.XDG_DATA_HOME = xdgDataHome;
+
+    try {
+      const tools = makeTools({
+        store: {
+          ...store,
+          raw: {
+            subscribe: {
+              SessionInfo: {
+                Path: '2024/2024-05-26_Test_Weekend/2024-05-26_Race/',
+              },
+            },
+            live: [],
+            download: {
+              prefix:
+                'https://livetiming.formula1.com/static/2024/2024-05-26_Test_Weekend/2024-05-26_Race/',
+              session: {
+                path: '2024/2024-05-26_Test_Weekend/2024-05-26_Race/',
+              },
+            },
+          },
+        } as any,
+        processors: {
+          ...processors,
+          driverList: {
+            state: {},
+            getName: (driverNumber: string) =>
+              driverNumber === '4' ? 'Lando Norris' : null,
+          },
+          teamRadio: {
+            state: {
+              Captures: {
+                '1': {
+                  Utc: '2024-05-26T12:16:25.710Z',
+                  RacingNumber: '4',
+                  Path: 'TeamRadio/LANNOR01_4_20240526_121625.mp3',
+                },
+              },
+            },
+          },
+        } as any,
+        timeCursor: { latest: true },
+        onTimeCursorChange: () => {},
+        resolveOpenAIAuth: async () => ({
+          kind: 'chatgpt',
+          accessToken: 'chatgpt-access-token',
+          refreshToken: 'refresh-token',
+          expiresAt: Date.now() + 3600_000,
+          accountId: 'acct-chatgpt',
+        }),
+      } as any);
+
+      await expect(
+        tools.transcribe_team_radio.execute({
+          captureId: '1',
+        } as any),
+      ).resolves.toMatchObject({
+        captureId: '1',
+        backend: 'openai',
+        transcription: 'Copy, strat Plan B.',
+        driverName: 'Lando Norris',
+      });
+    } finally {
+      fetchMock.mockRestore();
+      rmSync(xdgDataHome, { recursive: true, force: true });
+      if (previousXdgDataHome === undefined) {
+        delete process.env.XDG_DATA_HOME;
+      } else {
+        process.env.XDG_DATA_HOME = previousXdgDataHome;
+      }
+    }
+  });
+
   it('get_extrapolated_clock projects remaining time at the current cursor', async () => {
     const tools = makeTools({
       store,

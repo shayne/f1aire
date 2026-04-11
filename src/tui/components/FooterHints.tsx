@@ -4,7 +4,13 @@ import { useTheme } from '../theme/provider.js';
 
 export function getFooterHintText(screen: string): string {
   if (screen === 'engineer') {
-    return 'enter send · shift+enter newline · tab details · pgup/pgdn scroll · esc back';
+    return 'enter send · shift+enter newline · tab details · pgup/pgdn scroll · esc stop/back';
+  }
+  if (screen === 'openaiAuth') {
+    return 'enter select · esc back';
+  }
+  if (screen === 'chatGptAuth') {
+    return 'enter retry · esc cancel';
   }
   if (screen === 'apiKey') {
     return 'enter save · esc back';

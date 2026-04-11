@@ -7,9 +7,13 @@ export { AlternateScreen } from '../vendor/ink/components/AlternateScreen.js';
 export { default as ScrollBox } from '../vendor/ink/components/ScrollBox.js';
 export type { ScrollBoxHandle } from '../vendor/ink/components/ScrollBox.js';
 export { default as useInput } from '../vendor/ink/hooks/use-input.js';
+export {
+  useHasSelection,
+  useSelection,
+} from '../vendor/ink/hooks/use-selection.js';
 export { default as useApp } from '../vendor/ink/hooks/use-app.js';
 export { default as useStdin } from '../vendor/ink/hooks/use-stdin.js';
 export { useStdout } from './use-stdout.js';
 export { useTerminalSize } from './use-terminal-size.js';
 export type { Props as BoxProps } from '../vendor/ink/components/Box.js';
-export type { Key } from '../vendor/ink/events/input-event.js';
+export type { InputEvent, Key } from '../vendor/ink/events/input-event.js';

@@ -37,6 +37,10 @@ import {
   transcribeTeamRadioCapture,
 } from '../core/team-radio.js';
 import {
+  getTeamRadioOpenAIAuthRequestConfig,
+  type ResolvedOpenAIAuth,
+} from '../core/openai-auth.js';
+import {
   getCurrentTyreRecords,
   getTyreStintRecords,
 } from '../core/tyre-state.js';
@@ -165,6 +169,7 @@ export function makeTools({
   timeCursor,
   onTimeCursorChange,
   logger,
+  resolveOpenAIAuth,
   resolveOpenAIApiKey,
   teamRadioExecFileImpl,
 }: {
@@ -266,6 +271,7 @@ export function makeTools({
   timeCursor: TimeCursor;
   onTimeCursorChange: (cursor: TimeCursor) => void;
   logger?: (event: Record<string, unknown>) => void | Promise<void>;
+  resolveOpenAIAuth?: () => Promise<ResolvedOpenAIAuth | null>;
   resolveOpenAIApiKey?: () => Promise<string | null>;
   teamRadioExecFileImpl?: TeamRadioExecFileImpl;
 }) {
@@ -2828,7 +2834,16 @@ export function makeTools({
         forceTranscription,
         overwriteDownload,
       }) => {
-        const apiKey = resolveOpenAIApiKey ? await resolveOpenAIApiKey() : null;
+        const auth = resolveOpenAIAuth ? await resolveOpenAIAuth() : null;
+        const authConfig = auth
+          ? getTeamRadioOpenAIAuthRequestConfig(auth)
+          : {
+              apiBase: undefined,
+              bearerToken: resolveOpenAIApiKey
+                ? await resolveOpenAIApiKey()
+                : null,
+              chatGptTranscription: false,
+            };
         const result = await transcribeTeamRadioCapture({
           source: store,
           state: processors.teamRadio?.state,
@@ -2838,7 +2853,10 @@ export function makeTools({
           model,
           forceTranscription,
           overwriteDownload,
-          apiKey,
+          apiKey: authConfig.bearerToken,
+          apiBase: authConfig.apiBase,
+          chatGptAccountId: authConfig.chatGptAccountId,
+          chatGptTranscription: authConfig.chatGptTranscription,
           execFileImpl: teamRadioExecFileImpl,
         });
 

@@ -313,6 +313,78 @@ describe('team radio helpers', () => {
     }
   });
 
+  it('transcribes through the ChatGPT backend when OAuth auth is selected', async () => {
+    const destinationDir = mkdtempSync(
+      path.join(tmpdir(), 'f1aire-team-radio-chatgpt-transcribe-'),
+    );
+    const downloadFetchImpl = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(new Response('radio-bytes', { status: 200 }));
+    const transcriptionFetchImpl = vi.fn<typeof fetch>().mockResolvedValue(
+      new Response(JSON.stringify({ text: 'Stay out this lap.' }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+
+    try {
+      const source = {
+        raw: {
+          download: {
+            prefix:
+              'https://livetiming.formula1.com/static/2024/2024-05-26_Test_Weekend/2024-05-26_Race/',
+            session: {
+              path: '2024/2024-05-26_Test_Weekend/2024-05-26_Race/',
+            },
+          },
+          subscribe: {},
+          keyframes: null,
+        },
+      };
+      const state = {
+        Captures: {
+          '1': {
+            Utc: '2024-05-26T12:16:25.710Z',
+            RacingNumber: '4',
+            Path: 'TeamRadio/LANNOR01_4_20240526_121625.mp3',
+          },
+        },
+      };
+
+      const result = await transcribeTeamRadioCapture({
+        source,
+        state,
+        captureId: '1',
+        destinationDir,
+        apiKey: 'chatgpt-access-token',
+        apiBase: 'https://chatgpt.com/backend-api',
+        chatGptAccountId: 'acct-chatgpt',
+        chatGptTranscription: true,
+        downloadFetchImpl,
+        transcriptionFetchImpl,
+      } as any);
+
+      expect(result.transcription).toBe('Stay out this lap.');
+      expect(transcriptionFetchImpl).toHaveBeenCalledTimes(1);
+      const [url, init] = transcriptionFetchImpl.mock.calls[0];
+      expect(url).toBe('https://chatgpt.com/backend-api/transcribe');
+      expect((init?.headers as Record<string, string>).Authorization).toBe(
+        'Bearer chatgpt-access-token',
+      );
+      expect(
+        (init?.headers as Record<string, string>)['ChatGPT-Account-Id'],
+      ).toBe('acct-chatgpt');
+      expect((init?.headers as Record<string, string>).originator).toBe(
+        'f1aire',
+      );
+      expect((init?.headers as Record<string, string>)['User-Agent']).toBe(
+        'f1aire/0.1.0',
+      );
+    } finally {
+      rmSync(destinationDir, { recursive: true, force: true });
+    }
+  });
+
   it('transcribes a radio clip locally when the local backend is selected', async () => {
     const destinationDir = mkdtempSync(
       path.join(tmpdir(), 'f1aire-team-radio-local-transcribe-'),

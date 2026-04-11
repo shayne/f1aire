@@ -5,7 +5,7 @@ import { useTheme } from '../theme/provider.js';
 type PanelProps = {
   title: string;
   children: React.ReactNode;
-  tone?: 'neutral' | 'accent' | 'muted';
+  tone?: 'neutral' | 'accent' | 'muted' | 'danger';
   paddingX?: number;
   paddingY?: number;
   boxProps?: BoxProps;
@@ -21,8 +21,12 @@ export function Panel({
 }: PanelProps): React.JSX.Element {
   const theme = useTheme();
   const titleColor =
-    tone === 'accent' ? theme.chrome.selected : theme.chrome.panelTitle;
-  const titleIsMuted = tone !== 'accent';
+    tone === 'accent'
+      ? theme.chrome.selected
+      : tone === 'danger'
+        ? theme.status.error
+        : theme.chrome.panelTitle;
+  const titleIsMuted = tone === 'neutral' || tone === 'muted';
 
   return (
     <Box

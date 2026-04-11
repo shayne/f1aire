@@ -1,7 +1,19 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Box, useInput, useStdout, useTerminalSize } from '#ink';
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
+import {
+  Box,
+  useInput,
+  useSelection,
+  useStdout,
+  useTerminalSize,
+} from '#ink';
 import { formatUnknownError } from './agent/error-utils.js';
 import {
   getTranscriptSessionKey,
@@ -9,12 +21,21 @@ import {
 } from './agent/session-transcript-store.js';
 import {
   clearStoredOpenAIApiKey,
+  clearStoredOpenAIChatGptAuth,
   getAppConfigPath,
   readAppConfig,
+  writeOpenAIAuthPreference,
   writeOpenAIApiKey,
+  type AppConfig,
+  type OpenAIAuthPreference,
+  type OpenAIChatGptAuthConfig,
 } from './core/config.js';
 import { downloadSession } from './core/download.js';
 import { getMeetings } from './core/f1-api.js';
+import {
+  resolveOpenAIAuthForUse,
+  type ResolvedOpenAIAuth,
+} from './core/openai-auth.js';
 import { summarizeFromLines } from './core/summary.js';
 import { getDataDir } from './core/xdg.js';
 import {
@@ -36,6 +57,8 @@ import { Downloading } from './tui/screens/Downloading.js';
 import { EngineerChat } from './tui/screens/EngineerChat.js';
 import { MeetingPicker } from './tui/screens/MeetingPicker.js';
 import { ApiKeyPrompt } from './tui/screens/ApiKeyPrompt.js';
+import { ChatGptAuthPrompt } from './tui/screens/ChatGptAuthPrompt.js';
+import { OpenAIAuthPrompt } from './tui/screens/OpenAIAuthPrompt.js';
 import { RuntimePreparing } from './tui/screens/RuntimePreparing.js';
 import { SeasonPicker } from './tui/screens/SeasonPicker.js';
 import { SessionPicker } from './tui/screens/SessionPicker.js';
@@ -44,39 +67,85 @@ import { Summary, type SummaryLaunchAction } from './tui/screens/Summary.js';
 import { AppStateProvider, useAppState } from './tui/state/app-store.js';
 import { ThemeProvider } from './tui/theme/provider.js';
 
+type OpenAIAuthStatus = {
+  chatGptAccountEmail?: string;
+  chatGptPlanType?: string;
+  chatGptSignedIn: boolean;
+  envKeyPresent: boolean;
+  openaiAuthPreference: OpenAIAuthPreference;
+  storedKeyPresent: boolean;
+  inUse: 'chatgpt' | 'env' | 'stored' | 'none';
+};
+
+function getEnvOpenAIApiKey(): string | null {
+  return typeof process.env.OPENAI_API_KEY === 'string' &&
+    process.env.OPENAI_API_KEY.trim().length > 0
+    ? process.env.OPENAI_API_KEY.trim()
+    : null;
+}
+
+function toOpenAIAuthStatus(config: AppConfig): OpenAIAuthStatus {
+  const envKeyPresent = Boolean(getEnvOpenAIApiKey());
+  const openaiAuthPreference = config.openaiAuthPreference ?? 'chatgpt';
+  const chatGptSignedIn = Boolean(config.openaiChatGptAuth?.accessToken);
+  const storedKeyPresent = Boolean(config.openaiApiKey);
+  const inUse =
+    openaiAuthPreference === 'chatgpt'
+      ? chatGptSignedIn
+        ? 'chatgpt'
+        : 'none'
+      : envKeyPresent
+        ? 'env'
+        : storedKeyPresent
+          ? 'stored'
+          : 'none';
+
+  return {
+    chatGptSignedIn,
+    envKeyPresent,
+    inUse,
+    openaiAuthPreference,
+    storedKeyPresent,
+    ...(config.openaiChatGptAuth?.accountEmail
+      ? { chatGptAccountEmail: config.openaiChatGptAuth.accountEmail }
+      : {}),
+    ...(config.openaiChatGptAuth?.planType
+      ? { chatGptPlanType: config.openaiChatGptAuth.planType }
+      : {}),
+  };
+}
+
 function AppImpl(): React.JSX.Element {
   const [screen, setScreen] = useState<Screen>({ name: 'season' });
   const runtimeReady = useAppState((state) => state.runtime.ready);
   const runtimeMessage = useAppState((state) => state.runtime.message);
   const runtimeProgress = useAppState((state) => state.runtime.progress);
-  const [storedApiKey, setStoredApiKey] = useState<string | null>(null);
+  const [authStatus, setAuthStatus] = useState<OpenAIAuthStatus>(() =>
+    toOpenAIAuthStatus({}),
+  );
   const [apiKeyError, setApiKeyError] = useState<string | null>(null);
   const [summaryHasPriorTranscript, setSummaryHasPriorTranscript] =
     useState(false);
   const [summaryLaunchAction, setSummaryLaunchAction] =
     useState<SummaryLaunchAction | null>(null);
+  const [engineerLeavePromptVisible, setEngineerLeavePromptVisible] =
+    useState(false);
+  const [engineerQuitPromptVisible, setEngineerQuitPromptVisible] =
+    useState(false);
+  const engineerQuitPromptTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
   const { stdout } = useStdout();
+  const selection = useSelection();
   const { columns: terminalColumns = 100, rows: terminalRows = 40 } =
     useTerminalSize();
   const isShort = terminalRows < 32;
   const configPath = useMemo(() => getAppConfigPath('f1aire'), []);
-  const envApiKey =
-    typeof process.env.OPENAI_API_KEY === 'string' &&
-    process.env.OPENAI_API_KEY.trim().length > 0
-      ? process.env.OPENAI_API_KEY.trim()
-      : null;
-  const keyStatus = useMemo(() => {
-    const inUse: 'env' | 'stored' | 'none' = envApiKey
-      ? 'env'
-      : storedApiKey
-        ? 'stored'
-        : 'none';
-    return {
-      envKeyPresent: Boolean(envApiKey),
-      storedKeyPresent: Boolean(storedApiKey),
-      inUse,
-    };
-  }, [envApiKey, storedApiKey]);
+  const refreshAuthStatus = useCallback(async (): Promise<AppConfig> => {
+    const cfg = await readAppConfig('f1aire');
+    setAuthStatus(toOpenAIAuthStatus(cfg));
+    return cfg;
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -84,14 +153,9 @@ function AppImpl(): React.JSX.Element {
       try {
         const cfg = await readAppConfig('f1aire');
         if (cancelled) return;
-        const key =
-          typeof cfg.openaiApiKey === 'string' &&
-          cfg.openaiApiKey.trim().length > 0
-            ? cfg.openaiApiKey.trim()
-            : null;
-        setStoredApiKey(key);
+        setAuthStatus(toOpenAIAuthStatus(cfg));
       } catch {
-        if (!cancelled) setStoredApiKey(null);
+        if (!cancelled) setAuthStatus(toOpenAIAuthStatus({}));
       }
     })();
     return () => {
@@ -101,32 +165,42 @@ function AppImpl(): React.JSX.Element {
 
   useRuntimeBootstrap();
 
-  const resolveApiKeyForUse = async (): Promise<string | null> => {
-    const fromEnv =
-      typeof process.env.OPENAI_API_KEY === 'string' &&
-      process.env.OPENAI_API_KEY.trim().length > 0
-        ? process.env.OPENAI_API_KEY.trim()
-        : null;
-    if (fromEnv) return fromEnv;
-    if (storedApiKey) return storedApiKey;
-    try {
-      const cfg = await readAppConfig('f1aire');
-      const key =
-        typeof cfg.openaiApiKey === 'string' &&
-        cfg.openaiApiKey.trim().length > 0
-          ? cfg.openaiApiKey.trim()
-          : null;
-      if (key) setStoredApiKey(key);
-      return key;
-    } catch {
-      return null;
-    }
-  };
+  const resolveAuthForUse = useCallback(
+    async (): Promise<ResolvedOpenAIAuth | null> => {
+      try {
+        const auth = await resolveOpenAIAuthForUse('f1aire');
+        await refreshAuthStatus();
+        return auth;
+      } catch {
+        return null;
+      }
+    },
+    [refreshAuthStatus],
+  );
+
+  const resolveApiKeyForUse = useCallback(async (): Promise<string | null> => {
+    const auth = await resolveAuthForUse();
+    return auth?.kind === 'api-key' ? auth.apiKey : null;
+  }, [resolveAuthForUse]);
+
+  const openAuthGate = useCallback(
+    async (returnTo: Screen): Promise<void> => {
+      const cfg = await refreshAuthStatus();
+      setApiKeyError(null);
+      if (cfg.openaiAuthPreference === 'api-key') {
+        setScreen({ name: 'apiKey', returnTo });
+        return;
+      }
+      setScreen({ name: 'openaiAuth', returnTo });
+    },
+    [refreshAuthStatus],
+  );
 
   const {
     activity,
     clearPendingEngineer,
     handleSend,
+    interruptEngineerTurn,
     isStreaming,
     messages,
     pythonCodePreview,
@@ -138,21 +212,30 @@ function AppImpl(): React.JSX.Element {
     takePendingEngineer,
     timeCursor,
   } = useEngineerSession({
-    keyStatus,
+    keyStatus: authStatus,
+    resolveOpenAIAuthForUse: resolveAuthForUse,
     resolveApiKeyForUse,
     screenName: screen.name,
     setScreen,
-    storedApiKey,
+    storedApiKey: authStatus.storedKeyPresent ? 'stored' : null,
   });
 
   const handleApiKeySave = async (apiKey: string) => {
     setApiKeyError(null);
     try {
       await writeOpenAIApiKey('f1aire', apiKey);
-      setStoredApiKey(apiKey.trim());
+      await refreshAuthStatus();
       const pending = takePendingEngineer();
       if (pending) {
-        await startEngineer(pending, apiKey.trim());
+        const auth = await resolveAuthForUse();
+        if (!auth) {
+          queuePendingEngineer(pending);
+          if (screen.name === 'apiKey') {
+            await openAuthGate(screen.returnTo);
+          }
+          return;
+        }
+        await startEngineer(pending, auth);
         return;
       }
       if (screen.name === 'apiKey') {
@@ -163,10 +246,120 @@ function AppImpl(): React.JSX.Element {
     }
   };
 
+  const handleOpenAIAuthPromptSelect = useCallback(
+    (action: 'chatgpt' | 'api-key' | 'back') => {
+      if (screen.name !== 'openaiAuth') {
+        return;
+      }
+
+      if (action === 'back') {
+        if (screen.returnTo.name !== 'summary') {
+          clearPendingEngineer();
+          setSummaryHasPriorTranscript(false);
+        }
+        setSummaryLaunchAction(null);
+        setApiKeyError(null);
+        setScreen(screen.returnTo);
+        return;
+      }
+
+      if (action === 'chatgpt') {
+        void (async () => {
+          await writeOpenAIAuthPreference('f1aire', 'chatgpt');
+          await refreshAuthStatus();
+          setScreen({
+            name: 'chatGptAuth',
+            returnTo: { name: 'openaiAuth', returnTo: screen.returnTo },
+          });
+        })().catch((err) => {
+          setApiKeyError(formatUnknownError(err));
+        });
+        return;
+      }
+
+      void (async () => {
+        await writeOpenAIAuthPreference('f1aire', 'api-key');
+        await refreshAuthStatus();
+        const pending = takePendingEngineer();
+        const auth = await resolveAuthForUse();
+        if (pending && auth) {
+          await startEngineer(pending, auth);
+          return;
+        }
+        if (pending) {
+          queuePendingEngineer(pending);
+        }
+        setScreen({ name: 'apiKey', returnTo: screen.returnTo });
+      })().catch((err) => {
+        setApiKeyError(formatUnknownError(err));
+      });
+    },
+    [
+      clearPendingEngineer,
+      queuePendingEngineer,
+      refreshAuthStatus,
+      resolveAuthForUse,
+      screen,
+      startEngineer,
+      takePendingEngineer,
+    ],
+  );
+
+  const handleChatGptAuthDone = useCallback(
+    (auth: OpenAIChatGptAuthConfig) => {
+      void (async () => {
+        await refreshAuthStatus();
+        const pending = takePendingEngineer();
+        if (pending) {
+          await startEngineer(pending, { kind: 'chatgpt', ...auth });
+          return;
+        }
+        if (screen.name === 'chatGptAuth') {
+          setScreen(screen.returnTo);
+        }
+      })().catch((err) => {
+        setApiKeyError(formatUnknownError(err));
+        if (screen.name === 'chatGptAuth') {
+          setScreen(screen.returnTo);
+        }
+      });
+    },
+    [refreshAuthStatus, screen, startEngineer, takePendingEngineer],
+  );
+
+  const handleChatGptAuthCancel = useCallback(() => {
+    if (screen.name === 'chatGptAuth') {
+      setScreen(screen.returnTo);
+    }
+  }, [screen]);
+
   const handleSettingsAction = (action: SettingsAction) => {
     if (action === 'back') {
       const next = getBackScreen(screen);
       if (next) setScreen(next);
+      return;
+    }
+    if (action === 'chatgpt') {
+      setApiKeyError(null);
+      setScreen({ name: 'chatGptAuth', returnTo: screen });
+      return;
+    }
+    if (action === 'prefer-chatgpt') {
+      void (async () => {
+        await writeOpenAIAuthPreference('f1aire', 'chatgpt');
+        await refreshAuthStatus();
+      })().catch((err) => {
+        setApiKeyError(formatUnknownError(err));
+      });
+      return;
+    }
+    if (action === 'prefer-api-key') {
+      void (async () => {
+        await writeOpenAIAuthPreference('f1aire', 'api-key');
+        await refreshAuthStatus();
+      })().catch((err) => {
+        setApiKeyError(formatUnknownError(err));
+      });
       return;
     }
     if (action === 'paste') {
@@ -178,7 +371,18 @@ function AppImpl(): React.JSX.Element {
       void (async () => {
         try {
           await clearStoredOpenAIApiKey('f1aire');
-          setStoredApiKey(null);
+          await refreshAuthStatus();
+        } catch (err) {
+          setApiKeyError(formatUnknownError(err));
+        }
+      })();
+      return;
+    }
+    if (action === 'clear-chatgpt') {
+      void (async () => {
+        try {
+          await clearStoredOpenAIChatGptAuth('f1aire');
+          await refreshAuthStatus();
         } catch (err) {
           setApiKeyError(formatUnknownError(err));
         }
@@ -190,6 +394,8 @@ function AppImpl(): React.JSX.Element {
   const breadcrumb = useMemo(() => {
     if (screen.name === 'season') return ['Season'];
     if (screen.name === 'settings') return ['Settings'];
+    if (screen.name === 'openaiAuth') return ['OpenAI Auth'];
+    if (screen.name === 'chatGptAuth') return ['ChatGPT Sign In'];
     if (screen.name === 'apiKey') return ['OpenAI API Key'];
     if (screen.name === 'meeting') return [`${screen.year}`, 'Meeting'];
     if (screen.name === 'session') {
@@ -216,7 +422,11 @@ function AppImpl(): React.JSX.Element {
   }, [screen]);
 
   const handleGlobalBack = useCallback((): void => {
-    if (screen.name === 'apiKey') {
+    if (
+      screen.name === 'apiKey' ||
+      screen.name === 'openaiAuth' ||
+      screen.name === 'chatGptAuth'
+    ) {
       if (screen.returnTo.name !== 'summary') {
         clearPendingEngineer();
         setSummaryHasPriorTranscript(false);
@@ -235,6 +445,39 @@ function AppImpl(): React.JSX.Element {
     if (next) setScreen(next);
   }, [clearPendingEngineer, screen]);
 
+  const clearEngineerQuitPrompt = useCallback((): void => {
+    if (engineerQuitPromptTimerRef.current) {
+      clearTimeout(engineerQuitPromptTimerRef.current);
+      engineerQuitPromptTimerRef.current = null;
+    }
+    setEngineerQuitPromptVisible(false);
+  }, []);
+
+  const armEngineerQuitPrompt = useCallback((): void => {
+    clearEngineerQuitPrompt();
+    setEngineerQuitPromptVisible(true);
+    engineerQuitPromptTimerRef.current = setTimeout(() => {
+      engineerQuitPromptTimerRef.current = null;
+      setEngineerQuitPromptVisible(false);
+    }, 2000);
+  }, [clearEngineerQuitPrompt]);
+
+  useEffect(() => {
+    if (screen.name === 'engineer') return;
+    setEngineerLeavePromptVisible(false);
+    clearEngineerQuitPrompt();
+  }, [clearEngineerQuitPrompt, screen.name]);
+
+  useEffect(
+    () => () => {
+      if (engineerQuitPromptTimerRef.current) {
+        clearTimeout(engineerQuitPromptTimerRef.current);
+        engineerQuitPromptTimerRef.current = null;
+      }
+    },
+    [],
+  );
+
   const handleSummaryLaunch = useCallback(
     (launchAction: SummaryLaunchAction): boolean | void => {
       if (screen.name !== 'summary') {
@@ -251,16 +494,15 @@ function AppImpl(): React.JSX.Element {
       setSummaryLaunchAction(launchAction);
 
       void (async () => {
-        const keyToUse = await resolveApiKeyForUse();
-        if (!keyToUse) {
+        const auth = await resolveAuthForUse();
+        if (!auth) {
           queuePendingEngineer(pending);
-          setApiKeyError(null);
           setSummaryLaunchAction(null);
-          setScreen({ name: 'apiKey', returnTo: screen });
+          await openAuthGate(screen);
           return;
         }
 
-        await startEngineer(pending, keyToUse, {
+        await startEngineer(pending, auth, {
           resumeTranscript: launchAction === 'resume',
         });
         setSummaryLaunchAction(null);
@@ -273,7 +515,8 @@ function AppImpl(): React.JSX.Element {
     },
     [
       queuePendingEngineer,
-      resolveApiKeyForUse,
+      openAuthGate,
+      resolveAuthForUse,
       screen,
       startEngineer,
       takePendingEngineer,
@@ -296,14 +539,23 @@ function AppImpl(): React.JSX.Element {
         action: 'global.back' as const,
         context: 'global' as const,
         key: { escape: true },
-        run: handleGlobalBack,
+        run: () => {
+          if (screen.name === 'engineer' || screen.name === 'chatGptAuth') {
+            return false;
+          }
+          handleGlobalBack();
+        },
       },
       {
         action: 'global.back' as const,
         context: 'global' as const,
         key: { backspace: true },
         run: () => {
-          if (screen.name === 'engineer' || screen.name === 'apiKey') {
+          if (
+            screen.name === 'engineer' ||
+            screen.name === 'chatGptAuth' ||
+            screen.name === 'apiKey'
+          ) {
             return false;
           }
           handleGlobalBack();
@@ -314,7 +566,11 @@ function AppImpl(): React.JSX.Element {
         context: 'global' as const,
         key: { input: 'b' },
         run: () => {
-          if (screen.name === 'engineer' || screen.name === 'apiKey') {
+          if (
+            screen.name === 'engineer' ||
+            screen.name === 'chatGptAuth' ||
+            screen.name === 'apiKey'
+          ) {
             return false;
           }
           handleGlobalBack();
@@ -325,7 +581,12 @@ function AppImpl(): React.JSX.Element {
         context: 'global' as const,
         key: { input: 'q' },
         run: () => {
-          if (screen.name === 'engineer' || screen.name === 'apiKey') {
+          if (
+            screen.name === 'engineer' ||
+            screen.name === 'openaiAuth' ||
+            screen.name === 'chatGptAuth' ||
+            screen.name === 'apiKey'
+          ) {
             return false;
           }
           process.exit(0);
@@ -334,13 +595,130 @@ function AppImpl(): React.JSX.Element {
       {
         action: 'global.quit' as const,
         context: 'global' as const,
-        key: { ctrl: true, input: 'c' },
+        key: {
+          ctrl: true,
+          input: 'c',
+          meta: false,
+          shift: false,
+          super: false,
+        },
         run: () => {
+          if (screen.name === 'engineer' || screen.name === 'chatGptAuth') {
+            return false;
+          }
           process.exit(0);
         },
       },
     ],
     [handleGlobalBack, screen.name],
+  );
+
+  useInput(
+    (input, key, event) => {
+      if (screen.name !== 'engineer') return;
+      const isPlainCtrlC =
+        input === 'c' &&
+        key.ctrl &&
+        !key.shift &&
+        !key.meta &&
+        !key.super;
+
+      if (engineerLeavePromptVisible) {
+        if (
+          key.return ||
+          input === '\r' ||
+          input === '\n' ||
+          input.toLowerCase() === 'y'
+        ) {
+          setEngineerLeavePromptVisible(false);
+          clearEngineerQuitPrompt();
+          handleGlobalBack();
+          event.stopImmediatePropagation();
+          return;
+        }
+
+        if (key.escape || input.toLowerCase() === 'n') {
+          setEngineerLeavePromptVisible(false);
+          clearEngineerQuitPrompt();
+          event.stopImmediatePropagation();
+          return;
+        }
+
+        event.stopImmediatePropagation();
+        return;
+      }
+
+      if (key.escape) {
+        clearEngineerQuitPrompt();
+        if (selection.hasSelection()) {
+          selection.clearSelection();
+          event.stopImmediatePropagation();
+          return;
+        }
+
+        if (isStreaming) {
+          interruptEngineerTurn();
+          event.stopImmediatePropagation();
+          return;
+        }
+
+        setEngineerLeavePromptVisible(true);
+        event.stopImmediatePropagation();
+        return;
+      }
+
+      if (isPlainCtrlC && isStreaming) {
+        clearEngineerQuitPrompt();
+        interruptEngineerTurn();
+        event.stopImmediatePropagation();
+        return;
+      }
+
+      if (
+        isPlainCtrlC &&
+        selection.hasSelection()
+      ) {
+        clearEngineerQuitPrompt();
+        selection.copySelection();
+        event.stopImmediatePropagation();
+        return;
+      }
+
+      if (isPlainCtrlC) {
+        if (engineerQuitPromptVisible) {
+          clearEngineerQuitPrompt();
+          process.exit(0);
+          return;
+        }
+
+        armEngineerQuitPrompt();
+        event.stopImmediatePropagation();
+        return;
+      }
+
+      if (
+        input.length > 0 ||
+        key.upArrow ||
+        key.downArrow ||
+        key.leftArrow ||
+        key.rightArrow ||
+        key.pageDown ||
+        key.pageUp ||
+        key.wheelUp ||
+        key.wheelDown ||
+        key.home ||
+        key.end ||
+        key.return ||
+        key.tab ||
+        key.backspace ||
+        key.delete
+      ) {
+        clearEngineerQuitPrompt();
+      }
+    },
+    {
+      isActive: screen.name === 'engineer',
+    },
   );
 
   useKeybindings({
@@ -418,7 +796,20 @@ function AppImpl(): React.JSX.Element {
               />
             )}
             {screen.name === 'settings' && (
-              <Settings status={keyStatus} onAction={handleSettingsAction} />
+              <Settings status={authStatus} onAction={handleSettingsAction} />
+            )}
+            {screen.name === 'openaiAuth' && (
+              <OpenAIAuthPrompt
+                envKeyPresent={authStatus.envKeyPresent}
+                storedKeyPresent={authStatus.storedKeyPresent}
+                onSelect={handleOpenAIAuthPromptSelect}
+              />
+            )}
+            {screen.name === 'chatGptAuth' && (
+              <ChatGptAuthPrompt
+                onDone={handleChatGptAuthDone}
+                onCancel={handleChatGptAuthCancel}
+              />
             )}
             {screen.name === 'apiKey' && (
               <ApiKeyPrompt
@@ -508,17 +899,15 @@ function AppImpl(): React.JSX.Element {
                     setSummaryHasPriorTranscript(false);
                     setSummaryLaunchAction(null);
 
-                    const key = await resolveApiKeyForUse();
-                    if (!key) {
+                    const auth = await resolveAuthForUse();
+                    if (!auth) {
                       queuePendingEngineer(pending);
-                      setApiKeyError(null);
-                      setScreen({
-                        name: 'apiKey',
-                        returnTo: getBackScreen(screen) ?? { name: 'season' },
-                      });
+                      await openAuthGate(
+                        getBackScreen(screen) ?? { name: 'season' },
+                      );
                       return;
                     }
-                    await startEngineer(pending, key);
+                    await startEngineer(pending, auth);
                   })().catch((err) => {
                     clearPendingEngineer();
                     setSummaryHasPriorTranscript(false);
@@ -545,6 +934,12 @@ function AppImpl(): React.JSX.Element {
             )}
             {screen.name === 'engineer' && (
               <EngineerChat
+                idleStatus={
+                  engineerQuitPromptVisible
+                    ? 'Press Ctrl+C again to quit'
+                    : null
+                }
+                leaveConfirmationOpen={engineerLeavePromptVisible}
                 messages={messages}
                 streamingText={streamingText}
                 onSend={handleSend}

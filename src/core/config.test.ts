@@ -4,9 +4,12 @@ import { tmpdir } from 'node:os';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
   clearStoredOpenAIApiKey,
+  clearStoredOpenAIChatGptAuth,
   getAppConfigPath,
   readAppConfig,
+  writeOpenAIAuthPreference,
   writeOpenAIApiKey,
+  writeOpenAIChatGptAuth,
 } from './config.js';
 
 const originalEnv = { ...process.env };
@@ -38,9 +41,35 @@ describe('app config', () => {
 
     const cfg = await readAppConfig('f1aire');
     expect(cfg.openaiApiKey).toBe('sk-test');
+    expect(cfg.openaiAuthPreference).toBe('api-key');
 
     const raw = await fs.readFile(getAppConfigPath('f1aire'), 'utf-8');
     expect(raw).toContain('sk-test');
+  });
+
+  it('writes and reads ChatGPT auth and auth preference', async () => {
+    const base = path.join(tmpdir(), `f1aire-config-${Date.now()}`);
+    setTempConfigHome(base);
+
+    await writeOpenAIChatGptAuth('f1aire', {
+      accessToken: '  access-token \n',
+      refreshToken: ' refresh-token ',
+      expiresAt: 123456,
+      accountId: ' acct-1 ',
+      accountEmail: 'user@example.com ',
+      planType: ' Pro ',
+    });
+
+    const cfg = await readAppConfig('f1aire');
+    expect(cfg.openaiAuthPreference).toBe('chatgpt');
+    expect(cfg.openaiChatGptAuth).toEqual({
+      accessToken: 'access-token',
+      refreshToken: 'refresh-token',
+      expiresAt: 123456,
+      accountId: 'acct-1',
+      accountEmail: 'user@example.com',
+      planType: 'Pro',
+    });
   });
 
   it('clears the stored OpenAI API key and deletes the config file when empty', async () => {
@@ -62,5 +91,43 @@ describe('app config', () => {
 
     await expect(writeOpenAIApiKey('f1aire', '   ')).rejects.toThrow(/empty/i);
   });
-});
 
+  it('preserves ChatGPT auth when writing a new API key and toggles preference explicitly', async () => {
+    const base = path.join(tmpdir(), `f1aire-config-${Date.now()}`);
+    setTempConfigHome(base);
+
+    await writeOpenAIChatGptAuth('f1aire', {
+      accessToken: 'access-token',
+      refreshToken: 'refresh-token',
+      expiresAt: 123456,
+      accountId: 'acct-1',
+    });
+    await writeOpenAIApiKey('f1aire', 'sk-test');
+    await writeOpenAIAuthPreference('f1aire', 'chatgpt');
+
+    const cfg = await readAppConfig('f1aire');
+    expect(cfg.openaiAuthPreference).toBe('chatgpt');
+    expect(cfg.openaiApiKey).toBe('sk-test');
+    expect(cfg.openaiChatGptAuth?.accountId).toBe('acct-1');
+  });
+
+  it('clears ChatGPT auth without removing the stored API key', async () => {
+    const base = path.join(tmpdir(), `f1aire-config-${Date.now()}`);
+    setTempConfigHome(base);
+
+    await writeOpenAIApiKey('f1aire', 'sk-test');
+    await writeOpenAIChatGptAuth('f1aire', {
+      accessToken: 'access-token',
+      refreshToken: 'refresh-token',
+      expiresAt: 123456,
+      accountId: 'acct-1',
+    });
+
+    await clearStoredOpenAIChatGptAuth('f1aire');
+
+    const cfg = await readAppConfig('f1aire');
+    expect(cfg.openaiChatGptAuth).toBeUndefined();
+    expect(cfg.openaiApiKey).toBe('sk-test');
+    expect(cfg.openaiAuthPreference).toBe('chatgpt');
+  });
+});

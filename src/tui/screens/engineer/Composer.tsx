@@ -107,9 +107,11 @@ export function renderComposerPlaceholder(
 }
 
 export function Composer({
+  isActive = true,
   state,
   width,
 }: {
+  isActive?: boolean;
   state: ComposerState;
   width: number;
 }): React.JSX.Element {
@@ -128,8 +130,9 @@ export function Composer({
   useKeybindings({
     activeContexts: ['composer'],
     bindings,
+    isActive,
   });
-  useInput(state.handleInput, { isActive: true });
+  useInput(state.handleInput, { isActive });
 
   const lineMeta = useMemo(
     () => getComposerLayout(state.draft, state.cursor, width),

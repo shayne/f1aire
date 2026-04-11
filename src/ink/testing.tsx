@@ -19,7 +19,13 @@ export async function renderTui(
   stdin.ref = () => stdin;
   stdin.unref = () => stdin;
 
-  const app = renderSync(node, { stdout, stdin, stderr, patchConsole: false });
+  const app = renderSync(node, {
+    stdout,
+    stdin,
+    stderr,
+    exitOnCtrlC: false,
+    patchConsole: false,
+  });
 
   return {
     ...app,

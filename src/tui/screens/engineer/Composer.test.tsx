@@ -14,13 +14,7 @@ function Harness({
   width?: number;
 }) {
   const state = useComposerState({ onSend, isStreaming });
-  return (
-    <Composer
-      state={state}
-      isStreaming={isStreaming}
-      width={width}
-    />
-  );
+  return <Composer state={state} width={width} />;
 }
 
 const waitForTick = () => new Promise((resolve) => setTimeout(resolve, 0));
@@ -216,6 +210,43 @@ describe('Composer', () => {
     const frame = lastFrame() ?? '';
     expect(frame).toContain('ab');
     expect(frame).not.toContain('[13;2u');
+    unmount();
+  });
+
+  it('treats xterm shift-enter as a newline instead of a swallowed function key', async () => {
+    const onSend = vi.fn();
+    const { stdin, lastFrame, unmount } = await renderTui(
+      <Harness onSend={onSend} />,
+    );
+
+    await waitForTick();
+    stdin.write('ab');
+    stdin.write('\u001b[13;2~');
+    stdin.write('cd');
+    await waitForTick();
+
+    const frame = stripAnsi(lastFrame() ?? '');
+    expect(frame).toContain('› ab');
+    expect(frame).toContain('  cd');
+    expect(onSend).not.toHaveBeenCalled();
+    unmount();
+  });
+
+  it('keeps a bracketed multi-line paste in the draft instead of submitting each line', async () => {
+    const onSend = vi.fn();
+    const { stdin, lastFrame, unmount } = await renderTui(
+      <Harness onSend={onSend} width={48} />,
+    );
+
+    await waitForTick();
+    stdin.write('\u001b[200~line one\nline two\nline three\u001b[201~');
+    await waitForTick();
+
+    const frame = stripAnsi(lastFrame() ?? '');
+    expect(frame).toContain('› line one');
+    expect(frame).toContain('  line two');
+    expect(frame).toContain('  line three');
+    expect(onSend).not.toHaveBeenCalled();
     unmount();
   });
 

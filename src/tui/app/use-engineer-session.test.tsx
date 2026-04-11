@@ -62,6 +62,102 @@ async function writeSessionFixture(dir: string) {
 }
 
 describe('useEngineerSession', () => {
+  it('configures the OpenAI provider with ChatGPT OAuth when ChatGPT auth is selected', async () => {
+    const dataRoot = await mkdtemp(
+      path.join(os.tmpdir(), 'f1aire-engineer-session-chatgpt-'),
+    );
+    const dir = path.join(dataRoot, 'download');
+    await writeSessionFixture(dir);
+    process.env.XDG_DATA_HOME = dataRoot;
+
+    const createOpenAI = vi.fn(() => () => ({}));
+    const createEngineerSession = vi.fn(({ initialTranscript }) => ({
+      getTranscriptEvents: () => initialTranscript,
+      send: vi.fn(async function* () {}),
+    }));
+
+    vi.doMock('@ai-sdk/openai', () => ({
+      createOpenAI,
+    }));
+    vi.doMock('../../agent/engineer.js', () => ({
+      createEngineerSession,
+    }));
+    vi.doMock('../../agent/engineer-logger.js', () => ({
+      createEngineerLogger: () => ({ logger: vi.fn() }),
+    }));
+    vi.doMock('../../agent/prompt.js', () => ({ systemPrompt: 'test prompt' }));
+    vi.doMock('../../agent/tools.js', () => ({ makeTools: () => ({}) }));
+
+    const { useEngineerSession } = await import('./use-engineer-session.js');
+
+    function Harness({ dir }: { dir: string }) {
+      const [screen, setScreen] = useState<Screen>({ name: 'season' });
+      const startedRef = useRef(false);
+      const engineer = useEngineerSession({
+        keyStatus: {
+          envKeyPresent: false,
+          storedKeyPresent: false,
+          inUse: 'none',
+        },
+        resolveApiKeyForUse: async () => null,
+        screenName: screen.name,
+        setScreen,
+        storedApiKey: null,
+      });
+
+      useEffect(() => {
+        if (startedRef.current) return;
+        startedRef.current = true;
+        void engineer.startEngineer(
+          {
+            year: 2025,
+            meetings: [meeting],
+            meeting,
+            session,
+            dir,
+          },
+          {
+            kind: 'chatgpt',
+            accessToken: 'chatgpt-access-token',
+            refreshToken: 'refresh-token',
+            expiresAt: Date.now() + 3600_000,
+            accountId: 'acct-chatgpt',
+          } as any,
+        );
+      }, [dir]);
+
+      return <Text>{screen.name}</Text>;
+    }
+
+    const app = await renderTui(<Harness dir={dir} />);
+
+    await waitFor(() => (app.lastFrame() ?? '').includes('engineer'), {
+      debug: () => app.lastFrame() ?? '',
+    });
+
+    expect(createOpenAI).toHaveBeenCalledWith(
+      expect.objectContaining({
+        apiKey: 'f1aire-chatgpt-oauth-dummy-key',
+        baseURL: 'https://chatgpt.com/backend-api/codex',
+        fetch: expect.any(Function),
+      }),
+    );
+    expect(createEngineerSession).toHaveBeenCalledWith(
+      expect.objectContaining({
+        system: undefined,
+        providerOptions: {
+          openai: {
+            instructions: 'test prompt',
+            store: false,
+            systemMessageMode: 'remove',
+          },
+        },
+      }),
+    );
+
+    app.unmount();
+  });
+
   it('hydrates chat messages from persisted transcript events before entering engineer mode', async () => {
     const dataRoot = await mkdtemp(
       path.join(os.tmpdir(), 'f1aire-engineer-session-'),
@@ -520,6 +616,282 @@ describe('useEngineerSession', () => {
       { debug: () => app.lastFrame() ?? '' },
     );
 
+    app.unmount();
+  });
+
+  it('cancels the active engineer turn and keeps any streamed partial text', async () => {
+    const dataRoot = await mkdtemp(
+      path.join(os.tmpdir(), 'f1aire-engineer-session-cancel-'),
+    );
+    const dir = path.join(dataRoot, 'download');
+    await writeSessionFixture(dir);
+    process.env.XDG_DATA_HOME = dataRoot;
+
+    let resolveSend: (() => void) | null = null;
+    const cancel = vi.fn(() => {
+      resolveSend?.();
+    });
+    const createEngineerSession = vi.fn(() => ({
+      cancel,
+      getTranscriptEvents: () => [
+        {
+          id: 'user-1',
+          type: 'user-message',
+          text: 'Compare tyre degradation.',
+        },
+        {
+          id: 'assistant-1',
+          type: 'assistant-message',
+          text: 'Partial answer',
+          streaming: false,
+        },
+      ],
+      send: vi.fn(async function* () {
+        const done = new Promise<void>((resolve) => {
+          resolveSend = resolve;
+        });
+        yield 'Partial answer';
+        await done;
+      }),
+    }));
+    vi.doMock('@ai-sdk/openai', () => ({
+      createOpenAI: () => () => ({}),
+    }));
+    vi.doMock('../../agent/engineer.js', () => ({
+      createEngineerSession,
+    }));
+    vi.doMock('../../agent/engineer-logger.js', () => ({
+      createEngineerLogger: () => ({ logger: vi.fn() }),
+    }));
+    vi.doMock('../../agent/prompt.js', () => ({ systemPrompt: 'test prompt' }));
+    vi.doMock('../../agent/session-transcript-store.js', async () => {
+      const actual = await vi.importActual<
+        typeof import('../../agent/session-transcript-store.js')
+      >('../../agent/session-transcript-store.js');
+      return {
+        ...actual,
+        saveTranscriptEvents: vi.fn(async () => {}),
+      };
+    });
+    vi.doMock('../../agent/tools.js', () => ({ makeTools: () => ({}) }));
+
+    const { useEngineerSession } = await import('./use-engineer-session.js');
+
+    function Harness({ dir }: { dir: string }) {
+      const [screen, setScreen] = useState<Screen>({ name: 'season' });
+      const startedRef = useRef(false);
+      const sentRef = useRef(false);
+      const interruptedRef = useRef(false);
+      const engineer = useEngineerSession({
+        keyStatus: {
+          envKeyPresent: true,
+          storedKeyPresent: false,
+          inUse: 'env',
+        },
+        resolveApiKeyForUse: async () => 'test-key',
+        screenName: screen.name,
+        setScreen,
+        storedApiKey: null,
+      });
+
+      useEffect(() => {
+        if (startedRef.current) return;
+        startedRef.current = true;
+        void engineer.startEngineer(
+          {
+            year: 2025,
+            meetings: [meeting],
+            meeting,
+            session,
+            dir,
+          },
+          'test-key',
+        );
+      }, [dir]);
+
+      useEffect(() => {
+        if (screen.name !== 'engineer' || sentRef.current) return;
+        sentRef.current = true;
+        void engineer.handleSend('Compare tyre degradation.');
+      }, [screen.name]);
+
+      useEffect(() => {
+        if (
+          !engineer.isStreaming ||
+          engineer.streamingText !== 'Partial answer' ||
+          interruptedRef.current
+        ) {
+          return;
+        }
+        interruptedRef.current = true;
+        engineer.interruptEngineerTurn();
+      }, [
+        engineer.interruptEngineerTurn,
+        engineer.isStreaming,
+        engineer.streamingText,
+      ]);
+
+      const renderedMessages = engineer.messages
+        .map((message) => `${message.role}: ${message.content}`)
+        .join('\n');
+
+      return (
+        <Text>{`${screen.name}\nstreaming=${String(engineer.isStreaming)}\nstream: ${engineer.streamingText}\n${renderedMessages}`}</Text>
+      );
+    }
+
+    const app = await renderTui(<Harness dir={dir} />);
+
+    await waitFor(
+      () =>
+        (app.lastFrame() ?? '').includes('streaming=false') &&
+        (app.lastFrame() ?? '').includes('assistant: Partial answer'),
+      { debug: () => app.lastFrame() ?? '' },
+    );
+
+    expect(cancel).toHaveBeenCalledTimes(1);
+    app.unmount();
+  });
+
+  it('does not append an empty assistant message when a turn is cancelled before the first token', async () => {
+    const dataRoot = await mkdtemp(
+      path.join(os.tmpdir(), 'f1aire-engineer-session-cancel-empty-'),
+    );
+    const dir = path.join(dataRoot, 'download');
+    const storedTranscript: TranscriptEvent[] = [
+      {
+        id: 'user-1',
+        type: 'user-message',
+        text: 'Existing transcript context.',
+      },
+    ];
+    await writeSessionFixture(dir);
+    await mkdir(path.join(dataRoot, 'f1aire', 'data', 'transcripts'), {
+      recursive: true,
+    });
+    await writeFile(
+      path.join(dataRoot, 'f1aire', 'data', 'transcripts', '2025-24-10.json'),
+      `${JSON.stringify(storedTranscript, null, 2)}\n`,
+      'utf-8',
+    );
+    process.env.XDG_DATA_HOME = dataRoot;
+
+    let resolveSend: (() => void) | null = null;
+    let cancel: ReturnType<typeof vi.fn> | null = null;
+    const createEngineerSession = vi.fn(({ initialTranscript, onEvent }) => {
+      cancel = vi.fn(() => {
+        onEvent?.({ type: 'send-cancel' });
+        resolveSend?.();
+      });
+
+      return {
+        cancel,
+        getTranscriptEvents: () => [
+          ...initialTranscript,
+          {
+            id: 'user-2',
+            type: 'user-message',
+            text: 'Cancel before any output.',
+          },
+        ],
+        send: vi.fn(async function* () {
+          await new Promise<void>((resolve) => {
+            resolveSend = resolve;
+          });
+          yield* [];
+        }),
+      };
+    });
+    vi.doMock('@ai-sdk/openai', () => ({
+      createOpenAI: () => () => ({}),
+    }));
+    vi.doMock('../../agent/engineer.js', () => ({
+      createEngineerSession,
+    }));
+    vi.doMock('../../agent/engineer-logger.js', () => ({
+      createEngineerLogger: () => ({ logger: vi.fn() }),
+    }));
+    vi.doMock('../../agent/prompt.js', () => ({ systemPrompt: 'test prompt' }));
+    vi.doMock('../../agent/session-transcript-store.js', async () => {
+      const actual = await vi.importActual<
+        typeof import('../../agent/session-transcript-store.js')
+      >('../../agent/session-transcript-store.js');
+      return {
+        ...actual,
+        saveTranscriptEvents: vi.fn(async () => {}),
+      };
+    });
+    vi.doMock('../../agent/tools.js', () => ({ makeTools: () => ({}) }));
+
+    const { useEngineerSession } = await import('./use-engineer-session.js');
+
+    function Harness({ dir }: { dir: string }) {
+      const [screen, setScreen] = useState<Screen>({ name: 'season' });
+      const startedRef = useRef(false);
+      const sentRef = useRef(false);
+      const interruptedRef = useRef(false);
+      const engineer = useEngineerSession({
+        keyStatus: {
+          envKeyPresent: true,
+          storedKeyPresent: false,
+          inUse: 'env',
+        },
+        resolveApiKeyForUse: async () => 'test-key',
+        screenName: screen.name,
+        setScreen,
+        storedApiKey: null,
+      });
+
+      useEffect(() => {
+        if (startedRef.current) return;
+        startedRef.current = true;
+        void engineer.startEngineer(
+          {
+            year: 2025,
+            meetings: [meeting],
+            meeting,
+            session,
+            dir,
+          },
+          'test-key',
+        );
+      }, [dir]);
+
+      useEffect(() => {
+        if (screen.name !== 'engineer' || sentRef.current) return;
+        sentRef.current = true;
+        void engineer.handleSend('Cancel before any output.');
+      }, [screen.name]);
+
+      useEffect(() => {
+        if (!engineer.isStreaming || interruptedRef.current) return;
+        interruptedRef.current = true;
+        engineer.interruptEngineerTurn();
+      }, [engineer.interruptEngineerTurn, engineer.isStreaming]);
+
+      const renderedMessages = engineer.messages
+        .map((message) => `${message.role}: ${message.content}`)
+        .join('\n');
+
+      return (
+        <Text>{`${screen.name}\nstreaming=${String(engineer.isStreaming)}\nactivity=${engineer.activity.at(-1) ?? ''}\n${renderedMessages}`}</Text>
+      );
+    }
+
+    const app = await renderTui(<Harness dir={dir} />);
+
+    await waitFor(
+      () =>
+        (app.lastFrame() ?? '').includes('streaming=false') &&
+        (app.lastFrame() ?? '').includes('activity=Cancelled'),
+      { debug: () => app.lastFrame() ?? '' },
+    );
+
+    const frame = app.lastFrame() ?? '';
+    expect(frame).toContain('user: Existing transcript context.');
+    expect(frame).toContain('user: Cancel before any output.');
+    expect(frame).not.toContain('assistant:');
+    expect(cancel).toHaveBeenCalledTimes(1);
     app.unmount();
   });
 });

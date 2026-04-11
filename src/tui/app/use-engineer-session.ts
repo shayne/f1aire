@@ -25,6 +25,10 @@ import {
 } from '../../core/timing-service.js';
 import type { TimeCursor } from '../../core/time-cursor.js';
 import { getDataDir } from '../../core/xdg.js';
+import {
+  createOpenAIProviderAuthConfig,
+  type ResolvedOpenAIAuth,
+} from '../../core/openai-auth.js';
 import { appendUserMessage, type ChatMessage } from '../chat-state.js';
 import type { Screen } from '../navigation.js';
 import { startEventLoopLagMonitor } from '../perf.js';
@@ -55,8 +59,24 @@ type StartEngineerOptions = {
 type KeyStatus = {
   envKeyPresent: boolean;
   storedKeyPresent: boolean;
-  inUse: 'env' | 'stored' | 'none';
+  inUse: 'chatgpt' | 'env' | 'stored' | 'none';
 };
+
+type EngineerAuthInput = string | ResolvedOpenAIAuth;
+
+function getEngineerProviderOptions(auth: ResolvedOpenAIAuth) {
+  if (auth.kind !== 'chatgpt') {
+    return undefined;
+  }
+
+  return {
+    openai: {
+      instructions: systemPrompt,
+      store: false,
+      systemMessageMode: 'remove',
+    },
+  } as const;
+}
 
 function tryExtractJsonStringField(
   value: string,
@@ -200,14 +220,37 @@ function getSessionTranscriptEvents(
   return transcriptGetter.call(session);
 }
 
+function coerceOpenAIAuthInput(
+  auth: EngineerAuthInput | null | undefined,
+): ResolvedOpenAIAuth | null {
+  if (!auth) {
+    return null;
+  }
+
+  if (typeof auth === 'string') {
+    const apiKey = auth.trim();
+    return apiKey
+      ? {
+          kind: 'api-key',
+          apiKey,
+          source: 'stored',
+        }
+      : null;
+  }
+
+  return auth;
+}
+
 export function useEngineerSession({
   keyStatus,
+  resolveOpenAIAuthForUse,
   screenName,
   setScreen,
   storedApiKey,
   resolveApiKeyForUse,
 }: {
   keyStatus: KeyStatus;
+  resolveOpenAIAuthForUse?: () => Promise<ResolvedOpenAIAuth | null>;
   screenName: Screen['name'];
   setScreen: (screen: Screen) => void;
   storedApiKey: string | null;
@@ -216,13 +259,14 @@ export function useEngineerSession({
   activity: string[];
   clearPendingEngineer: () => void;
   handleSend: (text: string) => Promise<void>;
+  interruptEngineerTurn: () => void;
   isStreaming: boolean;
   messages: ChatMessage[];
   pythonCodePreview: string;
   queuePendingEngineer: (pending: PendingEngineer) => void;
   startEngineer: (
     pending: PendingEngineer,
-    apiKey: string,
+    auth: EngineerAuthInput,
     options?: StartEngineerOptions,
   ) => Promise<void>;
   streamStatus: string | null;
@@ -343,7 +387,12 @@ export function useEngineerSession({
           events: transcriptEvents,
         });
       }
-      setMessages((prev) => [...prev, { role: 'assistant', content: buffer }]);
+      if (buffer.length > 0) {
+        setMessages((prev) => [
+          ...prev,
+          { role: 'assistant', content: buffer },
+        ]);
+      }
     } catch (err) {
       const message = formatUnknownError(err);
       pushActivity(`Error: ${message}`);
@@ -358,9 +407,13 @@ export function useEngineerSession({
     }
   };
 
+  const interruptEngineerTurn = () => {
+    engineerRef.current?.cancel();
+  };
+
   const startEngineer = async (
     pending: PendingEngineer,
-    apiKey: string,
+    authInput: EngineerAuthInput,
     options: StartEngineerOptions = {},
   ) => {
     const resumeTranscript = options.resumeTranscript ?? true;
@@ -406,6 +459,13 @@ export function useEngineerSession({
       keyframeTopics: hydration.keyframeTopics.length,
     });
 
+    const resolvedAuth =
+      (resolveOpenAIAuthForUse ? await resolveOpenAIAuthForUse() : null) ??
+      coerceOpenAIAuthInput(authInput);
+    if (!resolvedAuth) {
+      throw new Error('OpenAI auth is required to start the engineer.');
+    }
+
     const initialTimeCursor: TimeCursor = { latest: true };
     setTimeCursor(initialTimeCursor);
     const tools = makeTools({
@@ -414,14 +474,19 @@ export function useEngineerSession({
       timeCursor: initialTimeCursor,
       onTimeCursorChange: setTimeCursor,
       logger: engineerLoggerRef.current?.logger ?? undefined,
+      resolveOpenAIAuth:
+        resolveOpenAIAuthForUse ?? (async () => resolvedAuth),
       resolveOpenAIApiKey: resolveApiKeyForUse,
     });
     const modelId = process.env.OPENAI_API_MODEL ?? 'gpt-5.2-codex';
-    const keyToUse = await resolveApiKeyForUse();
-    const provider = createOpenAI({
-      apiKey: keyToUse ?? apiKey,
-    });
+    const provider = createOpenAI(
+      createOpenAIProviderAuthConfig({
+        appName: 'f1aire',
+        auth: resolvedAuth,
+      }),
+    );
     const model = provider(modelId);
+    const engineerProviderOptions = getEngineerProviderOptions(resolvedAuth);
     void engineerLoggerRef.current?.logger({
       type: 'engineer-init',
       modelId,
@@ -465,7 +530,8 @@ export function useEngineerSession({
     engineerRef.current = createEngineerSession({
       model,
       tools,
-      system: systemPrompt,
+      system: resolvedAuth.kind === 'chatgpt' ? undefined : systemPrompt,
+      providerOptions: engineerProviderOptions,
       initialTranscript,
       logger: engineerLoggerRef.current?.logger ?? undefined,
       onEvent: (event) => {
@@ -484,6 +550,11 @@ export function useEngineerSession({
         if (event.type === 'send-finish') {
           setStreamStatus(null);
           pushActivity('Response ready');
+          return;
+        }
+        if (event.type === 'send-cancel') {
+          setStreamStatus(null);
+          pushActivity('Cancelled');
           return;
         }
         if (event.type === 'stream-error') {
@@ -651,6 +722,7 @@ export function useEngineerSession({
     activity,
     clearPendingEngineer,
     handleSend,
+    interruptEngineerTurn,
     isStreaming,
     messages,
     pythonCodePreview,

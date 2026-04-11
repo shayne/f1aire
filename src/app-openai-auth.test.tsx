@@ -1,10 +1,8 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
-import path from 'node:path';
-import { tmpdir } from 'node:os';
 import { mkdirSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 import React from 'react';
-import { Text } from '#ink';
-import { renderTui } from '#ink/testing';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Meeting, Session } from './core/types.js';
 
 const originalEnv = { ...process.env };
@@ -31,34 +29,27 @@ const waitFor = async (
   throw new Error(`Timed out waiting for condition${tail}`);
 };
 
-type RuntimeProgressUpdate = {
-  phase: 'downloading' | 'extracting' | 'ready';
-  message: string;
-};
-
-function mockEngineerRouteBoot({
+function mockSessionRoute({
   base,
-  EngineerChat,
+  TextComponent,
 }: {
   base: string;
-  EngineerChat?: (props: { maxHeight?: number }) => React.ReactNode;
+  TextComponent: typeof import('#ink').Text;
 }) {
-  process.env.OPENAI_API_KEY = 'test-key';
-  process.env.XDG_DATA_HOME = base;
+  delete process.env.OPENAI_API_KEY;
   process.env.XDG_CONFIG_HOME = base;
+  process.env.XDG_DATA_HOME = base;
   process.env.HOME = base;
-  mkdirSync(path.join(base, 'f1aire'), { recursive: true });
-  writeFileSync(
-    path.join(base, 'f1aire', 'config.json'),
-    `${JSON.stringify({ openaiAuthPreference: 'api-key' }, null, 2)}\n`,
-    'utf-8',
-  );
+  let didSelectSession = false;
 
   vi.doMock('./agent/pyodide/assets.js', () => ({
     ensurePyodideAssets: async ({
       onProgress,
     }: {
-      onProgress?: (update: RuntimeProgressUpdate) => void;
+      onProgress?: (update: {
+        phase: 'downloading' | 'extracting' | 'ready';
+        message: string;
+      }) => void;
     }) => {
       onProgress?.({ phase: 'ready', message: 'Python runtime ready.' });
       return { ready: true };
@@ -69,6 +60,7 @@ function mockEngineerRouteBoot({
   }));
   vi.doMock('./agent/engineer.js', () => ({
     createEngineerSession: () => ({
+      cancel: vi.fn(),
       close: vi.fn(),
       send: vi.fn(async function* () {}),
     }),
@@ -98,7 +90,7 @@ function mockEngineerRouteBoot({
   }));
   vi.doMock('./core/f1-api.js', () => ({
     getMeetings: async () => ({
-      Year: 2025,
+      Year: 2026,
       Meetings: [
         {
           Key: 1,
@@ -109,10 +101,10 @@ function mockEngineerRouteBoot({
               Key: 10,
               Name: 'Race',
               Type: 'Race',
-              StartDate: '2025-01-01T00:00:00Z',
-              EndDate: '2025-01-01T02:00:00Z',
+              StartDate: '2026-01-01T00:00:00Z',
+              EndDate: '2026-01-01T02:00:00Z',
               GmtOffset: '+00:00',
-              Path: '2025/test/',
+              Path: '2026/test/',
             },
           ],
         },
@@ -142,9 +134,11 @@ function mockEngineerRouteBoot({
       onSelect: (session: Session) => void;
     }) => {
       React.useEffect(() => {
+        if (didSelectSession) return;
+        didSelectSession = true;
         void onSelect(meeting.Sessions[0]);
       }, [meeting, onSelect]);
-      return null;
+      return <TextComponent>Session picker ready</TextComponent>;
     },
   }));
   vi.doMock('./core/download.js', () => ({
@@ -156,79 +150,36 @@ function mockEngineerRouteBoot({
       return { dir, lineCount: 0 };
     },
   }));
-
-  if (EngineerChat) {
-    vi.doMock('./tui/screens/EngineerChat.js', () => ({
-      EngineerChat,
-    }));
-  } else {
-    vi.doMock('./tui/screens/EngineerChat.js', async () => {
-      return await vi.importActual('./tui/screens/EngineerChat.js');
-    });
-  }
 }
 
-describe('App engineer shell', () => {
-  it('removes the global header and footer on the engineer route', async () => {
-    const base = path.join(tmpdir(), `f1aire-engineer-shell-${Date.now()}`);
-    mockEngineerRouteBoot({ base });
+async function loadApp(base: string) {
+  const [{ Text }, { renderTui }] = await Promise.all([
+    import('#ink'),
+    import('#ink/testing'),
+  ]);
+  mockSessionRoute({ base, TextComponent: Text });
+  const { App } = await import('./app.js');
+  return { App, renderTui };
+}
 
-    const { App } = await import('./app.js');
+describe('App OpenAI auth routing', () => {
+  it('asks for ChatGPT-first auth on first engineer launch when no explicit API-key preference is configured', async () => {
+    const base = path.join(tmpdir(), `f1aire-app-openai-auth-${Date.now()}`);
+    const { App, renderTui } = await loadApp(base);
     const app = await renderTui(<App />);
 
-    await waitFor(() => (app.lastFrame() ?? '').includes('Ask the engineer'), {
-      debug: () => app.lastFrame() ?? '',
-    });
+    await waitFor(
+      () =>
+        (app.lastFrame() ?? '').includes('OpenAI auth') &&
+        (app.lastFrame() ?? '').includes('Use ChatGPT account (recommended)'),
+      { debug: () => app.lastFrame() ?? '' },
+    );
 
     const frame = app.lastFrame() ?? '';
-    expect(frame).toContain('Ask the engineer');
-    expect(frame).toContain('Quick summary:');
-    expect(frame).toContain('Winner: unavailable');
-    expect(frame).not.toContain('Quick summary: Winner: unavailable');
-    expect(frame).not.toContain('…');
-    expect(frame).not.toContain('F1aire - Virtual Race Engineer');
-    expect(frame).not.toContain('s settings');
-    app.unmount();
-  });
+    expect(frame).toContain('Sign in with ChatGPT');
+    expect(frame).toContain('Use OpenAI API key');
+    expect(frame).not.toContain('Paste a valid key');
 
-  it('does not pass a fixed maxHeight to the engineer screen so the shell can pin its bottom slot fullscreen', async () => {
-    const base = path.join(
-      tmpdir(),
-      `f1aire-engineer-shell-maxheight-${Date.now()}`,
-    );
-    const EngineerChat = vi.fn(() => null);
-    mockEngineerRouteBoot({ base, EngineerChat });
-
-    const { App } = await import('./app.js');
-    const app = await renderTui(<App />);
-
-    await waitFor(() => EngineerChat.mock.calls.length > 0);
-
-    expect(EngineerChat.mock.calls.at(-1)?.[0]?.maxHeight).toBeUndefined();
-    app.unmount();
-  });
-
-  it('renders the engineer route flush-left so app-level chrome does not own the engineer shell boundary', async () => {
-    const base = path.join(
-      tmpdir(),
-      `f1aire-engineer-shell-flush-left-${Date.now()}`,
-    );
-    mockEngineerRouteBoot({
-      base,
-      EngineerChat: () => <Text>SHELL-ROOT</Text>,
-    });
-
-    const { App } = await import('./app.js');
-    const app = await renderTui(<App />);
-
-    await waitFor(() => (app.lastFrame() ?? '').includes('SHELL-ROOT'), {
-      debug: () => app.lastFrame() ?? '',
-    });
-
-    const frame = app.lastFrame() ?? '';
-    const firstRenderedLine =
-      frame.split('\n').find((line) => line.trim().length > 0) ?? '';
-    expect(firstRenderedLine).toBe('SHELL-ROOT');
     app.unmount();
   });
 });

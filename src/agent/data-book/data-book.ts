@@ -270,11 +270,11 @@ export const DATA_BOOK_TOPICS: DataBookTopic[] = [
   },
   {
     topic: 'TimingAppData',
-    aliases: ['TimingAppData'],
+    aliases: ['TimingAppData', 'GridPosition', 'GridPos'],
     availability: 'all-sessions',
     semantics: 'patch',
     purpose:
-      'Tyre/stint information (compound, new/used, stint lengths). Primary source for stint boundaries and tyre compound context.',
+      'Tyre/stint information (compound, new/used, stint lengths) plus race starting grid position via GridPos. Primary source for stint boundaries, tyre compound context, and GridPosition/GridPos questions.',
     engineerUse: [
       'Current and historical tyre compounds and stint lengths.',
       'Strategy context (who is on what compound, stint age).',
@@ -909,11 +909,11 @@ export const DATA_BOOK_TOPICS: DataBookTopic[] = [
   },
   {
     topic: 'LapSeries',
-    aliases: ['LapSeries'],
+    aliases: ['LapSeries', 'LapPosition', 'LapPositionHistory'],
     availability: 'all-sessions',
     semantics: 'patch',
     purpose:
-      'Driver lap-position series (per-lap position arrays/deltas). Useful for quick reconstruction of position progression lap by lap.',
+      'Driver lap-position history from per-lap position arrays/deltas. Useful for quick reconstruction of position progression lap by lap.',
     engineerUse: [
       'Summarize position evolution by lap for a driver.',
       'Cross-check overtake/position change narratives against timing-derived order.',

@@ -1,9 +1,10 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Box, useTerminalSize } from '#ink';
+import { Box, Text, useTerminalSize } from '#ink';
 import type { Summary as SummaryData } from '../../core/summary.js';
 import type { Meeting, Session } from '../../core/types.js';
 import type { ChatMessage } from '../chat-state.js';
 import type { Keybinding } from '../keybindings/actions.js';
+import { Panel } from '../components/Panel.js';
 import { useKeybindings } from '../keybindings/use-keybindings.js';
 import { useTheme } from '../theme/provider.js';
 import { Composer } from './engineer/Composer.js';
@@ -73,20 +74,37 @@ function getTranscriptVersion({
 }
 
 type ComposerPanelProps = {
+  isActive: boolean;
   onSend: (text: string) => void;
   isStreaming: boolean;
   width: number;
 };
 
 const ComposerPanel = React.memo(function ComposerPanel({
+  isActive,
   onSend,
   isStreaming,
   width,
 }: ComposerPanelProps) {
   const state = useComposerState({ onSend, isStreaming });
 
-  return <Composer state={state} width={width} />;
+  return <Composer isActive={isActive} state={state} width={width} />;
 });
+
+function EngineerLeaveConfirmation(): React.JSX.Element {
+  const theme = useTheme();
+
+  return (
+    <Panel title="Leave engineer session?" tone="accent">
+      <Text color={theme.text.primary}>
+        Return to session selection. Your transcript is preserved.
+      </Text>
+      <Text color={theme.text.muted} dimColor>
+        Enter leave · Esc stay
+      </Text>
+    </Panel>
+  );
+}
 
 export function EngineerChat({
   messages,
@@ -100,6 +118,8 @@ export function EngineerChat({
   activity,
   pythonCode,
   asOfLabel,
+  idleStatus,
+  leaveConfirmationOpen = false,
   maxHeight,
   onConversationRender,
   onRender,
@@ -116,6 +136,8 @@ export function EngineerChat({
   activity: string[];
   pythonCode?: string;
   asOfLabel?: string | null;
+  idleStatus?: string | null;
+  leaveConfirmationOpen?: boolean;
   maxHeight?: number;
   onConversationRender?: () => void;
   onRender?: () => void;
@@ -220,6 +242,10 @@ export function EngineerChat({
     [activity, isStreaming],
   );
   const liveStatus = status ?? (isStreaming ? activity.at(-1) : null) ?? 'Idle';
+  const displayedStatus =
+    status ??
+    (isStreaming ? activity.at(-1) : idleStatus) ??
+    'Idle';
   const sessionStripLabel = useMemo(
     () =>
       getSessionStripLabel({
@@ -279,6 +305,7 @@ export function EngineerChat({
   useKeybindings({
     activeContexts: ['engineer', 'transcript'],
     bindings: keybindings,
+    isActive: !leaveConfirmationOpen,
   });
 
   return (
@@ -286,6 +313,9 @@ export function EngineerChat({
       fullscreen={maxHeight === undefined}
       height={rows}
       top={<EngineerSessionStrip label={sessionStripLabel} />}
+      modal={
+        leaveConfirmationOpen ? <EngineerLeaveConfirmation /> : undefined
+      }
       scrollRef={scrollRef}
       dividerYRef={dividerYRef}
       newMessageCount={newMessageCount}
@@ -307,8 +337,12 @@ export function EngineerChat({
             pythonCode={pythonCode ?? ''}
             isExpanded={detailsExpanded}
           />
-          <EngineerStatusRow status={liveStatus} isStreaming={isStreaming} />
+          <EngineerStatusRow
+            status={displayedStatus}
+            isStreaming={isStreaming}
+          />
           <ComposerPanel
+            isActive={!leaveConfirmationOpen}
             onSend={onSend}
             isStreaming={isStreaming}
             width={composerContentWidth}

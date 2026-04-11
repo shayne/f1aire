@@ -24,6 +24,11 @@ describe('data-book', () => {
     expect(getDataBookTopic('Position.z')?.topic).toBe('Position');
   });
 
+  it('maps grid-position aliases to TimingAppData', () => {
+    expect(getDataBookTopic('GridPosition')?.topic).toBe('TimingAppData');
+    expect(getDataBookTopic('GridPos')?.topic).toBe('TimingAppData');
+  });
+
   it('documents the team radio playback and transcription workflow', () => {
     expect(getDataBookTopic('TeamRadio')?.bestTools).toContain(
       'play_team_radio',
@@ -53,6 +58,9 @@ describe('data-book', () => {
   it('documents deterministic lap-series tooling', () => {
     expect(getDataBookTopic('LapSeries')?.bestTools).toContain(
       'get_lap_series',
+    );
+    expect(getDataBookTopic('LapSeries')?.purpose).toContain(
+      'lap-position history',
     );
   });
 

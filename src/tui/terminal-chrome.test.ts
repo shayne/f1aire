@@ -43,4 +43,15 @@ describe('createTerminalLink', () => {
       }),
     ).toContain(`${pathToFileURL(target).href}`);
   });
+
+  it('preserves web URLs when wrapping OSC 8 hyperlinks', () => {
+    const target = 'https://auth.openai.com/oauth/authorize?state=test';
+    const link = createTerminalLink(target, {
+      label: target,
+      supportsHyperlinks: true,
+    });
+
+    expect(link).toContain(target);
+    expect(link).not.toContain('file://');
+  });
 });

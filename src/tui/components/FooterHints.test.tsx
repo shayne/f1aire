@@ -4,7 +4,7 @@ import { renderTui } from '#ink/testing';
 import { FooterHints } from './FooterHints.js';
 
 const engineerFooterHint =
-  'enter send · shift+enter newline · tab details · pgup/pgdn scroll · esc back';
+  'enter send · shift+enter newline · tab details · pgup/pgdn scroll · esc stop/back';
 const normalizeWhitespace = (value: string) => value.replace(/\s+/g, ' ').trim();
 
 describe('FooterHints', () => {
@@ -42,7 +42,7 @@ describe('FooterHints', () => {
       | ((screen: string, width: number) => number)
       | undefined;
 
-    expect(getFooterHintRowCount?.('engineer', 80)).toBe(1);
+    expect(getFooterHintRowCount?.('engineer', 80)).toBe(2);
     expect(getFooterHintRowCount?.('engineer', 120)).toBe(1);
   });
 });

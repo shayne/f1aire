@@ -36,12 +36,18 @@ type RuntimeProgressUpdate = {
 };
 
 describe('App OpenAI key prompt', () => {
-  it('prompts for key after download when env and stored key are missing and writes titles to the renderer stdout', async () => {
+  it('prompts for key after download when API-key preference is explicit and no keys are stored, and writes titles to the renderer stdout', async () => {
     delete process.env.OPENAI_API_KEY;
     const base = path.join(tmpdir(), `f1aire-app-${Date.now()}`);
     process.env.XDG_DATA_HOME = base;
     process.env.XDG_CONFIG_HOME = base;
     process.env.HOME = base;
+    mkdirSync(path.join(base, 'f1aire'), { recursive: true });
+    writeFileSync(
+      path.join(base, 'f1aire', 'config.json'),
+      `${JSON.stringify({ openaiAuthPreference: 'api-key' }, null, 2)}\n`,
+      'utf-8',
+    );
 
     vi.doMock('./agent/pyodide/assets.js', () => ({
       ensurePyodideAssets: async ({

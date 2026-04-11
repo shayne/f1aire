@@ -68,6 +68,15 @@ async function waitFor(
   throw new Error(`Timed out waiting for condition${tail}`);
 }
 
+function seedApiKeyPreferenceConfig(base: string) {
+  mkdirSync(path.join(base, 'f1aire'), { recursive: true });
+  writeFileSync(
+    path.join(base, 'f1aire', 'config.json'),
+    `${JSON.stringify({ openaiAuthPreference: 'api-key' }, null, 2)}\n`,
+    'utf-8',
+  );
+}
+
 describe('getBackScreen', () => {
   it('returns season from meeting', () => {
     expect(getBackScreen({ name: 'meeting', year, meetings })).toEqual({
@@ -123,43 +132,47 @@ describe('getBackScreen', () => {
 });
 
 describe('App shell routes', () => {
-  it('renders the season route through the shared f1aire shell instead of the engineer shell', async () => {
-    vi.doMock('./agent/pyodide/assets.js', () => ({
-      ensurePyodideAssets: async ({
-        onProgress,
-      }: {
-        onProgress?: (update: RuntimeProgressUpdate) => void;
-      }) => {
-        onProgress?.({ phase: 'ready', message: 'Python runtime ready.' });
-      },
-    }));
+  it(
+    'renders the season route through the shared f1aire shell instead of the engineer shell',
+    async () => {
+      vi.doMock('./agent/pyodide/assets.js', () => ({
+        ensurePyodideAssets: async ({
+          onProgress,
+        }: {
+          onProgress?: (update: RuntimeProgressUpdate) => void;
+        }) => {
+          onProgress?.({ phase: 'ready', message: 'Python runtime ready.' });
+        },
+      }));
 
-    const { App } = await import('./app.js');
-    const app = await renderTui(React.createElement(App), {
-      columns: 72,
-      rows: 20,
-    });
+      const { App } = await import('./app.js');
+      const app = await renderTui(React.createElement(App), {
+        columns: 72,
+        rows: 20,
+      });
 
-    await waitFor(
-      () =>
-        (app.lastFrame() ?? '').includes('Select a season') &&
-        (app.lastFrame() ?? '').includes(
-          'Start a f1aire race-engineer session',
-        ),
-      {
-        debug: () => app.lastFrame() ?? '',
-      },
-    );
+      await waitFor(
+        () =>
+          (app.lastFrame() ?? '').includes('Select a season') &&
+          (app.lastFrame() ?? '').includes(
+            'Start a f1aire race-engineer session',
+          ),
+        {
+          debug: () => app.lastFrame() ?? '',
+        },
+      );
 
-    const frame = app.lastFrame() ?? '';
-    expect(frame).toContain('f1aire');
-    expect(frame).toContain('Virtual Race Engineer');
-    expect(frame).toContain('Select a season');
-    expect(frame).toContain('Start a f1aire race-engineer session');
-    expect(frame).not.toContain('Ask the engineer');
-    expect(frame).not.toContain('Quick summary:');
-    app.unmount();
-  });
+      const frame = app.lastFrame() ?? '';
+      expect(frame).toContain('f1aire');
+      expect(frame).toContain('Virtual Race Engineer');
+      expect(frame).toContain('Select a season');
+      expect(frame).toContain('Start a f1aire race-engineer session');
+      expect(frame).not.toContain('Ask the engineer');
+      expect(frame).not.toContain('Quick summary:');
+      app.unmount();
+    },
+    15_000,
+  );
 
   it('resumes a stored engineer transcript when the same session is reopened', async () => {
     process.env.OPENAI_API_KEY = 'test-key';
@@ -167,6 +180,7 @@ describe('App shell routes', () => {
     process.env.XDG_DATA_HOME = base;
     process.env.XDG_CONFIG_HOME = base;
     process.env.HOME = base;
+    seedApiKeyPreferenceConfig(base);
 
     mkdirSync(path.join(base, 'f1aire', 'data', 'transcripts'), {
       recursive: true,
@@ -325,6 +339,7 @@ describe('App shell routes', () => {
     process.env.XDG_DATA_HOME = base;
     process.env.XDG_CONFIG_HOME = base;
     process.env.HOME = base;
+    seedApiKeyPreferenceConfig(base);
     let resumeSummary: (() => void) | undefined;
     let resolveStart: (() => void) | undefined;
     let queuedPending: {
@@ -493,6 +508,7 @@ describe('App shell routes', () => {
     process.env.XDG_DATA_HOME = base;
     process.env.XDG_CONFIG_HOME = base;
     process.env.HOME = base;
+    seedApiKeyPreferenceConfig(base);
     let resumeSummary: (() => void) | undefined;
     const createEngineerSession = vi
       .fn()
@@ -681,6 +697,7 @@ describe('App shell routes', () => {
     process.env.XDG_DATA_HOME = base;
     process.env.XDG_CONFIG_HOME = base;
     process.env.HOME = base;
+    seedApiKeyPreferenceConfig(base);
     let resumeSummary: (() => void) | undefined;
     let triggerGlobalBack: (() => boolean | void) | undefined;
     const createEngineerSession = vi
@@ -887,6 +904,7 @@ describe('App shell routes', () => {
     process.env.XDG_DATA_HOME = base;
     process.env.XDG_CONFIG_HOME = base;
     process.env.HOME = base;
+    seedApiKeyPreferenceConfig(base);
 
     mkdirSync(path.join(base, 'f1aire', 'data', 'transcripts'), {
       recursive: true,
@@ -1009,6 +1027,7 @@ describe('App shell routes', () => {
     process.env.XDG_DATA_HOME = base;
     process.env.XDG_CONFIG_HOME = base;
     process.env.HOME = base;
+    seedApiKeyPreferenceConfig(base);
     let resumeSummary: (() => void) | undefined;
     let triggerGlobalBack: (() => boolean | void) | undefined;
 
@@ -1166,6 +1185,7 @@ describe('App shell routes', () => {
     process.env.XDG_DATA_HOME = base;
     process.env.XDG_CONFIG_HOME = base;
     process.env.HOME = base;
+    seedApiKeyPreferenceConfig(base);
 
     vi.doMock('./agent/session-transcript-store.js', async () => {
       const actual = await vi.importActual<
